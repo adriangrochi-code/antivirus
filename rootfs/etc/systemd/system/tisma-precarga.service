@@ -3,6 +3,7 @@ Description=TISMA - precargar en caché las aplicaciones más usadas (con el dis
 After=graphical.target
 
 [Service]
+Slice=tisma-segundo-plano.slice
 Type=oneshot
 ExecStart=/usr/lib/tisma/precarga
 Nice=19

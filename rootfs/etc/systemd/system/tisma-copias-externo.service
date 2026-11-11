@@ -1,0 +1,16 @@
+[Unit]
+Description=TISMA - copia cifrada en el disco externo (restic)
+ConditionPathExists=/etc/tisma/copias.json
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/bin/tisma-copias externo copiar
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+CacheDirectory=tisma-copias

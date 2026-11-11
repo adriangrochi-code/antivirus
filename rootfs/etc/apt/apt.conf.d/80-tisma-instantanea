@@ -1,0 +1,3 @@
+// TISMA: instantánea de solo lectura del sistema antes de cada instalación o actualización.
+// Si algo sale mal: tisma-copias estado  →  tisma-copias volver-atras <nombre> --si
+DPkg::Pre-Invoke { "if [ -x /usr/bin/tisma-copias ]; then /usr/bin/tisma-copias instantanea --motivo actualizacion --silencioso || true; fi"; };

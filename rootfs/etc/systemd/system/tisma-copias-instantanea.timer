@@ -1,0 +1,11 @@
+[Unit]
+Description=TISMA - instantánea diaria del sistema
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1d
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

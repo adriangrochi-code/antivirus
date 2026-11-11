@@ -4,6 +4,7 @@ After=network-online.target dnscrypt-proxy.service
 Wants=network-online.target
 
 [Service]
+Slice=tisma-segundo-plano.slice
 Type=oneshot
 ExecStart=/usr/lib/tisma/actualizar-bloqueo
 ExecStartPost=-/usr/bin/systemctl try-restart dnscrypt-proxy.service

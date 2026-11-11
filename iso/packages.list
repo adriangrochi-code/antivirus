@@ -13,6 +13,8 @@ apparmor apparmor-profiles apparmor-profiles-extra apparmor-utils nftables
 unattended-upgrades fwupd
 # --- Rendimiento adaptativo ---
 systemd-zram-generator python3 cpupower-gui
+# --- Memoria y copias de seguridad ---
+systemd-oomd btrfs-progs restic
 # --- Escritorio KDE Plasma 6 ---
 kde-plasma-desktop sddm sddm-theme-breeze plasma-nm plasma-pa plasma-systemmonitor
 konsole dolphin ark kate okular gwenview spectacle kcalc

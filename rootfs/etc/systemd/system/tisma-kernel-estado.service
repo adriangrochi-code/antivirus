@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Slice=tisma-segundo-plano.slice
 Type=oneshot
 ExecStart=/usr/lib/tisma/kernel-estado
 ProtectSystem=strict

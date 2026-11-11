@@ -1,0 +1,14 @@
+[Unit]
+Description=TISMA - instantánea diaria del sistema (btrfs, solo lectura)
+ConditionPathIsDirectory=/.snapshots
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/bin/tisma-copias instantanea --motivo diaria
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectKernelModules=yes

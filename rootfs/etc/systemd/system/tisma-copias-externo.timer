@@ -1,0 +1,11 @@
+[Unit]
+Description=TISMA - copia externa diaria (se omite si el disco no está conectado)
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
