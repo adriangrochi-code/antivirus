@@ -14,7 +14,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(dirname "$HERE")"
 BUILD_DIR="${BUILD_DIR:-$REPO/build}"
 SUITE="${DEBIAN_SUITE:-trixie}"
-MIRROR="${DEBIAN_MIRROR:-http://deb.debian.org/debian}"
+MIRROR="${DEBIAN_MIRROR:-https://deb.debian.org/debian}"
 CHROOT="$BUILD_DIR/chroot"
 ISODIR="$BUILD_DIR/iso"
 ISO_NAME="${ISO_NAME:-tisma-os-$(date +%Y%m%d)-amd64.iso}"
@@ -50,7 +50,10 @@ trap umount_chroot EXIT
 if [[ ! -f "$CHROOT/.base-ok" ]]; then
     log "debootstrap $SUITE"
     rm -rf "$CHROOT"
+    # Firmas de Debian OBLIGATORIAS con las claves fijadas en el repositorio (sin --keyring, si el anfitrión no
+    # tiene debian-archive-keyring, debootstrap solo avisa y sigue sin verificar)
     debootstrap --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
+        --keyring="$REPO/kernel/keys/debian-archive.gpg" --force-check-gpg \
         --include=ca-certificates,curl,gnupg "$SUITE" "$CHROOT" "$MIRROR"
     touch "$CHROOT/.base-ok"
 fi
@@ -59,7 +62,7 @@ mount_chroot
 cat > "$CHROOT/etc/apt/sources.list" <<EOF
 deb $MIRROR $SUITE main contrib non-free non-free-firmware
 deb $MIRROR $SUITE-updates main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security $SUITE-security main contrib non-free non-free-firmware
+deb https://security.debian.org/debian-security $SUITE-security main contrib non-free non-free-firmware
 EOF
 echo "tisma" > "$CHROOT/etc/hostname"
 in_chroot dpkg --add-architecture i386
@@ -67,7 +70,13 @@ in_chroot dpkg --add-architecture i386
 # Waydroid (Android) desde su repositorio oficial firmado
 # Huella fijada de la clave del repositorio de Waydroid
 WAYDROID_FPR="7CE0331F71E0A238BB1002D70E406D181DCEE19C"
-if curl -fsSL --retry 3 https://repo.waydro.id/waydroid.gpg -o "$CHROOT/usr/share/keyrings/waydroid.gpg" &&
+# Se exporta SOLO la clave con la huella fijada: «signed-by» confía en todas las claves del archivo, así que un
+# archivo con una clave añadida pasaría una simple comprobación con grep.
+WGPG="$(mktemp -d)"
+if curl -fsSL --retry 3 https://repo.waydro.id/waydroid.gpg -o "$WGPG/descargada.gpg" &&
+   gpg --homedir "$WGPG" --batch --quiet --import "$WGPG/descargada.gpg" 2>/dev/null &&
+   gpg --homedir "$WGPG" --batch --export "$WAYDROID_FPR" > "$CHROOT/usr/share/keyrings/waydroid.gpg" &&
+   [[ "$(gpg --show-keys --with-colons "$CHROOT/usr/share/keyrings/waydroid.gpg" | grep -c '^pub:')" == 1 ]] &&
    gpg --show-keys --with-colons "$CHROOT/usr/share/keyrings/waydroid.gpg" | grep -q "^fpr:::::::::$WAYDROID_FPR:"; then
     echo "deb [signed-by=/usr/share/keyrings/waydroid.gpg] https://repo.waydro.id/ $SUITE main" \
         > "$CHROOT/etc/apt/sources.list.d/waydroid.list"
@@ -77,6 +86,7 @@ else
     log "AVISO: repo.waydro.id inaccesible o clave con huella distinta; la ISO saldrá sin Waydroid"
     WAYDROID=0
 fi
+rm -rf "$WGPG"
 in_chroot apt-get update -q
 
 # ---------------------------------------------------------------- 2. paquetes

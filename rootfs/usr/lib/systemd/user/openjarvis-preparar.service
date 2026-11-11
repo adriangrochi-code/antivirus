@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenJarvis - preparar configuración y carpetas (primera vez)
+
+[Service]
+Type=oneshot
+# Sin el sandbox del servicio principal: debe poder crear ~/.openjarvis y la clave en ~/.config/tisma-code
+ExecStart=/usr/lib/tisma/openjarvis-preparar
+RemainAfterExit=yes

@@ -13,10 +13,10 @@ DEBCFG := $(BUILD_DIR)/debian-config
 
 .PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes
 
-check-lacheck-paquetes:
+check-paquetes:
 	python3 iso/check-packages.py $(DEBIAN_MIRROR) $(DEBIAN_SUITE)
 
-test:
+check-latest:
 	@if [ -n "$(LATEST)" ] && [ "$(LATEST)" != "$(KERNEL_VERSION)" ]; then \
 	  echo "Aviso: hay un parche más nuevo de la rama LTS: $(LATEST) (make KERNEL_VERSION=$(LATEST) ...)"; \
 	else echo "Kernel $(KERNEL_VERSION): última versión de su rama LTS"; fi

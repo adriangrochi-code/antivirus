@@ -23,7 +23,10 @@ tar -C "$CHROOT/opt/node" --strip-components=1 -xJf "$WORK/$tarball"
 got="$("$CHROOT/opt/node/bin/node" "$CHROOT/opt/node/lib/node_modules/npm/bin/npm-cli.js" view \
        "rea-agents@$REA_VERSION" dist.integrity 2>/dev/null)"
 [[ "$got" == "$REA_INTEGRITY" ]] || { log "Integridad de rea-agents distinta de la fijada"; exit 1; }
-chroot "$CHROOT" /opt/node/bin/npm install --global --prefix /usr --ignore-scripts --no-audit --no-fund \
-    "rea-agents@$REA_VERSION"
+# node en el PATH antes de npm (su lanzador es «#!/usr/bin/env node»: antes fallaba y REA no se instalaba)
 ln -sf /opt/node/bin/node "$CHROOT/usr/local/bin/node"
+# rea-agents con integridad fijada y sin scripts de instalación. Sus dependencias se resuelven en la build
+# (el paquete no publica lockfile): riesgo residual documentado en docs/AUDITORIA.md.
+chroot "$CHROOT" /usr/bin/env -i HOME=/root PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+    npm install --global --prefix /usr --ignore-scripts --no-audit --no-fund "rea-agents@$REA_VERSION"
 log "REA $REA_VERSION instalado (Node $NODE_VERSION)"
