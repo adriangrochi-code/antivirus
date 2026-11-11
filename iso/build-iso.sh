@@ -203,7 +203,7 @@ rm -rf "$CHROOT/tmp/kernel-debs"
 log "Aplicando capa del sistema y marca TISMA"
 # os-release propio (con VERSION_CODENAME): se desvía el de base-files para que una actualización no lo pise
 in_chroot dpkg-divert --local --rename --divert /usr/lib/os-release.debian --add /usr/lib/os-release
-rsync -a --chown=root:root "$REPO/rootfs/" "$CHROOT/"
+rsync -a --chown=root:root --exclude __pycache__ "$REPO/rootfs/" "$CHROOT/"
 # git no guarda permisos ni carpetas vacías: lo que lo necesita se fija aquí
 chmod 600 "$CHROOT"/etc/usbguard/usbguard-daemon.conf "$CHROOT"/etc/usbguard/rules.conf   # usbguard exige 0600
 mkdir -p "$CHROOT/etc/centinela"
@@ -217,6 +217,9 @@ rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" 
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
+# Antes que cualquier apt de la build: su gancho (80-tisma-instantanea) llama a tisma-copias
+rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
+rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
 # Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
 if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
@@ -286,8 +289,6 @@ chmod 700 "$CHROOT/var/lib/escudo"
 
 # DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
 install -m 644 "$CHROOT/etc/resolv.conf.tisma" "$CHROOT/etc/resolv.conf.final"
-rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
-rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
