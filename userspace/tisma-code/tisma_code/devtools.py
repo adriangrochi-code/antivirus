@@ -300,8 +300,41 @@ def formatted(ws: Workspace, path: str) -> tuple[Path, str, str]:
 
 # ---------------------------------------------------------------- git (solo lectura)
 GIT_ALLOWED = {"status", "diff", "log", "show", "blame", "branch", "ls-files", "shortlog", "grep", "rev-parse"}
-GIT_FORBIDDEN = re.compile(r"^(--output|--ext-diff|--textconv|-c$|--exec|--config|--upload-pack|--receive-pack|"
-                           r"--git-dir|--work-tree|-C$|--namespace)")
+# LISTA BLANCA de opciones (una lista negra no sirve: git acepta abreviaturas, «--outp» = «--output», y opciones
+# como «-O» / «--open-files-in-pager» de git grep ejecutan un programa). Lo que no empiece por «-» (revisiones,
+# rutas, patrones) se permite; tras «--» todo son rutas.
+GIT_SAFE_LONG = {
+    "--stat", "--shortstat", "--numstat", "--summary", "--name-only", "--name-status", "--oneline", "--graph",
+    "--decorate", "--all", "--reverse", "--first-parent", "--merges", "--no-merges", "--follow", "--patch",
+    "--cached", "--staged", "--word-diff", "--ignore-all-space", "--ignore-space-change", "--find-renames",
+    "--diff-filter", "--relative", "--root", "--format", "--pretty", "--date", "--since", "--until", "--after",
+    "--before", "--author", "--committer", "--grep", "--max-count", "--skip", "--abbrev-commit", "--porcelain",
+    "--short", "--branch", "--untracked-files", "--others", "--exclude-standard", "--count", "--heading",
+    "--break", "--line-number", "--ignore-case", "--fixed-strings", "--extended-regexp", "--basic-regexp",
+    "--perl-regexp", "--word-regexp", "--invert-match", "--files-with-matches", "--files-without-match",
+    "--and", "--or", "--not", "--all-match", "--show-function", "--function-context", "--context",
+    "--after-context", "--before-context", "--max-depth", "--abbrev-ref", "--show-toplevel", "--verify",
+    "--show-current", "--list", "--remotes", "--contains", "--merged", "--no-merged", "--sort", "--unified",
+    "--color=never", "--no-color", "--full-history", "--simplify-merges", "--left-right", "--cherry-pick",
+    "--show-signature", "--line-porcelain", "--incremental", "--ignore-rev", "--deleted", "--modified",
+    "--stage", "--error-unmatch", "--full-name", "--exclude", "--text", "--minimal", "--histogram", "--patience",
+}
+GIT_FLAG_SHORT = set("nipwlvEFsbIhHLMrzRaqtuNPG")         # sin argumento (se permiten agrupadas: -in)
+GIT_VALUE_SHORT = set("UABCSGe")                          # con valor pegado o separado: -U3, -S texto, -e patrón
+
+
+def _git_arg_ok(a: str) -> bool:
+    if not a.startswith("-") or a == "-":
+        return True
+    if a.startswith("--"):
+        name = a.split("=", 1)[0]
+        return name in GIT_SAFE_LONG or a in GIT_SAFE_LONG
+    body = a[1:]
+    if body.isdigit():                                    # -5 (últimos 5 commits)
+        return True
+    if body[0] in GIT_VALUE_SHORT:
+        return True                                       # el resto es el valor de la opción
+    return all(ch in GIT_FLAG_SHORT for ch in body)
 
 
 def git(ws: Workspace, sub: str, args: list[str] | None = None) -> str:
@@ -310,9 +343,13 @@ def git(ws: Workspace, sub: str, args: list[str] | None = None) -> str:
         raise ToolError(f"Subcomando no permitido: {sub}. Solo lectura: {', '.join(sorted(GIT_ALLOWED))}")
     if sub == "branch" and any(not a.startswith(("--list", "-a", "-v", "--show-current", "-r")) for a in args):
         raise ToolError("git branch solo para listar")
+    paths = False
     for a in args:
-        if GIT_FORBIDDEN.match(a):
-            raise ToolError(f"Opción no permitida: {a}")
+        if a == "--":
+            paths = True
+            continue
+        if not paths and not _git_arg_ok(a):
+            raise ToolError(f"Opción de git no permitida: {a} (la herramienta git es de solo lectura)")
     argv = ["git", "--no-pager", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
             "-c", "diff.external=", "-c", "core.pager=cat", "-c", "protocol.allow=never", sub]
     if sub in ("diff", "show", "log"):

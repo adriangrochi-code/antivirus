@@ -74,8 +74,8 @@ class REATools:
     def __init__(self, ws, command: list[str] | None = None, jail: bool = True, dynamic: bool = False,
                  network: bool = False):
         self.ws, self.dynamic, self.network = ws, dynamic, network
-        self.workdir = ws.root / ".tisma" / "rea"
-        self.workdir.mkdir(parents=True, exist_ok=True)
+        from .base import safe_dir
+        self.workdir = safe_dir(ws.root, ".tisma", "rea")
         cmd = command or rea_command() or []
         if not cmd:
             raise MCPError("REA no está instalado (paquete rea-agents)")

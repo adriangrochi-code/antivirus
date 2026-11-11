@@ -29,7 +29,6 @@ import os
 import re
 import shutil
 import threading
-import time
 from pathlib import Path
 
 from .mcp_client import MCPClient, MCPError
@@ -97,10 +96,10 @@ class CraftTools:
         if mode not in MODES:
             raise MCPError(f"modo desconocido: {mode}")
         self.ws, self.mode_name, self.network = ws, mode, network
-        self.workdir = ws.root / ".tisma" / "craft"
-        self.inbox = self.workdir / "inbox"
-        for d in (self.workdir, self.inbox, self.workdir / "config"):
-            d.mkdir(parents=True, exist_ok=True)
+        from .base import safe_dir
+        self.workdir = safe_dir(ws.root, ".tisma", "craft")
+        self.inbox = safe_dir(self.workdir, "inbox")
+        safe_dir(self.workdir, "config")
         cmd = command or craft_command() or []
         if not cmd:
             raise MCPError("Craft Anything no está instalado (/opt/craft-anything)")

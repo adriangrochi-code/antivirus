@@ -169,6 +169,22 @@ class Session:
             except Exception as e:  # noqa: BLE001
                 self.emit("info", message=f"Herramientas de Hope no disponibles: {e}")
 
+    def close(self) -> None:
+        """Libera los procesos de la sesión (llama-server de especialistas, servidores MCP de REA y Craft)."""
+        self.cancel()
+        for name in ("especialistas", "rea", "craft"):
+            obj = getattr(self, name, None)
+            if obj is not None:
+                try:
+                    obj.close()
+                except Exception:  # noqa: BLE001 (cerrar nunca debe impedir abrir otro proyecto)
+                    pass
+                setattr(self, name, None)
+        try:
+            self.docs.db.close()
+        except Exception:  # noqa: BLE001
+            pass
+
     def reload_especialistas(self) -> None:
         """Tras instalar un especialista: se recarga la configuración (los modelos siguen cargándose al usarse)."""
         from .especialistas import SCHEMAS as ESP_SCHEMAS

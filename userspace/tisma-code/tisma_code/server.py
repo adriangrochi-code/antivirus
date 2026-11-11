@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import models
 from .agent import Session
+from .base import ToolError
 
 STATIC = Path(__file__).parent / "static"
 STATIC_FILES = {"/static/logo.svg": ("logo.svg", "image/svg+xml")}
@@ -161,6 +162,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"library": str(d.library), "project": str(d.project_dir),
                                         "recent": d.recent(), "results": d.search(q["q"]) if q.get("q") else []})
             if url.path == "/api/docs/read":
+                if not APP.session:
+                    return self._send(400, {"error": "Abre primero un proyecto"})
                 return self._send(200, {"text": APP.session.docs.read(q["ref"])})
             if url.path == "/api/models/search":
                 return self._send(200, models.search(q.get("q", "")))
@@ -192,14 +195,17 @@ class Handler(BaseHTTPRequestHandler):
         try:
             b = self._body()
             if url.path == "/api/session":
-                if APP.session:
-                    APP.session.cancel()
+                old = APP.session
+                if old:
+                    old.cancel()
                 APP.config.update({k: b[k] for k in ("endpoint", "model") if k in b})
                 ws = b["workspace"]
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
                             llm=APP.llm(), context_tokens=int(b.get("context", 32768)))
                 s.ws.allow_network = bool(b.get("network", False))
                 APP.session = s
+                if old:
+                    old.close()                  # sin esto quedaban vivos llama-server y servidores MCP
                 threading.Thread(target=APP.pump, args=(s,), daemon=True).start()
                 APP.config["recent"] = [ws] + [r for r in APP.config["recent"] if r != ws][:7]
                 APP.save_config()
@@ -263,7 +269,7 @@ class Handler(BaseHTTPRequestHandler):
                     APP.session.endpoint, APP.session.model = ep, APP.config["model"]
                     APP.session.llm = APP.llm()
                 return self._send(200, {"endpoint": ep})
-        except (KeyError, ValueError, OSError, RuntimeError) as e:  # SpecialistError es RuntimeError
+        except (KeyError, ValueError, OSError, RuntimeError, ToolError) as e:  # SpecialistError es RuntimeError
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})
 

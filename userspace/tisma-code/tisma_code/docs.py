@@ -18,6 +18,8 @@ import subprocess
 import threading
 from pathlib import Path
 
+from .base import safe_dir
+
 LIBRARY = Path(os.environ.get("TISMA_DOCS", Path.home() / "TISMA" / "Documentos"))
 TEXT_EXT = {".md", ".txt", ".rst", ".csv", ".json", ".yaml", ".yml", ".toml", ".ini", ".py", ".c", ".h",
             ".cpp", ".hpp", ".rs", ".go", ".js", ".ts", ".java", ".kt", ".sh", ".gcode", ".tex", ".html"}
@@ -58,8 +60,9 @@ class DocSpace:
                                              project.resolve() not in self.project_dir.resolve().parents):
             raise ValueError(".tisma del proyecto es un enlace simbólico: por seguridad no se usa")
         self.library = library
-        for d in [self.library, *(self.project_dir / k for k in KINDS.values())]:
-            d.mkdir(parents=True, exist_ok=True)
+        self.library.mkdir(parents=True, exist_ok=True)
+        for k in KINDS.values():
+            safe_dir(project, ".tisma", k)            # cada subcarpeta: ni enlaces ni fuera del proyecto
         readme = self.project_dir / "LEEME.md"
         if not readme.exists():
             readme.write_text("# Memoria del proyecto (TISMA Code)\n\nAquí el agente guarda lo que descubre "
@@ -169,7 +172,8 @@ class DocSpace:
         if kind not in KINDS:
             raise ValueError(f"Tipo inválido: {kind} (descubrimiento, mejora o nota)")
         today = _dt.date.today().isoformat()
-        p = self.project_dir / KINDS[kind] / f"{today}-{_slug(title)}.md"
+        # Se revalida al escribir: un comando aprobado podría haber cambiado la carpeta por un enlace
+        p = safe_dir(self.project_dir.parent, ".tisma", KINDS[kind]) / f"{today}-{_slug(title)}.md"
         i = 2
         while p.exists():
             p = p.with_name(f"{today}-{_slug(title)}-{i}.md")
@@ -177,7 +181,9 @@ class DocSpace:
         head = f"# {title.strip()}\n\n- Tipo: {kind}\n- Fecha: {today}\n"
         if tags:
             head += f"- Etiquetas: {', '.join(tags)}\n"
-        p.write_text(head + "\n" + content.strip() + "\n", encoding="utf-8")
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(head + "\n" + content.strip() + "\n")
         self.refresh()
         return self.where(str(p))
 

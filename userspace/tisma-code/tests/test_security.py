@@ -114,3 +114,57 @@ def test_C2_verify_needs_approval_without_trust(tmp_path_factory):
     s.resolve_approval(ev["id"], False)
     t.join(10)
     assert not (proj / "PWNED").exists()
+
+
+def test_git_tool_rejects_pager_and_abbreviated_options(tmp_path):
+    from tisma_code import devtools, tools
+    ws = tools.Workspace(str(tmp_path))
+    for bad in (["--open-files-in-pager=sh -c 'touch /tmp/x'", "p"], ["-Osh", "p"], ["-nOsh", "p"],
+                ["--open-f=sh", "p"], ["--outp=/tmp/x"], ["--output=/tmp/x"], ["--ext-diff"], ["--exec=sh"],
+                ["--upload-pa=sh"]):
+        try:
+            devtools.git(ws, "grep" if "p" in bad else "diff", bad)
+            raise AssertionError(f"debería rechazar {bad}")
+        except tools.ToolError as e:
+            assert "no permitida" in str(e)
+    for ok in (["-n", "-i", "-e", "patrón"], ["-in", "TODO"], ["--stat", "HEAD~1"], ["-5", "--oneline"],
+               ["-U3"], ["--", "-raro.txt"]):
+        assert all(devtools._git_arg_ok(a) for a in ok if a != "--") or "--" in ok
+
+
+def test_rea_craft_workdir_symlink_to_home_is_refused(tmp_path):
+    import os
+    import sys
+    from tisma_code import craft, rea, tools
+    from tisma_code.base import ToolError
+    home = tmp_path / "home"
+    home.mkdir()
+    proj = tmp_path / "repo"
+    (proj / ".tisma").mkdir(parents=True)
+    os.symlink(home, proj / ".tisma" / "rea")
+    os.symlink(home, proj / ".tisma" / "craft")
+    ws = tools.Workspace(str(proj))
+    for mk in (lambda: rea.REATools(ws, command=[sys.executable, "-c", "pass"], jail=False),
+               lambda: craft.CraftTools(ws, command=[sys.executable, "-c", "pass"], jail=False)):
+        try:
+            mk()
+            raise AssertionError("debería rechazar el enlace")
+        except ToolError as e:
+            assert "enlace" in str(e)
+
+
+def test_docs_subdir_symlink_is_refused(tmp_path):
+    import os
+    from tisma_code.base import ToolError
+    from tisma_code.docs import DocSpace
+    outside = tmp_path / "fuera"
+    outside.mkdir()
+    proj = tmp_path / "repo"
+    (proj / ".tisma").mkdir(parents=True)
+    os.symlink(outside, proj / ".tisma" / "mejoras")
+    try:
+        DocSpace(proj, tmp_path / "idx", library=tmp_path / "lib")
+        raise AssertionError("debería rechazar el enlace")
+    except ToolError:
+        pass
+    assert list(outside.iterdir()) == []
