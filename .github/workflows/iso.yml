@@ -1,0 +1,111 @@
+# TISMA OS: construye la ISO en GitHub y la publica como release (para descargarla desde GitHub).
+# Se lanza a mano: Actions → «ISO» → Run workflow. Tarda ~1,5–3 h.
+# - Sin Hope: su repositorio es privado y este es público; una release la vería cualquiera.
+# - Secure Boot: con los secretos TISMA_SB_KEY y TISMA_SB_CERT (iso/crear-clave-secureboot.sh) el kernel TISMA
+#   sale firmado; sin ellos arranca el kernel firmado de Debian (Secure Boot funciona igual).
+# - GitHub admite archivos de hasta 2 GiB por release: si la ISO pasa de eso se publica en partes.
+name: ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: "Etiqueta de la release (p. ej. v0.9-preview1)"
+        required: true
+        default: "v0.9-preview1"
+      compilar:
+        description: "Compilar hardened_malloc, sched_ext y el motor ML de Escudo (+~40 min)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iso
+  cancel-in-progress: false
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - name: Liberar espacio en el runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+            /usr/share/swift /usr/local/.ghcup
+          df -h /
+      - uses: actions/checkout@v5
+      - name: Dependencias de build
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update -q
+          sudo apt-get -o Acquire::Retries=5 install -y -q --no-install-recommends build-essential bc flex bison \
+            libssl-dev libelf-dev libdw-dev dwarves debhelper debootstrap debian-archive-keyring squashfs-tools \
+            xorriso grub-common grub-pc-bin grub-efi-amd64-bin mtools dosfstools sbsigntool librsvg2-bin rsync cpio \
+            zstd python3-pip python3-pil git curl
+      - name: Kernel TISMA (perfil minimal)
+        run: |
+          make kernel-minimal BUILD_DIR="$PWD/build"
+          # El árbol de fuentes ya no hace falta (solo los .deb): libera ~8 GB para el chroot
+          rm -rf build/linux-*/
+          df -h /
+      - name: Clave de Secure Boot (si está en los secretos)
+        env:
+          SB_KEY: ${{ secrets.TISMA_SB_KEY }}
+          SB_CERT: ${{ secrets.TISMA_SB_CERT }}
+        run: |
+          if [[ -n "$SB_KEY" && -n "$SB_CERT" ]]; then
+            umask 077
+            printf '%s\n' "$SB_KEY" > "$RUNNER_TEMP/sb.key"
+            printf '%s\n' "$SB_CERT" > "$RUNNER_TEMP/sb.crt"
+            echo "TISMA_SB_KEY=$RUNNER_TEMP/sb.key" >> "$GITHUB_ENV"
+            echo "TISMA_SB_CERT=$RUNNER_TEMP/sb.crt" >> "$GITHUB_ENV"
+          else
+            echo "Sin clave de Secure Boot: el kernel TISMA no se firma (arranca el de Debian)"
+          fi
+      - name: ISO
+        env:
+          SIN_COMPILAR: ${{ inputs.compilar && '0' || '1' }}
+          ETIQUETA: ${{ inputs.etiqueta }}
+        run: |
+          # HOPE_SRC apunta a una ruta inexistente: la build sigue sin Hope (privado) a propósito
+          sudo env BUILD_DIR="$PWD/build" TISMA_SIN_COMPILAR="$SIN_COMPILAR" TISMA_BORRAR_CHROOT=1 \
+            HOPE_SRC=/nonexistent ISO_NAME="tisma-os-$ETIQUETA-amd64.iso" \
+            TISMA_SB_KEY="${TISMA_SB_KEY:-}" TISMA_SB_CERT="${TISMA_SB_CERT:-}" ./iso/build-iso.sh
+          rm -f "$RUNNER_TEMP/sb.key"
+      - name: Preparar archivos (partes si pasa de 2 GiB)
+        env:
+          ETIQUETA: ${{ inputs.etiqueta }}
+        run: |
+          [[ "$ETIQUETA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Etiqueta no válida"; exit 1; }
+          sudo chown -R "$USER" build
+          cd build
+          iso="tisma-os-$ETIQUETA-amd64.iso"
+          sha256sum "$iso" > "$iso.sha256"
+          size=$(stat -c %s "$iso")
+          echo "Tamaño: $((size / 1048576)) MB"
+          mkdir -p ../publicar
+          if (( size >= 2147483648 )); then
+            split -b 1900M -d -a 1 "$iso" "../publicar/$iso.parte"
+            cp "$iso.sha256" ../publicar/
+            printf 'La ISO pesa %s MB: GitHub admite hasta 2 GiB por archivo, así que va en partes.\n\nUnirlas:\n- Linux/macOS: `cat %s.parte* > %s`\n- Windows (cmd): `copy /b %s.parte0+%s.parte1 %s`\n\nComprobar: `sha256sum -c %s.sha256`\n' \
+              "$((size / 1048576))" "$iso" "$iso" "$iso" "$iso" "$iso" "$iso" > ../publicar/LEEME.txt
+          else
+            mv "$iso" "$iso.sha256" ../publicar/
+          fi
+          ls -la ../publicar
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ETIQUETA: ${{ inputs.etiqueta }}
+        run: |
+          {
+            echo "Versión de prueba de TISMA OS construida por GitHub Actions desde ${GITHUB_SHA::7}."
+            echo
+            echo "**Antes de usarla, lee las limitaciones.** Esta build no incluye Hope."
+            echo
+            cat docs/PREVIEW.md
+          } > notas.md
+          [[ -f publicar/LEEME.txt ]] && cat publicar/LEEME.txt >> notas.md
+          gh release create "$ETIQUETA" publicar/* --prerelease \
+            --title "TISMA OS $ETIQUETA" --notes-file notas.md --target "$GITHUB_SHA"
