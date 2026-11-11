@@ -21,7 +21,7 @@ from . import harness
 
 from .base import MAX_OUTPUT, ToolError, _clip  # noqa: F401 (reexportados)
 SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
-NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify", "jarvis"}
+NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify", "jarvis", "ingenieria"}
 
 
 class Workspace:
@@ -236,12 +236,14 @@ HOPE_SCHEMAS = [
 from . import devtools  # noqa: E402  (importa Workspace/ToolError ya definidos arriba)
 from .craft import SCHEMAS as CRAFT_SCHEMAS  # noqa: E402
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
+from . import ingenieria  # noqa: E402
 from .jarvis import SCHEMAS as JARVIS_SCHEMAS  # noqa: E402
 from .rea import SCHEMAS as REA_SCHEMAS  # noqa: E402
 from .solidcraft import SCHEMAS as SOLIDCRAFT_SCHEMAS  # noqa: E402
 
 TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA]
-                + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + SOLIDCRAFT_SCHEMAS + JARVIS_SCHEMAS)
+                + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + SOLIDCRAFT_SCHEMAS + ingenieria.SCHEMAS
+                + JARVIS_SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -277,6 +279,14 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
         return ws.edit_file(args["path"], args["old"], args["new"])
     if name == "run_command":
         return ws.run_command(args["command"])
+    if name == "ingenieria":
+        opts = args.get("opciones") or {}
+        if not isinstance(opts, dict):
+            raise ToolError("opciones debe ser un objeto JSON")
+        return ingenieria.run(ws, str(args["accion"]), str(args["archivo"]), str(args.get("salida") or ""), opts)
+    if name == "ingenieria_guia":
+        disp = ingenieria.available()
+        return ingenieria.GUIDE + "\n\nInstaladas: " + (", ".join(a for a, ok in sorted(disp.items()) if ok) or "ninguna")
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         if not checks:
@@ -321,6 +331,10 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
     if name == "formatear":
         _, old, new = devtools.formatted(ws, args["path"])
         return ws._diff(args["path"], old, new)
+    if name == "ingenieria":
+        extra = " " + json.dumps(args["opciones"], ensure_ascii=False) if args.get("opciones") else ""
+        return (f"{args.get('accion')}: {args.get('archivo')}{extra}\n(receta fija, aislada con bubblewrap: solo ve el "
+                "proyecto y sin red; los scripts de FreeCAD, Blender u Octave son código del proyecto)")
     if name == "run_command":
         net = "con red" if ws.allow_network else "sin red"
         return f"$ {args['command']}\n(aislado con bubblewrap: solo ve el proyecto, {net}, .git de solo lectura)"

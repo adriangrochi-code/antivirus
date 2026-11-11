@@ -4,6 +4,7 @@
 #   centinela-apps windows   Steam (Proton), Bottles y Heroic (Proton fuera de Steam)
 #   centinela-apps android   Waydroid: descarga la imagen de Android y la inicializa
 #   centinela-apps solidcraft  SolidCraft (CAD paramétrico 3D) desde su release oficial, con SHA-256 fijado
+#   centinela-apps simulacion  OpenFOAM (fluidos), FEniCSx (elementos finitos), Netgen, ParaView y PyVista (~1 GB)
 #   centinela-apps estado    muestra qué está instalado
 set -euo pipefail
 
@@ -46,14 +47,22 @@ solidcraft)
     apt-get install -y "$tmp/solidcraft.deb"
     echo "SolidCraft $ver instalado (menú Gráficos / Ingeniería). TISMA Code ya puede modelar con él (solidcraft)."
     ;;
+simulacion)
+    need_root "$@"
+    # Paquetes de Debian (firmados, se actualizan con el sistema). Grandes: por eso no van en la ISO.
+    apt-get install -y --no-install-recommends openfoam paraview python3-paraview python3-dolfinx \
+        netgen python3-netgen python3-pyvista python3-vtk9 mpi-default-bin
+    echo "Simulación lista: TISMA Code ya puede usar ingenieria → openfoam, y FEniCSx/PyVista desde Python."
+    ;;
 estado)
     printf 'Wine:      %s\n' "$(wine --version 2>/dev/null || echo no instalado)"
     printf 'Steam:     %s\n' "$(command -v steam >/dev/null && echo instalado || echo no instalado)"
     printf 'NTSYNC:    %s\n' "$([[ -e /dev/ntsync ]] && echo activo || echo 'no cargado (modprobe ntsync)')"
     printf 'Waydroid:  %s\n' "$(waydroid status 2>/dev/null | head -n1 || echo no instalado)"
     printf 'SolidCraft: %s\n' "$(dpkg-query -W -f '${Version}' solidcraft 2>/dev/null || echo no instalado)"
+    printf 'Simulación: %s\n' "$(dpkg-query -W -f '${Version}' openfoam 2>/dev/null || echo no instalada)"
     printf 'binderfs:  %s\n' "$(grep -q binder /proc/filesystems && echo soportado || echo NO soportado)"
     flatpak list --app --columns=application 2>/dev/null | grep -E 'bottles|heroic' || true
     ;;
-*) sed -n '2,7p' "$0"; exit 2 ;;
+*) sed -n '2,8p' "$0"; exit 2 ;;
 esac

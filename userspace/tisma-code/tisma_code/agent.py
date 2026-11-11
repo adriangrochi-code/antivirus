@@ -55,6 +55,9 @@ Cómo trabajas:
     Estudiar → Construir → Verificar → Refinar con una comparación medida contra la referencia.
 4f. Para diseñar o modificar piezas en 3D (CAD paramétrico, STEP/STL/3MF) usa SolidCraft: solidcraft_guia,
     solidcraft_buscar y solidcraft. Calcula antes el volumen o la caja esperados y pásalos como `expect`.
+4g. Para simular y comprobar diseños (OpenSCAD, FreeCAD, mallas, gmsh, OpenFOAM, ngspice, KiCad, Verilog,
+    Octave, Blender, pandoc) usa ingenieria (lee antes ingenieria_guia). Da por buenos solo los números que
+    devuelva la herramienta y compáralos con tu estimación previa.
 4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
     y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
     error) guárdalo con docs_guardar para la próxima vez.
