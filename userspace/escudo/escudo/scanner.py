@@ -147,7 +147,7 @@ class Scanner:
         if len(suffixes) >= 2 and suffixes[-1] in EXECUTABLE_EXT and suffixes[-2] in DOC_EXT:
             out.append(Detection(path, "Heur.DoubleExtension", "high", "heuristic"))
         # Carácter de control RTLO usado para ocultar la extensión real
-        if "‮" in name:
+        if "\u202e" in name:
             out.append(Detection(path, "Heur.RTLO.Filename", "high", "heuristic"))
 
         is_pe = head[:2] == b"MZ"
