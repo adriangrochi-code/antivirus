@@ -21,6 +21,7 @@ def srv(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "RUN", lambda argv, **k: calls.append(argv) or R())
     monkeypatch.setattr(server, "POPEN", lambda argv, **k: calls.append(argv))
     monkeypatch.setattr(server, "CONF", tmp_path / "tisma" / "bienvenida.json")
+    monkeypatch.setattr(server, "current_scheme", lambda: "CentinelaAero")
     apps = tmp_path / "apps"
     apps.mkdir()
     for n in ("org.kde.dolphin", "chromium", "thunderbird", "libreoffice-startcenter", "org.kde.elisa"):
@@ -47,7 +48,18 @@ def test_auth(srv):
     assert req(port, "GET", "/api/estado", token=False)[0] == 403
     assert req(port, "GET", "/api/estado", host="evil:1")[0] == 403
     assert req(port, "GET", "/")[0] == 403                                  # la página exige el token en la URL
-    assert req(port, "GET", f"/?t={server.TOKEN}")[0] == 200
+    assert req(port, "GET", f"/?t={server.TOKEN}")[0] == 403                # el de la API no abre la página
+    server.BOOT_USED.clear()
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request("GET", f"/?t={server.BOOT}", headers={"Host": f"127.0.0.1:{port}"})
+    r = c.getresponse()
+    r.read()
+    assert r.status == 200 and "HttpOnly" in r.getheader("Set-Cookie")
+    assert req(port, "GET", f"/?t={server.BOOT}")[0] == 403                 # la URL del argv: un solo uso
+    c.request("GET", "/", headers={"Host": f"127.0.0.1:{port}", "Cookie": f"bv={server.TOKEN}"})
+    r = c.getresponse()
+    r.read()
+    assert r.status == 200                                                  # recargar la ventana sigue funcionando
 
 
 def test_inputs_validated_and_commands_fixed(srv):
@@ -58,7 +70,8 @@ def test_inputs_validated_and_commands_fixed(srv):
         assert req(port, "POST", path, body)[0] == 400
     assert calls == []
     assert req(port, "POST", "/api/tema", {"modo": "claro", "acento": "verde"})[0] == 200
-    assert calls[0] == ["plasma-apply-colorscheme", "--accent-color", "#2FB37A", "TismaClaro"]
+    assert calls[:2] == [["plasma-apply-colorscheme", "TismaClaro"],
+                         ["plasma-apply-colorscheme", "--accent-color", "#2FB37A"]]
     st, body = req(port, "POST", "/api/perfil", {"perfil": "diario"})
     r = json.loads(body)
     assert r["lanzadores"] == ["applications:org.kde.dolphin.desktop", "applications:chromium.desktop",
@@ -75,3 +88,13 @@ def test_listo_marks_done(srv, monkeypatch):
     assert req(port, "POST", "/api/listo", {})[0] == 200
     assert server.read_conf()["hecha"] is True
     assert server.main(["--si-primera-vez"]) == 0                         # ya hecha: no vuelve a abrirse
+
+
+def test_first_login_shows_once_even_if_closed(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "CONF", tmp_path / "b.json")
+    started = []
+    monkeypatch.setattr(server, "ThreadingHTTPServer", lambda *a: started.append(a) or (_ for _ in ()).throw(SystemExit))
+    with pytest.raises(SystemExit):
+        server.main(["--si-primera-vez", "--no-browser"])          # primera vez: se abre
+    assert server.read_conf()["mostrada"] is True
+    assert server.main(["--si-primera-vez"]) == 0                  # cerrada con la X: no vuelve en cada inicio

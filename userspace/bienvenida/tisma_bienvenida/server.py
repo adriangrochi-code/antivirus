@@ -26,7 +26,9 @@ for p in ("/usr/lib/centinela/python", str(Path(__file__).resolve().parents[2] /
         sys.path.append(p)
 
 STATIC = Path(__file__).parent / "static"
-TOKEN = secrets.token_urlsafe(24)
+TOKEN = secrets.token_urlsafe(24)       # de la API: solo viaja dentro de la página y en una cookie HttpOnly
+BOOT = secrets.token_urlsafe(24)        # de la URL inicial: un solo uso (la URL queda en el argv de Chromium,
+BOOT_USED = threading.Event()           # que cualquier usuario local puede leer en /proc)
 RUN = subprocess.run              # puntos de sustitución en las pruebas
 POPEN = subprocess.Popen
 APPS_DIR = Path(os.environ.get("TISMA_APPS_DIR", "/usr/share/applications"))
@@ -43,7 +45,7 @@ APP = {
     "texto": ["libreoffice-writer"], "pdf": ["org.kde.okular"], "musica": ["org.kde.elisa"],
     "fotos": ["org.kde.gwenview"], "tienda": ["tisma-tienda", "org.kde.discover"], "code": ["net.tisma.Code"],
     "strata": ["strata"], "terminal": ["org.kde.konsole"], "kate": ["org.kde.kate"],
-    "freecad": ["org.freecad.FreeCAD", "freecad"], "kicad": ["org.kicad.kicad", "kicad"], "openscad": ["openscad"],
+    "laminador": ["net.tisma.Tisma"], "freecad": ["org.freecad.FreeCAD", "freecad"], "kicad": ["org.kicad.kicad", "kicad"], "openscad": ["openscad"],
     "inkscape": ["org.inkscape.Inkscape", "inkscape"], "blender": ["blender"], "gimp": ["org.gimp.GIMP", "gimp"],
     "steam": ["steam"], "rendimiento": ["net.tisma.Rendimiento"], "kdenlive": ["org.kde.kdenlive"],
     "obs": ["com.obsproject.Studio", "obs"],
@@ -54,7 +56,7 @@ PERFILES = {
     "estudio": {"nombre": "Estudio y oficina", "desc": "Documentos, PDF, presentaciones y la IA para estudiar",
                 "apps": ["archivos", "navegador", "texto", "pdf", "code", "tienda"], "potencia": "equilibrado"},
     "ingenieria": {"nombre": "Ingeniería y diseño", "desc": "CAD, electrónica, simulación, diseño gráfico y 3D",
-                   "apps": ["archivos", "navegador", "freecad", "kicad", "openscad", "inkscape", "blender", "code"],
+                   "apps": ["archivos", "navegador", "freecad", "kicad", "openscad", "laminador", "blender", "code"],
                    "potencia": "rendimiento"},
     "programacion": {"nombre": "Programación", "desc": "Terminal, editor y agentes de IA locales",
                      "apps": ["archivos", "navegador", "terminal", "kate", "code", "strata"],
@@ -105,6 +107,8 @@ def _ok(argv: list[str], timeout: int = 60) -> tuple[bool, str]:
     try:
         r = RUN(argv, capture_output=True, text=True, timeout=timeout)
         return r.returncode == 0, (r.stderr or r.stdout or "")[-300:]
+    except FileNotFoundError:
+        return False, f"falta «{argv[0]}» (¿no es una sesión de Plasma?)"
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
 
@@ -117,9 +121,26 @@ def changeicons() -> str | None:
     return None
 
 
+def current_scheme() -> str:
+    for f in (Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "kdeglobals", Path("/etc/xdg/kdeglobals")):
+        try:
+            for line in f.read_text().splitlines():
+                if line.startswith("ColorScheme="):
+                    return line.split("=", 1)[1].strip()
+        except OSError:
+            continue
+    return ""
+
+
 def apply_theme(modo: str, acento: str) -> dict:
     scheme, icons = TEMAS[modo]
-    ok, out = _ok(["plasma-apply-colorscheme", "--accent-color", ACENTOS[acento], scheme])
+    ok, out = True, ""
+    # El esquema solo si cambia: si ya está puesto, plasma-apply-colorscheme puede terminar con error y no
+    # aplicar el acento (el caso más común: seguir en oscuro y cambiar solo el color)
+    if current_scheme() != scheme:
+        ok, out = _ok(["plasma-apply-colorscheme", scheme])
+    ok2, out2 = _ok(["plasma-apply-colorscheme", "--accent-color", ACENTOS[acento]])
+    ok, out = ok and ok2, out or out2
     ci = changeicons()
     if ci:
         _ok([ci, icons])
@@ -179,6 +200,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype + "; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if getattr(self, "_cookie", None):
+                self.send_header("Set-Cookie", self._cookie)
+                self._cookie = None
             self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
                              "script-src 'self' 'unsafe-inline'; img-src 'self' data:")
             self.end_headers()
@@ -193,14 +217,24 @@ class Handler(BaseHTTPRequestHandler):
     def _auth(self):
         return self._host_ok() and secrets.compare_digest(self.headers.get("X-Token", ""), TOKEN)
 
+    def _cookie_ok(self) -> bool:
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "bv" and secrets.compare_digest(v, TOKEN):
+                return True
+        return False
+
     def do_GET(self):  # noqa: N802
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if not self._host_ok():
             return self._send(403, {"error": "host"})
         if u.path == "/":
-            if not secrets.compare_digest(q.get("t", ""), TOKEN):
+            boot = secrets.compare_digest(q.get("t", ""), BOOT) and not BOOT_USED.is_set()
+            if not (boot or self._cookie_ok()):
                 return self._send(403, b"Abre la Bienvenida desde su lanzador.", "text/plain")
+            BOOT_USED.set()                   # la URL del argv ya no sirve a nadie más
+            self._cookie = f"bv={TOKEN}; HttpOnly; SameSite=Strict; Path=/"
             return self._send(200, (STATIC / "index.html").read_text().replace("__TOKEN__", TOKEN).encode(), "text/html")
         if u.path == "/static/logo.svg":
             return self._send(200, (STATIC / "logo.svg").read_bytes(), "image/svg+xml")
@@ -252,9 +286,12 @@ def open_window(url: str):
     """Ventana propia (sin pestañas ni barra de direcciones) si hay Chromium; si no, el navegador."""
     exe = shutil.which("chromium") or shutil.which("chromium-browser")
     if exe:
-        prof = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "tisma-bienvenida"
+        import tempfile
+        # Perfil propio y temporal: con uno fijo, una segunda Bienvenida le pasaba su URL a la primera y se
+        # cerraba al instante; basic: sin pedir crear un monedero de KWallet al primer inicio de sesión
+        prof = tempfile.mkdtemp(prefix="tisma-bienvenida-", dir=os.environ.get("XDG_RUNTIME_DIR") or None)
         return POPEN([exe, f"--app={url}", f"--user-data-dir={prof}", "--class=tisma-bienvenida", "--no-first-run",
-                      "--window-size=980,700", "--disable-features=Translate"],
+                      "--password-store=basic", "--window-size=980,700", "--disable-features=Translate"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     webbrowser.open(url)
     return None
@@ -266,11 +303,16 @@ def main(argv=None) -> int:
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--si-primera-vez", action="store_true", help="solo si no se completó antes (inicio de sesión)")
     a = ap.parse_args(argv)
-    if a.si_primera_vez and (read_conf().get("hecha") or Path("/run/live").exists()):
-        return 0                                        # ya hecha, o sesión live del instalador
+    if a.si_primera_vez:
+        c = read_conf()
+        if c.get("hecha") or c.get("mostrada") or Path("/run/live").exists():
+            return 0                                    # ya vista (aunque se cerrase con la X), o sesión live
+        write_conf(mostrada=True)                       # sigue en el menú: «Bienvenida a TISMA»
     httpd = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    url = f"http://127.0.0.1:{httpd.server_port}/?t={TOKEN}"
-    print(f"Bienvenida TISMA en {url}", flush=True)
+    url = f"http://127.0.0.1:{httpd.server_port}/?t={BOOT}"
+    print(f"Bienvenida TISMA en el puerto {httpd.server_port}", flush=True)   # la URL no va al registro
+    if a.no_browser:
+        print(url, flush=True)
     if not a.no_browser:
         win = open_window(url)
         if win is not None:                             # al cerrar la ventana, se cierra el servidor

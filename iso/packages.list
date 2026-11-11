@@ -34,10 +34,10 @@ cups printer-driver-all hplip print-manager sane-utils skanpage
 fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea fonts-noto-cjk
 7zip unar
 # --- Aspecto: arranque con logo, iconos y tipografía modernos ---
-plymouth plymouth-themes papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
+plymouth plymouth-themes plymouth-label papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
 # --- Más aplicaciones de uso común: vídeo, grabación, audio, descargas, PDF, escritorio remoto, cámara ---
 kdenlive obs-studio audacity qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
-skrooge kalk merkuro font-manager
+skrooge kalk font-manager
 # --- Accesibilidad ---
 orca kmag kmousetool
 # --- Privacidad y cifrado: claves GPG con interfaz, quitar metadatos, limpiar rastros, Tor ---

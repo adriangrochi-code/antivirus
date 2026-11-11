@@ -6,9 +6,9 @@
 <title>Bienvenida a TISMA</title>
 <link rel="icon" href="/static/logo.svg">
 <style>
-:root{--acc:#9145E6;--r:16px}
-html[data-tema=oscuro]{--bg:#131216;--bg2:#1C1B20;--card:#232227;--card2:#2B2A30;--line:#34333B;--text:#ECECF0;--dim:#A6A5AE;--faint:#7A7983;--ok:#4CC38A;--shadow:0 20px 60px rgba(0,0,0,.45)}
-html[data-tema=claro]{--bg:#ECEBF1;--bg2:#F4F3F7;--card:#FFFFFF;--card2:#F6F5F9;--line:#E0DFE6;--text:#1F1E24;--dim:#5E5D67;--faint:#8A8992;--ok:#1E9E62;--shadow:0 20px 60px rgba(40,30,70,.12)}
+:root{--acc:#9145E6;--on-acc:#fff;--r:16px}
+html[data-tema=oscuro]{--bg:#131216;--bg2:#1C1B20;--card:#232227;--card2:#2B2A30;--line:#34333B;--text:#ECECF0;--dim:#A6A5AE;--faint:#8F8E98;--ok:#4CC38A;--shadow:0 20px 60px rgba(0,0,0,.45)}
+html[data-tema=claro]{--bg:#ECEBF1;--bg2:#F4F3F7;--card:#FFFFFF;--card2:#F6F5F9;--line:#E0DFE6;--text:#1F1E24;--dim:#55545E;--faint:#6B6A74;--ok:#147A4B;--shadow:0 20px 60px rgba(40,30,70,.12)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.5 "Inter","Noto Sans","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 body{display:flex;min-height:100vh;background:radial-gradient(1200px 600px at 20% -10%,color-mix(in srgb,var(--acc) 22%,transparent),transparent 60%),radial-gradient(900px 500px at 110% 110%,color-mix(in srgb,var(--acc) 14%,transparent),transparent 60%),var(--bg);transition:background .3s}
@@ -21,7 +21,7 @@ nav{background:var(--bg2);padding:28px 18px;display:flex;flex-direction:column;g
 .step{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;color:var(--dim);font-size:14px;text-align:left}
 .step i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:600;background:var(--card2);border:1px solid var(--line);flex:none}
 .step.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--text)}
-.step.on i{background:var(--acc);border-color:var(--acc);color:#fff}
+.step.on i{background:var(--acc);border-color:var(--acc);color:var(--on-acc)}
 .step.done i{background:color-mix(in srgb,var(--acc) 70%,var(--card2));color:#fff;border-color:transparent}
 nav .sp{flex:1}nav .ver{color:var(--faint);font-size:12px;margin:0 8px}
 main{display:flex;flex-direction:column;padding:40px 44px 28px;min-width:0}
@@ -66,7 +66,7 @@ footer{display:flex;align-items:center;gap:10px;margin-top:26px}
 footer .sp{flex:1}
 .btn{padding:11px 20px;border-radius:12px;background:var(--card2);border:1px solid var(--line);font-weight:600}
 .btn:hover{border-color:var(--faint)}
-.btn.p{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 8px 22px color-mix(in srgb,var(--acc) 40%,transparent)}
+.btn.p{background:var(--acc);border-color:var(--acc);color:var(--on-acc);box-shadow:0 8px 22px color-mix(in srgb,var(--acc) 40%,transparent)}
 .btn.p:hover{filter:brightness(1.08)}
 .btn.s{padding:8px 14px;font-weight:500;font-size:14px}
 .btn[hidden]{display:none}
@@ -176,6 +176,13 @@ const ICONOS = {
   juegos: '<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15 12h.01M18 13h.01"/>'};
 const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
 let paso = 0, st = {};
+// Texto blanco o casi negro sobre el acento, el que tenga más contraste (WCAG): con verde o naranja el blanco
+// se quedaba en 2,5:1
+function onColor(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.05) ? "#fff" : "#111014";
+}
 const N = 6;
 
 function ir(i) {
@@ -192,7 +199,9 @@ function ir(i) {
 }
 function pintarTema() {
   document.documentElement.dataset.tema = st.tema;
-  document.documentElement.style.setProperty("--acc", st.acentos[st.acento]);
+  const hex = st.acentos[st.acento];
+  document.documentElement.style.setProperty("--acc", hex);
+  document.documentElement.style.setProperty("--on-acc", onColor(hex));
   $$(".opt[data-modo]").forEach(b => { b.classList.toggle("sel", b.dataset.modo === st.tema); b.setAttribute("aria-pressed", b.dataset.modo === st.tema); });
   $$(".dot").forEach(d => { d.classList.toggle("sel", d.dataset.a === st.acento); d.setAttribute("aria-checked", d.dataset.a === st.acento); });
 }
@@ -200,9 +209,14 @@ let temaT;
 function aplicarTema() {
   pintarTema();
   clearTimeout(temaT);                      // varios clics seguidos: se aplica solo el último
-  temaT = setTimeout(async () => { try { await api("/api/tema", {modo: st.tema, acento: st.acento}); toast("Aspecto aplicado"); }
-                                   catch (e) { toast("No se pudo aplicar: " + e.message); } }, 350);
+  temaP = new Promise(res => { temaT = setTimeout(async () => {
+    try { const r = await api("/api/tema", {modo: st.tema, acento: st.acento});
+          toast(r.ok ? "Aspecto aplicado" : "No se pudo aplicar del todo: " + (r.salida || "")); }
+    catch (e) { toast("No se pudo aplicar: " + e.message); }
+    res(); }, 350); });
 }
+let temaP = Promise.resolve();
+function flushTema() { if (temaT) { clearTimeout(temaT); temaT = null; return api("/api/tema", {modo: st.tema, acento: st.acento}).catch(() => {}); } return temaP; }
 async function cargarIA() {
   try {
     const r = await api("/api/ia");
@@ -219,6 +233,7 @@ async function cargarSeg() {
   } catch (e) { $("#seg").textContent = "No se pudo leer el estado."; }
 }
 async function terminar() {
+  await flushTema();                        // un cambio de aspecto recién hecho no se pierde al terminar
   try { await api("/api/listo", {}); } catch (e) {}
   document.body.innerHTML = '<div style="margin:auto;text-align:center;color:var(--dim)">Disfruta de TISMA. Ya puedes cerrar esta ventana.</div>';
   setTimeout(() => window.close(), 600);
@@ -236,7 +251,7 @@ async function terminar() {
   $$(".opt[data-modo]").forEach(b => b.onclick = () => { st.tema = b.dataset.modo; aplicarTema(); });
   $$(".dot").forEach(d => d.onclick = () => { st.acento = d.dataset.a; aplicarTema(); });
   $$(".opt[data-perfil]").forEach(b => b.onclick = async () => {
-    $$(".opt[data-perfil]").forEach(x => x.classList.toggle("sel", x === b));
+    $$(".opt[data-perfil]").forEach(x => { x.classList.toggle("sel", x === b); x.setAttribute("aria-pressed", x === b); });
     try { const r = await api("/api/perfil", {perfil: b.dataset.perfil}); st.perfil = b.dataset.perfil;
           toast(r.ok ? "Barra de tareas preparada" : "Perfil guardado (la barra se actualiza al reiniciar la sesión)"); }
     catch (e) { toast("No se pudo aplicar: " + e.message); }
@@ -247,8 +262,14 @@ async function terminar() {
   $("#atras").onclick = () => ir(paso - 1);
   $("#saltar").onclick = terminar;
   document.addEventListener("keydown", e => {
-    if (e.key === "ArrowRight" && !e.target.closest(".sw")) ir(paso + 1);
-    if (e.key === "ArrowLeft" && !e.target.closest(".sw")) ir(paso - 1);
+    const dot = e.target.closest(".dot");
+    if (dot && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {        // radiogroup: flechas entre colores
+      const ds = $$(".dot"), i = ds.indexOf(dot) + (e.key === "ArrowRight" ? 1 : -1);
+      const d = ds[(i + ds.length) % ds.length]; d.focus(); d.click(); e.preventDefault(); return;
+    }
+    if (e.target.closest("input, textarea")) return;
+    if (e.key === "ArrowRight") ir(paso + 1);
+    if (e.key === "ArrowLeft") ir(paso - 1);
   });
   ir(0);
 })();
