@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Instala Tisma engine (laminador) en /opt/tisma dentro del chroot de la ISO.
-# 1º intenta el binario publicado en GitHub; si no existe, compila desde el código.
+# Por defecto: la release FIJADA (versión + SHA-256). Si la descarga falla o el hash no coincide, se aborta
+# (nunca se cae a compilar otra cosa). Solo con «main», pedido explícitamente, se compila desde el código,
+# dentro del chroot (no como root en la máquina de build).
 # Uso: tisma-engine.sh <chroot> [versión|main]
 set -euo pipefail
 CHROOT="$1"
@@ -17,26 +19,31 @@ log() { printf '\033[1;35m[tisma-engine]\033[0m %s\n' "$*"; }
 installed=0
 if [[ "$REF" != main ]]; then
     asset="tisma-engine-$REF-linux-x64.zip"
-    if curl -fsSL --retry 3 -o "$WORK/$asset" "$REPO_URL/releases/download/v$REF/$asset" &&
-       echo "$TISMA_ENGINE_SHA256  $WORK/$asset" | sha256sum -c - >/dev/null; then
-        log "Usando la release v$REF"
-        (cd "$WORK" && python3 -m zipfile -e "$asset" out)
-        rm -rf "$DEST" && mkdir -p "$DEST"
-        cp -a "$WORK"/out/*/. "$DEST/"
-        installed=1
-    fi
+    curl -fsSL --retry 3 -o "$WORK/$asset" "$REPO_URL/releases/download/v$REF/$asset" \
+        || { log "No se pudo descargar la release v$REF"; exit 1; }
+    echo "$TISMA_ENGINE_SHA256  $WORK/$asset" | sha256sum -c - >/dev/null \
+        || { log "SHA-256 incorrecto: descarga descartada"; exit 1; }
+    log "Usando la release v$REF"
+    (cd "$WORK" && python3 -m zipfile -e "$asset" out)
+    rm -rf "$DEST" && mkdir -p "$DEST"
+    cp -a "$WORK"/out/*/. "$DEST/"
+    installed=1
 fi
 
 if [[ $installed == 0 ]]; then
-    log "Sin release descargable: compilando desde el código ($REF)"
-    branch="main"
-    [[ "$REF" == main ]] || branch="v$REF"
-    git clone -q --depth 1 --branch "$branch" "$REPO_URL" "$WORK/src"
-    cmake -S "$WORK/src" -B "$WORK/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$WORK/build" --parallel
+    log "Compilando la rama main dentro del chroot (pedido explícito; sin versión fijada)"
+    SRC="$CHROOT/usr/src/tisma_engine"
+    rm -rf "$SRC"
+    git clone -q --depth 1 --branch main "$REPO_URL" "$SRC"
+    log "Commit: $(git -C "$SRC" rev-parse HEAD)"
+    chroot "$CHROOT" /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
+        cmake -S /usr/src/tisma_engine -B /usr/src/tisma_engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    chroot "$CHROOT" /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
+        cmake --build /usr/src/tisma_engine/build --parallel
     rm -rf "$DEST" && mkdir -p "$DEST/docs"
-    cp "$WORK/build/tisma-engine" "$WORK/build/apps/tisma/tisma" "$DEST/"
-    cp "$WORK"/src/{LICENSE,README.md,CHANGELOG.md,THIRD_PARTY.md,VERSION} "$DEST/"
+    cp "$SRC/build/tisma-engine" "$SRC/build/apps/tisma/tisma" "$DEST/"
+    cp "$SRC"/{LICENSE,README.md,CHANGELOG.md,THIRD_PARTY.md,VERSION} "$DEST/"
+    rm -rf "$SRC"
 fi
 chmod 755 "$DEST"/tisma "$DEST"/tisma-engine
 mkdir -p "$CHROOT/usr/bin"

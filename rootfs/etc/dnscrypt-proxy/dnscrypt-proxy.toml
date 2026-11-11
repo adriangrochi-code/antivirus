@@ -1,5 +1,7 @@
 # TISMA OS — DNS cifrado (DoH/DNSCrypt) con bloqueo de anuncios, rastreadores y malware
-listen_addresses = ['127.0.2.1:53', '[::1]:53']
+# Vacío: escucha por activación de socket (dnscrypt-proxy.socket de Debian, 127.0.2.1:53). Declarar aquí la
+# misma dirección hacía que el servicio intentara abrir un puerto ya ocupado y terminara (sin DNS).
+listen_addresses = []
 # Solo resolutores sin registros, con DNSSEC y sin filtrado propio de la empresa
 server_names = ['quad9-dnscrypt-ip4-nofilter-pri', 'mullvad-doh', 'cloudflare']
 require_dnssec = true
@@ -34,6 +36,6 @@ log_file = '/var/log/dnscrypt-proxy/bloqueados.log'
 [sources.public-resolvers]
 urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md',
         'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
-cache_file = 'public-resolvers.md'
+cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'
 minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
 refresh_delay = 72

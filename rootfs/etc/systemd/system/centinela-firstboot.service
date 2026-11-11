@@ -8,7 +8,7 @@ Before=display-manager.service
 
 [Service]
 ProtectSystem=strict
-ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d /etc/centinela /boot/grub /var/cache -/etc/initramfs-tools -/etc/xdg
+ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d -/etc/centinela /boot/grub /var/cache -/etc/initramfs-tools -/etc/xdg
 Type=oneshot
 ExecStart=/usr/bin/centinela setup --quick
 ExecStartPost=/usr/bin/touch /var/lib/centinela/plan-applied

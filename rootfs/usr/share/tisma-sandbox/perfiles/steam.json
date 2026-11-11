@@ -10,5 +10,6 @@
   "dbus_talk": [
     "org.freedesktop.Notifications"
   ],
-  "escritorio": "steam"
+  "escritorio": "steam",
+  "mandos_virtuales": true
 }

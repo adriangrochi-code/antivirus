@@ -14,5 +14,6 @@ ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
 CapabilityBoundingSet=
-RestrictAddressFamilies=AF_INET AF_INET6
+# AF_UNIX: «systemctl try-restart» habla con systemd por un socket local
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 DynamicUser=no

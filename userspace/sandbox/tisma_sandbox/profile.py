@@ -29,7 +29,10 @@ FORBIDDEN = ["~/.ssh", "~/.gnupg", "~/.config/autostart", "~/.config/systemd", "
              "~/.config/tisma-sandbox", "~/.local/share/tisma-sandbox", "~"]
 DEVICES = {"gpu": ["/dev/dri", "/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-modeset", "/dev/nvidia-uvm"],
            "camara": ["/dev/video0", "/dev/video1", "/dev/media0"],
-           "mandos": ["/dev/input", "/dev/uinput", "/dev/hidraw0"]}
+           "mandos": ["/dev/input", "/dev/hidraw0"],
+           # /dev/uinput crea dispositivos de entrada VIRTUALES: con él una app podría fabricar un teclado y
+           # escribir órdenes en una terminal de la sesión (escape del sandbox). Solo para Steam Input.
+           "mandos_virtuales": ["/dev/uinput"]}
 
 
 class ProfileError(ValueError):
@@ -58,6 +61,7 @@ class Profile:
     audio: bool = False
     camara: bool = False
     mandos: bool = False
+    mandos_virtuales: bool = False
     wayland: bool = True
     x11: bool = False
     portales: bool = True                 # selector de archivos del sistema (xdg-desktop-portal)
@@ -132,7 +136,7 @@ def bwrap_args(p: Profile, *, uid: int, runtime_dir: str, app_home: Path, dbus_s
         a += ["--unshare-net"]
     else:
         a += ["--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve"]
-    for dev_kind in ("gpu", "camara", "mandos"):
+    for dev_kind in ("gpu", "camara", "mandos", "mandos_virtuales"):
         if getattr(p, dev_kind):
             a += [x for d in DEVICES[dev_kind] if exists(d) for x in ("--dev-bind", d, d)]
     if p.gpu:

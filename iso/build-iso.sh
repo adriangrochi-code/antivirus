@@ -115,7 +115,12 @@ rm -rf "$CHROOT/tmp/kernel-debs"
 
 # ---------------------------------------------------------------- 4. capa del sistema
 log "Aplicando capa del sistema y marca TISMA"
+# os-release propio (con VERSION_CODENAME): se desvía el de base-files para que una actualización no lo pise
+in_chroot dpkg-divert --local --rename --divert /usr/lib/os-release.debian --add /usr/lib/os-release
 rsync -a --chown=root:root "$REPO/rootfs/" "$CHROOT/"
+# git no guarda permisos ni carpetas vacías: lo que lo necesita se fija aquí
+chmod 600 "$CHROOT"/etc/usbguard/usbguard-daemon.conf "$CHROOT"/etc/usbguard/rules.conf   # usbguard exige 0600
+mkdir -p "$CHROOT/etc/centinela"
 python3 "$HERE/make-branding.py" "$REPO/branding" "$CHROOT"
 
 LIB="$CHROOT/usr/lib/centinela"
@@ -133,7 +138,7 @@ else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
 fi
 # Aplicaciones: Tisma engine (laminador) y Strata (IA local)
-"$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-latest}" \
+"$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-}" \
     || log "AVISO: no se pudo instalar Tisma engine"
 "$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
 "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
