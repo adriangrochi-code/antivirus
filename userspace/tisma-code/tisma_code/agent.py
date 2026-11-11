@@ -169,6 +169,19 @@ class Session:
             except Exception as e:  # noqa: BLE001
                 self.emit("info", message=f"Herramientas de Hope no disponibles: {e}")
 
+    def reload_especialistas(self) -> None:
+        """Tras instalar un especialista: se recarga la configuración (los modelos siguen cargándose al usarse)."""
+        from .especialistas import SCHEMAS as ESP_SCHEMAS
+        from .especialistas import Pool
+        if self.especialistas:
+            self.especialistas.close()
+        self.especialistas = Pool(self.llm)
+        self.schemas = list(tools.TOOL_SCHEMAS) + (ESP_SCHEMAS if self.especialistas.specs else [])
+        self.tool_names = {t["function"]["name"] for t in self.schemas}
+        note = self.especialistas.describe()
+        if note and "especialista_buscar" not in self.messages[0]["content"]:
+            self.messages[0]["content"] += note      # una sola vez: el prefijo vuelve a ser estable
+
     def _role_chat(self, role: str):
         """Cliente de chat para una tarea interna: el especialista asignado a ese rol, o el modelo principal."""
         name = (self.especialistas.roles.get(role) if self.especialistas else None)

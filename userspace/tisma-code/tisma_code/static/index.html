@@ -118,6 +118,9 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .file .fn { flex: 1; min-width: 200px; font-family: var(--mono); word-break: break-all; }
 .fit-gpu { color: var(--ok); } .fit-mixto { color: var(--blue-2); } .fit-cpu { color: var(--warn); } .fit-no { color: var(--err); }
 .pbar { width: 90px; height: 5px; background: var(--ctl); border-radius: 3px; overflow: hidden; }
+.esp { border-top: 1px solid var(--line); padding: 9px 2px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; font-size: 13px; }
+.esp b { font-weight: 600; } .esp > * { text-align: left; } .esp .meta { color: var(--faint); font-size: 12px; display: block; max-width: none; margin: 2px 0 0; justify-content: initial; min-height: 0; } .esp .btn { grid-row: span 2; }
+.esp.off { opacity: .7; } .esp .why { color: var(--warn); font-size: 12px; }
 .pbar i { display: block; height: 100%; width: 0; background: var(--accent); }
 @media (max-width: 600px) { .local { display: none; } .col, .composer { padding-left: 12px; padding-right: 12px; } }
 </style>
@@ -162,6 +165,9 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
   <div class="note" id="hwLine"></div>
   <div class="row"><input id="q" placeholder="Buscar modelos GGUF: qwen coder, deepseek, gemma…"><button class="btn p" id="qBtn">Buscar</button><button class="btn" id="closeModal">Cerrar</button></div>
   <div id="results"></div>
+  <h2 style="margin-top:18px">Especialistas</h2>
+  <div class="note">Modelos open source pequeños que el modelo principal usa como herramientas. Se cargan solo cuando hacen falta y se descargan de la memoria tras 3 minutos sin uso. Licencia y SHA-256 verificados.</div>
+  <div id="esp"></div>
 </div></div>
 
 <script>
@@ -372,6 +378,28 @@ function openModal() {
   $("#hwLine").textContent = `Tu equipo: ${(h.ram_mb / 1024).toFixed(0)} GB de RAM` + (h.vram_mb ? `, ${(h.vram_mb / 1024).toFixed(0)} GB de VRAM` : ", sin GPU dedicada detectada") +
     ". Se indica si cada archivo cabe. La descarga es lo único que usa internet.";
   $("#modal").classList.add("on"); $("#q").focus();
+  loadEsp();
+}
+async function loadEsp() {
+  const box = $("#esp");
+  try {
+    const r = await api("/api/especialistas"), c = r.catalogo, have = new Set(r.configurados);
+    const st = r.estadisticas || {};
+    box.innerHTML = (r.error ? `<div class="err">${esc(r.error)}</div>` : "") +
+      c.instalables.map(e => `<div class="esp"><div><b>${esc(e.id)}</b> — ${esc(e.descripcion)}</div>` +
+        `<button class="btn ${have.has(e.id) ? "" : "p"}" data-esp="${esc(e.id)}" ${have.has(e.id) ? "disabled" : ""}>${have.has(e.id) ? "Instalado" : "Instalar"}</button>` +
+        `<div class="meta">${esc(e.repo)} · ${esc(e.parametros)} · ${gb(e.mb * 1e6)} · ${esc(e.licencia)}` +
+        `${e.rol ? " · rol: " + esc(e.rol) : ""}${st[e.id] ? ` · ${st[e.id][1]}/${st[e.id][0]} verificadas` : ""}</div></div>`).join("") +
+      `<div class="note" style="margin-top:12px">Con otro motor (próximamente):</div>` +
+      c.con_otro_motor.map(e => `<div class="esp off"><div><b>${esc(e.id)}</b> — ${esc(e.uso)}</div><span></span><div class="meta">${esc(e.repo)} · ${esc(e.parametros)} · ${esc(e.licencia)}</div></div>`).join("") +
+      `<div class="note" style="margin-top:12px">Descartados:</div>` +
+      c.no_recomendados.map(e => `<div class="esp off"><div><b>${esc(e.id)}</b> <span class="meta">${esc(e.repo)} · ${esc(e.licencia)}</span></div><span></span><div class="why">${esc(e.motivo)}</div></div>`).join("");
+    box.querySelectorAll("[data-esp]").forEach(b => b.onclick = async () => {
+      try { await api("/api/especialistas/instalar", {id: b.dataset.esp}); b.textContent = "Descargando"; b.disabled = true;
+            put(`Especialista <code>${esc(b.dataset.esp)}</code> añadido; se descarga y se verifica su SHA-256.`, "note"); }
+      catch (e) { alert(e.message); }
+    });
+  } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 $("#closeModal").onclick = () => $("#modal").classList.remove("on");
 $("#q").onkeydown = e => { if (e.key === "Enter") $("#qBtn").click(); };

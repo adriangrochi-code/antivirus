@@ -173,6 +173,41 @@ def run_program(s: Specialist, entrada: str, jail: bool = True) -> str:
     return out
 
 
+CATALOG = Path(__file__).with_name("catalogo_especialistas.json")
+
+
+def catalog() -> dict:
+    return json.loads(CATALOG.read_text(encoding="utf-8"))
+
+
+def install(entry_id: str, path: Path = CONFIG) -> tuple[dict, str]:
+    """Añade un especialista del catálogo a la configuración del usuario. Devuelve la entrada del catálogo y
+    la ruta donde quedará el GGUF (la descarga la hace models.Downloads, verificando el SHA-256)."""
+    from . import models
+    entry = next((e for e in catalog()["instalables"] if e["id"] == entry_id), None)
+    if entry is None:
+        raise SpecialistError(f"«{entry_id}» no está en el catálogo")
+    gguf = models.MODELS_DIR / entry["repo"].replace("/", "__") / entry["archivo"]
+    data = {"especialistas": [], "roles": {}}
+    if path.exists():
+        load(path)                                  # valida propietario y permisos antes de reescribir
+        data.update(json.loads(path.read_text(encoding="utf-8")))
+    spec = {"nombre": entry["id"], "tipo": "llm", "descripcion": entry["descripcion"], "gguf": str(gguf),
+            "sistema": entry.get("sistema", ""), "disparadores": entry.get("disparadores", [])}
+    if entry.get("verificador"):
+        spec["verificador"] = entry["verificador"]
+    data["especialistas"] = [e for e in data["especialistas"] if e.get("nombre") != entry["id"]] + [spec]
+    if entry.get("rol"):
+        data.setdefault("roles", {})[entry["rol"]] = entry["id"]
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+    return entry, str(gguf)
+
+
 class Pool:
     """Especialistas configurados + servidores llama.cpp bajo demanda (como máximo MAX_SERVERS)."""
 
@@ -232,8 +267,10 @@ class Pool:
                 while len(self._servers) >= MAX_SERVERS:          # libera RAM: descarga el más antiguo
                     old = next(iter(self._servers))
                     self._servers.pop(old).stop()
+                if not Path(s.gguf).exists():
+                    raise SpecialistError(f"el modelo de «{s.nombre}» aún no está descargado")
                 srv = models.LocalServer()
-                srv.start(s.gguf, self.hw)
+                srv.start(s.gguf, self.hw, ctx=8192)
                 self._servers[s.nombre] = srv
             else:                                                  # mueve al final (más reciente)
                 self._servers[s.nombre] = self._servers.pop(s.nombre)

@@ -166,6 +166,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, models.search(q.get("q", "")))
             if url.path == "/api/models/files":
                 return self._send(200, models.files(q.get("id", ""), APP.hw))
+            if url.path == "/api/especialistas":
+                from . import especialistas
+                try:
+                    specs, roles = especialistas.load()
+                    err = ""
+                except (especialistas.SpecialistError, ValueError) as e:
+                    specs, roles, err = {}, {}, str(e)
+                pool = APP.session.especialistas if APP.session else None
+                return self._send(200, {"catalogo": especialistas.catalog(), "configurados": sorted(specs),
+                                        "roles": roles, "error": err,
+                                        "estadisticas": pool.stats if pool else {}})
             if url.path == "/api/models/local":
                 return self._send(200, {"downloaded": models.local_models(),
                                         "endpoint": models.endpoint_models(APP.config["endpoint"])})
@@ -217,6 +228,13 @@ class Handler(BaseHTTPRequestHandler):
                 if url.path == "/api/hope/tool":
                     return self._send(200, {"result": APP.session.hope.run(b["nombre"], b["entrada"])})
                 return self._send(200, APP.session.hope.council(b["problema"], b.get("tema") or "general"))
+            if url.path == "/api/especialistas/instalar":
+                from . import especialistas
+                entry, gguf = especialistas.install(str(b["id"]))
+                key = APP.downloads.start(entry["repo"], entry["archivo"], entry["sha256"])
+                if APP.session:
+                    APP.session.reload_especialistas()
+                return self._send(200, {"key": key, "gguf": gguf})
             if url.path == "/api/models/download":
                 return self._send(200, {"key": APP.downloads.start(b["id"], b["file"])})
             if url.path == "/api/models/serve":
@@ -227,7 +245,7 @@ class Handler(BaseHTTPRequestHandler):
                     APP.session.endpoint, APP.session.model = ep, APP.config["model"]
                     APP.session.llm = APP.llm()
                 return self._send(200, {"endpoint": ep})
-        except (KeyError, ValueError, OSError, RuntimeError) as e:
+        except (KeyError, ValueError, OSError, RuntimeError) as e:  # SpecialistError es RuntimeError
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})
 

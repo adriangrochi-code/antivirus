@@ -111,13 +111,23 @@ def files(model_id: str, hw: dict | None = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------- descargas
+def file_sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 22):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 class Downloads:
     def __init__(self, on_progress=None):
         self.state: dict[str, dict] = {}
         self.on_progress = on_progress or (lambda d: None)
         self._lock = threading.Lock()
 
-    def start(self, model_id: str, file: str) -> str:
+    def start(self, model_id: str, file: str, sha256: str = "") -> str:
+        """sha256: si se conoce (catálogo de especialistas), el archivo se verifica y se descarta si no coincide."""
         if not _ID.match(model_id) or not _FILE.match(file) or ".." in file:
             raise ValueError("Modelo o archivo inválido")
         key = f"{model_id}/{file}"
@@ -125,7 +135,7 @@ class Downloads:
             if self.state.get(key, {}).get("status") == "descargando":
                 return key
             self.state[key] = {"key": key, "status": "descargando", "done": 0, "total": 0}
-        threading.Thread(target=self._run, args=(model_id, file, key), daemon=True).start()
+        threading.Thread(target=self._run, args=(model_id, file, key, sha256), daemon=True).start()
         return key
 
     def _parts(self, file: str) -> list[str]:
@@ -136,13 +146,20 @@ class Downloads:
         prefix = file[: m.start()]
         return [f"{prefix}-{i:05d}-of-{n:05d}.gguf" for i in range(1, n + 1)]
 
-    def _run(self, model_id: str, file: str, key: str) -> None:
+    def _run(self, model_id: str, file: str, key: str, sha256: str = "") -> None:
         st = self.state[key]
         dest_dir = MODELS_DIR / model_id.replace("/", "__")
         dest_dir.mkdir(parents=True, exist_ok=True)
         try:
             for part in self._parts(file):
                 self._fetch(model_id, part, dest_dir / Path(part).name, st)
+            if sha256:
+                st["status"] = "verificando"
+                self.on_progress(dict(st))
+                got = file_sha256(dest_dir / Path(file).name)
+                if got != sha256.lower():
+                    (dest_dir / Path(file).name).unlink(missing_ok=True)
+                    raise ValueError(f"SHA-256 incorrecto ({got[:12]}…): archivo descartado")
             st["status"] = "completo"
             st["path"] = str(dest_dir / Path(file).name)
         except Exception as e:  # noqa: BLE001
@@ -234,7 +251,7 @@ class LocalServer:
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
 
-    def start(self, path: str, hw: dict) -> str:
+    def start(self, path: str, hw: dict, ctx: int = 16384) -> str:
         exe = shutil.which("llama-server")
         if not exe:
             raise RuntimeError("llama-server (llama.cpp) no está instalado")
@@ -250,7 +267,7 @@ class LocalServer:
                 sk.bind(("127.0.0.1", 0))
                 self.port = sk.getsockname()[1]
         self.proc = subprocess.Popen([exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                                      "--api-key", self.api_key, "-ngl", ngl, "-c", "16384", "--jinja"],
+                                      "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.model = p.name
         return f"http://127.0.0.1:{self.port}/v1"

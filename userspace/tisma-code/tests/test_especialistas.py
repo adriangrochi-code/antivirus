@@ -125,3 +125,55 @@ def test_idle_models_are_unloaded():
     srv = FakeServer()
     pool._servers["x"], pool._last_use["x"] = srv, 0.0
     assert pool.unload_idle() == ["x"] and srv.stopped and not pool._servers
+
+
+def test_catalog_only_open_source_and_pinned():
+    c = esp.catalog()
+    ids = set()
+    for e in c["instalables"]:
+        assert e["licencia"] in ("Apache-2.0", "MIT"), e["id"]
+        assert len(e["sha256"]) == 64 and int(e["sha256"], 16) >= 0
+        assert e["archivo"].endswith(".gguf") and e["mb"] < 2500        # cabe junto al modelo principal en 16 GB
+        assert esp.NAME_RE.match(e["id"]) and e["id"] not in ids
+        ids.add(e["id"])
+    for e in c["con_otro_motor"]:
+        assert e["licencia"] in ("Apache-2.0", "MIT")
+    assert any("NC" in e["licencia"] for e in c["no_recomendados"])
+
+
+def test_install_from_catalog(tmp_path, monkeypatch):
+    from tisma_code import models
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path / "models")
+    cfg = tmp_path / "cfg" / "especialistas.json"
+    entry, gguf = esp.install("resumidor", cfg)
+    assert gguf.endswith("Qwen__Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf")
+    assert oct(cfg.stat().st_mode & 0o777) == "0o600"
+    esp.install("extractor-json", cfg)
+    specs, roles = esp.load(cfg)
+    assert set(specs) == {"resumidor", "extractor-json"} and roles == {"compactar": "resumidor"}
+    assert specs["extractor-json"].verificador == "json"
+    pool = esp.Pool(llm=None, path=cfg)
+    try:
+        pool.ask("resumidor", "x")
+        raise AssertionError("sin descargar no debe arrancar")
+    except esp.SpecialistError as e:
+        assert "descargado" in str(e)
+    try:
+        esp.install("no-existe", cfg)
+        raise AssertionError
+    except esp.SpecialistError:
+        pass
+
+
+def test_download_rejects_wrong_sha(tmp_path, monkeypatch):
+    from tisma_code import models
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path)
+    d = models.Downloads()
+
+    def fake_fetch(model_id, part, dest, st):
+        dest.write_bytes(b"modelo manipulado")
+    monkeypatch.setattr(d, "_fetch", fake_fetch)
+    d.state["k"] = {"key": "k", "status": "descargando", "done": 0, "total": 0}
+    d._run("a/b", "m.gguf", "k", "0" * 64)
+    assert d.state["k"]["status"] == "error" and "SHA-256" in d.state["k"]["error"]
+    assert not (tmp_path / "a__b" / "m.gguf").exists()
