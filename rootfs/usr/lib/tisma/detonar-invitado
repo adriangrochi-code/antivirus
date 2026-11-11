@@ -1,0 +1,13 @@
+#!/bin/sh
+# Dentro de la máquina virtual de análisis (arranque con tisma.detonar=<segundos>): monta la carpeta compartida
+# con la muestra, la ejecuta en la jaula de Escudo como «nobody» y deja la traza para el anfitrión.
+set -u
+seg=$(sed -n 's/.*tisma\.detonar=\([0-9]*\).*/\1/p' /proc/cmdline)
+[ -n "$seg" ] || seg=45
+mkdir -p /mnt/muestra
+mount -t 9p -o trans=virtio,version=9p2000.L,msize=262144 muestra /mnt/muestra || exit 1
+touch /mnt/muestra/traza.txt && chmod 666 /mnt/muestra/traza.txt
+chmod 755 /mnt/muestra /mnt/muestra/muestra
+PYTHONPATH=/usr/lib/centinela/python python3 -m escudo.detonar --invitado /mnt/muestra "$seg"
+sync
+umount /mnt/muestra

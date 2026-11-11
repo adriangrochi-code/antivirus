@@ -71,7 +71,7 @@ octave gnuplot wxmaxima r-base-core
 python3-numpy python3-scipy python3-matplotlib python3-sympy python3-pandas python3-pint
 python3-z3 python3-yaml python3-pil jupyter-notebook python3-pytest
 # --- TISMA Code (IA local para programar) ---
-bubblewrap
+bubblewrap strace xvfb
 # llama.cpp no está en trixie: se compila (iso/components/llama-cpp.sh) con estas dependencias
 cmake ninja-build glslc libvulkan-dev
 # planificadores sched_ext (iso/components/scx.sh)

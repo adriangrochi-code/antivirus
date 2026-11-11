@@ -1,0 +1,261 @@
+"""Puerta de primera ejecución: lo que viene de fuera no se ejecuta hasta haberlo visto en un entorno controlado.
+
+Escudo (root) pide al kernel, con fanotify, que le consulte cada ejecución de un archivo en /home, /tmp, /var/tmp
+y las memorias USB (/media, /run/media). Para cada una decide en microsegundos:
+
+* NO viene de fuera (lo compilaste, lo instaló apt/pip/Flatpak…) → se permite sin más;
+* viene de fuera — tiene la marca de descarga del navegador o de KDE (atributo user.xdg.origin.url), o está en
+  Descargas, /tmp o un USB — y su SHA-256:
+    - ya analizado y limpio (o permitido por el usuario) → se permite: desde aquí se ejecuta normalmente;
+    - analizado y malicioso → se deniega siempre;
+    - desconocido → se deniega ESTA vez y se analiza (detonar.py: máquina virtual si hay KVM, si no sandbox),
+      con la identidad del usuario que lo intentó. El escritorio avisa del resultado.
+Seguridad ante fallos: si Escudo se cae, el kernel deja de consultar y todo se ejecuta (nunca bloquea el
+sistema); cualquier error interno al decidir también permite.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import ctypes.util
+import hashlib
+import logging
+import os
+import queue
+import re
+import struct
+import threading
+import time
+from pathlib import Path
+
+from . import detonar
+from .behavior import Alert, emit
+
+log = logging.getLogger("escudo.primera_ejecucion")
+
+FAN_CLOEXEC, FAN_CLASS_CONTENT = 0x1, 0x4
+FAN_MARK_ADD, FAN_MARK_MOUNT = 0x1, 0x10
+FAN_OPEN_EXEC_PERM = 0x00040000
+FAN_ALLOW, FAN_DENY = 0x01, 0x02
+O_RDONLY, O_LARGEFILE = 0, 0o100000
+AT_FDCWD = -100
+META = struct.Struct("<IBBHQii")          # fanotify_event_metadata
+RESP = struct.Struct("<iI")               # fanotify_response
+DET_DIR = Path(os.environ.get("ESCUDO_DETONAR_DIR", "/var/lib/escudo-detonar"))
+EXTERNAL_DIRS = re.compile(r"^(/home/[^/]+/(Descargas|Downloads)/|/tmp/|/var/tmp/|/media/|/run/media/)")
+ORIGIN_XATTRS = ("user.xdg.origin.url", "user.xdg.referrer.url")
+
+
+def is_external(path: str, fd: int | None = None) -> bool:
+    """¿Viene de fuera? Marca de descarga (navegador/KDE) o carpeta de descargas, temporal o USB."""
+    if EXTERNAL_DIRS.match(path):
+        return True
+    for name in ORIGIN_XATTRS:
+        try:
+            os.getxattr(fd if fd is not None else path, name)
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def decide(path: str, external: bool, sha: str | None, allowlist: dict) -> str:
+    """'permitir' | 'denegar' | 'analizar'"""
+    if not external or path.startswith(str(DET_DIR) + "/"):
+        return "permitir"
+    entry = allowlist.get(sha or "")
+    if not entry:
+        return "analizar"
+    if entry.get("veredicto") == "limpio" or entry.get("permitido_por_usuario"):
+        return "permitir"
+    return "denegar"
+
+
+class Gate:
+    def __init__(self, quarantine=None, alert=emit, segundos: int = 45, mounts: list[str] | None = None):
+        self.fixed_mounts = mounts             # pruebas: vigilar solo estos montajes
+        self.quarantine, self.alert, self.segundos = quarantine, alert, segundos
+        self.allow = detonar.cargar_permitidos()
+        self._hash_cache: dict[tuple, str] = {}
+        self._queued: set[str] = set()
+        self._jobs: queue.Queue = queue.Queue()
+        self._stop = threading.Event()
+        self.fd = -1
+        self._marked: set[str] = set()
+
+    # ------------------------------------------------------------ fanotify
+    def start(self) -> list[threading.Thread]:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        self._libc = libc
+        self.fd = libc.fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT, O_RDONLY | O_LARGEFILE | os.O_CLOEXEC)
+        if self.fd < 0:
+            raise OSError(ctypes.get_errno(), "fanotify_init (¿kernel sin CONFIG_FANOTIFY_ACCESS_PERMISSIONS?)")
+        DET_DIR.mkdir(parents=True, exist_ok=True)
+        os.chmod(DET_DIR, 0o711)
+        self.mark_mounts()
+        threads = [threading.Thread(target=t, daemon=True, name=n) for t, n in
+                   ((self._events, "fanotify"), (self._worker, "detonar"), (self._watch_mounts, "montajes"))]
+        for t in threads:
+            t.start()
+        log.info("Puerta de primera ejecución activa en: %s", ", ".join(sorted(self._marked)))
+        return threads
+
+    def mark_mounts(self) -> None:
+        """Solo puntos de montaje propios (/home en btrfs es un subvolumen aparte, /tmp es tmpfs): marcar el
+        montaje de / haría pasar por Escudo cada ejecución de /usr."""
+        if self.fixed_mounts is not None:
+            wanted = list(self.fixed_mounts)
+        else:
+            wanted = [p for p in ("/home", "/tmp", "/var/tmp") if os.path.ismount(p)]
+        try:
+            for line in open("/proc/self/mountinfo"):
+                mp = line.split()[4].replace("\\040", " ")
+                if self.fixed_mounts is None and mp.startswith(("/media/", "/run/media/")):
+                    wanted.append(mp)
+        except OSError:
+            pass
+        for mp in wanted:
+            if mp in self._marked:
+                continue
+            r = self._libc.fanotify_mark(self.fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+                                         ctypes.c_uint64(FAN_OPEN_EXEC_PERM), AT_FDCWD, mp.encode())
+            if r == 0:
+                self._marked.add(mp)
+            else:
+                log.warning("No se pudo vigilar %s (errno %d)", mp, ctypes.get_errno())
+
+    def _watch_mounts(self) -> None:
+        while not self._stop.wait(5):                  # memorias USB que se conectan después
+            self.mark_mounts()
+
+    def _events(self) -> None:
+        while not self._stop.is_set():
+            try:
+                buf = os.read(self.fd, 4096)
+            except InterruptedError:
+                continue
+            off = 0
+            while off + META.size <= len(buf):
+                ev_len, _vers, _res, _mlen, mask, efd, pid = META.unpack_from(buf, off)
+                off += ev_len or META.size
+                if efd < 0:
+                    continue
+                verdict = FAN_ALLOW
+                try:
+                    if mask & FAN_OPEN_EXEC_PERM:
+                        verdict = self.on_exec(efd, pid)
+                except Exception:  # noqa: BLE001 — ante cualquier error, permitir (nunca bloquear el sistema)
+                    log.exception("Error decidiendo una ejecución: se permite")
+                    verdict = FAN_ALLOW
+                finally:
+                    try:
+                        os.write(self.fd, RESP.pack(efd, verdict))
+                    finally:
+                        os.close(efd)
+
+    def _sha(self, efd: int) -> str:
+        st = os.fstat(efd)
+        key = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        if key not in self._hash_cache:
+            h, off = hashlib.sha256(), 0
+            while chunk := os.pread(efd, 1 << 20, off):
+                h.update(chunk)
+                off += len(chunk)
+            self._hash_cache[key] = h.hexdigest()
+        return self._hash_cache[key]
+
+    def on_exec(self, efd: int, pid: int) -> int:
+        path = os.readlink(f"/proc/self/fd/{efd}")
+        external = is_external(path, efd)
+        if not external:
+            return FAN_ALLOW
+        sha = self._sha(efd)
+        d = decide(path, external, sha, self.allow)
+        if d == "permitir":
+            return FAN_ALLOW
+        if d == "analizar" and sha not in self._queued:
+            uid, gid = self._owner(pid)
+            self._queued.add(sha)
+            self._jobs.put((path, sha, uid, gid))
+            self.alert(Alert("primera_ejecucion", "low", f"Primera vez que se ejecuta {os.path.basename(path)}: "
+                             "se está analizando en un entorno aislado (≈1 min).",
+                             pid, path, "Vuelve a abrirlo cuando Escudo avise del resultado."))
+        return FAN_DENY
+
+    @staticmethod
+    def _owner(pid: int) -> tuple[int, int]:
+        uid = gid = 65534
+        try:
+            for line in open(f"/proc/{pid}/status"):
+                if line.startswith("Uid:"):
+                    uid = int(line.split()[1])
+                elif line.startswith("Gid:"):
+                    gid = int(line.split()[1])
+        except OSError:
+            pass
+        return (65534, 65534) if uid == 0 else (uid, gid)   # nunca se analiza como root
+
+    # ------------------------------------------------------------ análisis
+    def _worker(self) -> None:
+        while not self._stop.is_set():
+            path, sha, uid, gid = self._jobs.get()
+            try:
+                self.analyze(path, sha, uid, gid)
+            except Exception:  # noqa: BLE001
+                log.exception("Fallo analizando %s", path)
+            finally:
+                self._queued.discard(sha)
+
+    def analyze(self, path: str, sha: str, uid: int, gid: int) -> detonar.Informe | None:
+        try:
+            if detonar.sha256_file(path) != sha:
+                return None                            # el archivo cambió mientras esperaba: se analizará al ejecutarlo
+        except OSError:
+            return None
+        inf = detonar.detonar(path, segundos=self.segundos, uid=uid, gid=gid, base_dir=DET_DIR)
+        detonar.guardar_veredicto(inf, path)
+        self.allow = detonar.cargar_permitidos()
+        name = os.path.basename(path)
+        if inf.veredicto == "limpio":
+            self.alert(Alert("primera_ejecucion", "low", f"{name}: sin comportamiento malicioso ({inf.entorno}, "
+                             f"{inf.segundos:.0f} s).", None, path, "Ya puedes abrirlo con normalidad."))
+        elif inf.veredicto == "sospechoso":
+            self.alert(Alert("primera_ejecucion", "medium", f"{name}: comportamiento sospechoso: " +
+                             "; ".join(inf.motivos[:3]), None, path,
+                             f"Si confías en él: sudo escudo permitir \"{path}\""))
+        else:
+            action = "bloqueado"
+            if self.quarantine is not None:
+                try:
+                    self.quarantine.add(path, "Escudo.Detonacion." + inf.motivos[0][:40] if inf.motivos else "x")
+                    action = "movido a cuarentena"
+                except OSError:
+                    pass
+            self.alert(Alert("primera_ejecucion", "critical", f"{name} es MALICIOSO: " + "; ".join(inf.motivos[:3]),
+                             None, path, action))
+        return inf
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self.fd >= 0:
+            os.close(self.fd)
+
+
+def permitir(path: str) -> str:
+    """El usuario (como administrador) acepta un programa marcado como sospechoso."""
+    sha = detonar.sha256_file(path)
+    data = detonar.cargar_permitidos()
+    entry = data.get(sha, {"veredicto": "sin analizar", "ruta": path})
+    if entry.get("veredicto") == "malicioso":
+        raise ValueError("está marcado como MALICIOSO: no se permite desde aquí")
+    entry["permitido_por_usuario"] = time.time()
+    data[sha] = entry
+    p = detonar.ALLOWLIST
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as f:
+        import json
+        json.dump(data, f)
+    os.replace(tmp, p)
+    return sha

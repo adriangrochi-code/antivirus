@@ -1,0 +1,16 @@
+[Unit]
+Description=TISMA - análisis de una muestra (solo en la máquina virtual de Escudo)
+ConditionKernelCommandLine=tisma.detonar
+After=local-fs.target systemd-tmpfiles-setup.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/detonar-invitado
+# Al terminar (bien o mal) la máquina virtual se apaga y se descarta
+SuccessAction=poweroff-force
+FailureAction=poweroff-force
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=sysinit.target

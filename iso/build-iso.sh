@@ -199,6 +199,13 @@ in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-cop
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
 in_chroot systemctl enable tisma-drivers.timer 2>/dev/null || true
+# Servicio del análisis dentro de la VM de Escudo (inerte salvo con tisma.detonar en el arranque)
+in_chroot systemctl enable tisma-detonar 2>/dev/null || true
+# Imagen de la máquina virtual de análisis (make vm-detonacion): sin ella Escudo analiza en sandbox
+if [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
+    install -D -m 644 -t "$CHROOT/usr/lib/tisma/vm" "$BUILD_DIR"/vm/{detonacion.iso,vmlinuz,initrd.img}
+    log "Imagen de análisis incluida (Escudo analizará en máquina virtual si hay KVM)"
+fi
 # Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
 if in_chroot sh -c 'command -v flatpak' >/dev/null; then
     in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \

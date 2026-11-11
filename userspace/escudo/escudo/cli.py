@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import logging
 import signal
@@ -61,14 +62,51 @@ def cmd_protect(cfg: Config, args) -> int:
     else:
         logging.getLogger("escudo").warning("Sin acceso a auditd: el vigilante de comportamiento funciona "
                                             "solo con el detector de ransomware")
+    gate = None
+    if not args.no_detonar and sys.platform.startswith("linux"):
+        from .primera_ejecucion import Gate
+        try:
+            gate = Gate(quarantine=rtp.quarantine)
+            gate.start()
+        except OSError as e:
+            logging.getLogger("escudo").warning("Puerta de primera ejecución desactivada: %s", e)
+            gate = None
     guard = None
     if not args.no_network:
         guard = NetGuard(cfg)
         guard.start()
     stop.wait()
     rtp.stop()
+    if gate:
+        gate.stop()
     if guard:
         guard.stop()
+    return 0
+
+
+def cmd_detonar(cfg: Config, args) -> int:
+    from . import detonar
+    inf = detonar.detonar(args.path, args.args, segundos=args.segundos,
+                          usar_vm=True if args.vm else False if args.sandbox else None)
+    if args.json:
+        print(json.dumps(inf.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(f"{args.path}: {inf.veredicto.upper()} ({inf.entorno}, {inf.segundos:.0f} s)")
+        for m in inf.motivos:
+            print(f"  - {m}")
+        if inf.conexiones:
+            print(f"  Conexiones intentadas: {', '.join(inf.conexiones[:10])}")
+        if inf.nota:
+            print(f"  Nota: {inf.nota}")
+    return {"limpio": 0, "sospechoso": 1, "malicioso": 3}[inf.veredicto]
+
+
+def cmd_permitir(cfg: Config, args) -> int:
+    if os.geteuid() != 0:
+        print("Necesita permisos de administrador: sudo escudo permitir <archivo>", file=sys.stderr)
+        return 2
+    from .primera_ejecucion import permitir
+    print(f"Permitido: {args.path} (SHA-256 {permitir(args.path)[:16]}…)")
     return 0
 
 
@@ -147,7 +185,21 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("protect", help="Protección en tiempo real + IPS de red")
     s.add_argument("paths", nargs="*")
     s.add_argument("--no-network", action="store_true")
+    s.add_argument("--no-detonar", action="store_true", help="sin puerta de primera ejecución")
     s.set_defaults(func=cmd_protect)
+
+    s = sub.add_parser("detonar", help="Ejecutar un programa en un entorno controlado y ver qué intenta hacer")
+    s.add_argument("path")
+    s.add_argument("args", nargs="*")
+    s.add_argument("--segundos", type=int, default=45, choices=range(5, 601), metavar="5-600")
+    s.add_argument("--vm", action="store_true", help="obligar a máquina virtual")
+    s.add_argument("--sandbox", action="store_true", help="obligar a sandbox")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_detonar)
+
+    s = sub.add_parser("permitir", help="Permitir un programa marcado como sospechoso (administrador)")
+    s.add_argument("path")
+    s.set_defaults(func=cmd_permitir)
 
     s = sub.add_parser("quarantine", help="Gestionar la cuarentena")
     s.add_argument("action", choices=["list", "restore", "delete", "purge"])
