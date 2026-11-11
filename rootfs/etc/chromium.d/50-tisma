@@ -1,2 +1,8 @@
 # TISMA Navegador: Wayland nativo, aceleración por GPU y protecciones extra de Chromium
+# Caché del navegador en RAM (/run/user es tmpfs) si hay 8 GB o más: el navegador es lo que más escribe en el
+# SSD de un escritorio; se pierde al apagar, que para una caché da igual. Con menos RAM, en disco como siempre.
+if [ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -ge 7500000 ] 2>/dev/null; then
+    _rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    [ -d "$_rt" ] && export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disk-cache-dir=$_rt/chromium-cache --disk-cache-size=268435456"
+fi
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=auto --enable-features=VaapiVideoDecodeLinuxGL,StrictOriginIsolation,PartitionedCookies --disable-features=MediaRouter,OptimizationHints,InterestFeedContentSuggestions --no-pings --no-default-browser-check"

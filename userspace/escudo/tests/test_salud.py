@@ -80,3 +80,31 @@ def test_alert_file_not_followed_through_symlink(tmp_path):
     except OSError:
         pass
     assert target.read_text() == "x"
+
+
+def test_ssd_wear_nvme_and_sata_alert_once_per_level(tmp_path, monkeypatch):
+    import json as _json
+    monkeypatch.setattr(mod, "STATE", str(tmp_path / "s.json"))
+    monkeypatch.setattr(mod, "ALERTS", str(tmp_path / "a.jsonl"))
+    alerts = []
+    monkeypatch.setattr(mod, "alert", lambda *a, **k: alerts.append(a))
+    used = {"nvme": 83}
+
+    def run(argv):
+        if argv[:2] == ["smartctl", "--scan"]:
+            return 0, "/dev/nvme0 -d nvme # nvme\n/dev/sda -d sat # sata\n"
+        if argv[:2] == ["smartctl", "-a"]:
+            if argv[-1] == "/dev/nvme0":
+                return 0, _json.dumps({"nvme_smart_health_information_log": {"percentage_used": used["nvme"]}})
+            return 0, _json.dumps({"ata_smart_attributes": {"table": [{"id": 9, "value": 99}, {"id": 177, "value": 40}]}})
+        if argv[:2] == ["smartctl", "-H"]:
+            return 0, _json.dumps({"smart_status": {"passed": True}})
+        return 0, ""
+    assert mod.smart_wear(run) == {"/dev/nvme0": 83, "/dev/sda": 60}
+    mod.semanal(run)
+    assert [a[1] for a in alerts if "vida útil" in a[2]] == ["medium"]          # solo el NVMe pasa del 80 %
+    mod.semanal(run)
+    assert len([a for a in alerts if "vida útil" in a[2]]) == 1                 # no se repite
+    used["nvme"] = 96
+    mod.semanal(run)
+    assert [a[1] for a in alerts if "vida útil" in a[2]] == ["medium", "high"]

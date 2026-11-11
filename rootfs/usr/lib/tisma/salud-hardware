@@ -65,6 +65,32 @@ def btrfs_errors(run=sh) -> dict[str, int]:
     return errs
 
 
+# Atributos SATA de vida restante (valor normalizado 100 → 0): Wear_Leveling_Count, Percent_Lifetime_Remain,
+# SSD_Life_Left, Media_Wearout_Indicator
+WEAR_ATTRS = {177, 202, 231, 233}
+
+
+def smart_wear(run=sh) -> dict[str, int]:
+    """% de vida del SSD ya consumido (NVMe: percentage_used; SATA: atributos de desgaste)."""
+    out_d = {}
+    _, scan = run(["smartctl", "--scan"])
+    for dev in re.findall(r"^(/dev/\S+)", scan, re.M):
+        _, out = run(["smartctl", "-a", "-j", dev])
+        try:
+            d = json.loads(out)
+        except ValueError:
+            continue
+        nvme = d.get("nvme_smart_health_information_log") or {}
+        if isinstance(nvme.get("percentage_used"), int):
+            out_d[dev] = nvme["percentage_used"]
+            continue
+        for a in (d.get("ata_smart_attributes") or {}).get("table", []):
+            if a.get("id") in WEAR_ATTRS and isinstance(a.get("value"), int) and 0 <= a["value"] <= 100:
+                out_d[dev] = 100 - a["value"]
+                break
+    return out_d
+
+
 def smart_failing(run=sh) -> list[str]:
     bad = []
     _, scan = run(["smartctl", "--scan"])
@@ -169,6 +195,15 @@ def semanal(run=sh) -> list[str]:
                   "Copia tus datos YA y sustituye el disco.")
             st.setdefault("smart_avisado", []).append(dev)
             msgs.append(f"SMART: {dev}")
+    for dev, used in smart_wear(run).items():
+        level = 95 if used >= 95 else 80 if used >= 80 else 0
+        if level and st.get("desgaste_avisado", {}).get(dev, 0) < level:
+            alert("disco", "high" if level == 95 else "medium",
+                  f"El SSD {dev} ha consumido el {used} % de su vida útil de escritura.",
+                  "Sigue funcionando, pero conviene tener copia externa al día (tisma-copias externo copiar) y "
+                  "planear cambiarlo" + (" pronto." if level == 95 else "."))
+            st.setdefault("desgaste_avisado", {})[dev] = level
+            msgs.append(f"desgaste: {dev} {used} %")
     ras = ras_counts(run)
     prev = st.get("ras", {})
     for kind, n in ras.items():

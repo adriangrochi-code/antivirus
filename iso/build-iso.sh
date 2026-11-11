@@ -204,6 +204,8 @@ in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-cop
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
 in_chroot systemctl enable tisma-drivers.timer 2>/dev/null || true
+# TRIM semanal de todos los SSD (incluido ext4, que ya no usa «discard» síncrono)
+in_chroot systemctl enable fstrim.timer 2>/dev/null || log "AVISO: sin fstrim.timer"
 # Servicio del análisis dentro de la VM de Escudo (inerte salvo con tisma.detonar en el arranque)
 in_chroot systemctl enable tisma-detonar 2>/dev/null || true
 # Imagen de la máquina virtual de análisis (make vm-detonacion): sin ella Escudo analiza en sandbox
