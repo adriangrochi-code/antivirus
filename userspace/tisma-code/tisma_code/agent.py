@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from . import contexto, harness, memory, review, tools
+from . import contexto, harness, kits, memory, review, tools
 from . import devtools
 from .docs import DocSpace
 
@@ -137,7 +137,8 @@ class Session:
                 self.especialistas = Pool(llm)
             except Exception as e:  # noqa: BLE001 (configuración no válida: se avisa y se sigue sin ellos)
                 self.emit("info", message=f"Especialistas desactivados: {e}")
-        self.schemas = list(tools.TOOL_SCHEMAS)
+        self.schemas = list(tools.TOOL_SCHEMAS) + [kits.SCHEMA]
+        self.kits: set[str] = set()           # kits de herramientas activos en la tarea actual
         if self.especialistas and self.especialistas.specs:
             from .especialistas import SCHEMAS as ESP_SCHEMAS
             self.schemas += ESP_SCHEMAS
@@ -211,7 +212,7 @@ class Session:
         if self.especialistas:
             self.especialistas.close()
         self.especialistas = Pool(self.llm)
-        self.schemas = list(tools.TOOL_SCHEMAS) + (ESP_SCHEMAS if self.especialistas.specs else [])
+        self.schemas = list(tools.TOOL_SCHEMAS) + [kits.SCHEMA] + (ESP_SCHEMAS if self.especialistas.specs else [])
         self.tool_names = {t["function"]["name"] for t in self.schemas}
         note = self.especialistas.describe()
         if note and "especialista_buscar" not in self.messages[0]["content"]:
@@ -333,6 +334,10 @@ class Session:
         if self.especialistas:
             extra += self.especialistas.hint(text)
         self._task_start = len(self.messages)
+        self.kits = kits.from_text(text)
+        if not self._originals and any(k in self.kits for k in ("calculo", "ingenieria")):
+            self.kits.add("documentos")
+        extra += kits.describe(self.kits, self.context_tokens)
         self.messages.append({"role": "user", "content": text + harness.hypothesis_note(text) + extra})
         self._evidence = set()
         if experience:
@@ -503,7 +508,7 @@ class Session:
                 return ""
             self._maybe_compact()
             self.emit("thinking", model=self.current.name)
-            msg = self._call_llm(self.messages, self.schemas)
+            msg = self._call_llm(self.messages, kits.visible(self.schemas, self.kits, self.context_tokens))
             self.stats["steps"] += 1
             content = msg.get("content") or ""
             calls = msg.get("tool_calls") or []
@@ -607,6 +612,19 @@ class Session:
         args, err = harness.normalize_arguments(fn.get("arguments"))
         if err:
             return reply("Error: " + err, False)
+        if name == "herramientas":
+            kit = str(args.get("kit", ""))
+            if kit != "todos" and kit not in kits.KITS:
+                return reply(f"Error: kit desconocido. Hay: {', '.join(kits.KITS)}, todos", False, args)
+            self.kits.add(kit)
+            names = sorted(set().union(*(v["tools"] for v in kits.KITS.values())) if kit == "todos"
+                           else kits.KITS[kit]["tools"])
+            descs = {t["function"]["name"]: t["function"]["description"][:160] for t in self.schemas}
+            return reply("Kit activado. Ya puedes usar:\n" + "\n".join(f"- {n}: {descs.get(n, '')}" for n in names
+                                                                         if n in self.tool_names), True, args)
+        k = kits.kit_of(name)
+        if k and k not in self.kits:
+            self.kits.add(k)                       # la llamó sin tenerla a la vista: se ejecuta y queda activa
         if self._loops.check(name, args):
             return reply("Aviso: es la tercera vez seguida que haces exactamente esta llamada. "
                          "Cambia de enfoque: lee otro archivo, revisa el error o pregunta al usuario.", False, args)
