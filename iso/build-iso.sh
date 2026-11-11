@@ -162,6 +162,10 @@ if ! in_chroot apt-get -o APT::Update::Error-Mode=any update -q; then
         die "no se pudieron leer los repositorios de Debian"
     fi
 fi
+# Todas las correcciones de seguridad publicadas, también en lo que instaló debootstrap: sin esto, apt, vim y
+# demás paquetes base salían con la versión del lanzamiento de trixie aunque trixie-security tuviera el arreglo
+# (el sistema instalado se ponía al día después, pero la ISO y la sesión live llevaban fallos conocidos)
+in_chroot apt-get -y -q -o Dpkg::Options::=--force-confold full-upgrade || die "no se pudo actualizar el sistema base"
 
 # ---------------------------------------------------------------- 2. paquetes
 if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then

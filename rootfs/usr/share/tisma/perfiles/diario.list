@@ -1,2 +1,4 @@
 # Perfil «Uso diario» / «Estudio»: correo y finanzas personales (lo demás ya viene en la ISO)
 thunderbird thunderbird-l10n-es-es skrooge
+# Escritorio remoto (cliente RDP/VNC y compartir la pantalla): fuera de la base por superficie de ataque
+krdc krfb

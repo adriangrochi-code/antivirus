@@ -84,7 +84,7 @@ def affecting(z: zipfile.ZipFile, version: str):
         d = json.loads(z.read(name))
         if d.get("withdrawn"):
             continue
-        hit, later_fix = False, None
+        hit, later_fix, fixed_here = False, None, False
         for a in d.get("affected", []):
             for r in a.get("ranges", []):
                 if r.get("type") != "ECOSYSTEM":
@@ -95,6 +95,13 @@ def affecting(z: zipfile.ZipFile, version: str):
                         intro = vtuple(e["introduced"])
                     if "fixed" in e:
                         fixed = vtuple(e["fixed"])
+                # Los rangos de kernel.org se SOLAPAN (uno por rama: «6.7→6.18.11», «6.13→6.19.1»…): si NUESTRA
+                # rama tiene la corrección en esta versión o antes, no nos afecta, diga lo que diga otro rango
+                if fixed is not None and fixed[:2] == K[:2]:
+                    if fixed <= K:
+                        fixed_here = True
+                    else:
+                        later_fix = fixed    # hay estable posterior de NUESTRA rama que lo corrige
                 if intro is None or intro > K:
                     continue
                 if fixed is not None and fixed <= K:
@@ -102,8 +109,8 @@ def affecting(z: zipfile.ZipFile, version: str):
                 if fixed is not None and fixed[:2] < K[:2]:
                     continue                 # corrección de una rama anterior que no es la nuestra
                 hit = True
-                if fixed is not None and fixed[:2] == K[:2]:
-                    later_fix = fixed        # hay estable posterior de NUESTRA rama que lo corrige
+        if fixed_here:
+            continue
         if hit:
             yield {"id": d["id"], "summary": (d.get("summary") or "").strip(),
                    "fixed_in": ".".join(map(str, later_fix)) if later_fix else None}

@@ -40,7 +40,9 @@ fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea
 # --- Aspecto: arranque con logo, iconos y tipografía modernos ---
 plymouth plymouth-themes plymouth-label papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
 # --- Más aplicaciones de uso común: vídeo, grabación, audio, descargas, PDF, escritorio remoto, cámara ---
-qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
+# (krdc/krfb, escritorio remoto: perfil «diario». FreeRDP tiene ~200 fallos abiertos sin corregir en trixie y
+# krfb es un SERVIDOR VNC: fuera de la base, solo quien lo use)
+qbittorrent pdfarranger kamoso kolourpaint kclock kweather
 kalk
 # --- Accesibilidad ---
 orca kmag kmousetool
