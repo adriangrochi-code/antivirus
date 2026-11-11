@@ -119,6 +119,7 @@ mkdir -p "$LIB/python" "$LIB/kernel"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
 # Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
 if "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then

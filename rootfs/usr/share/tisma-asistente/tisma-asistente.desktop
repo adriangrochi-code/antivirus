@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=TISMA Asistente
+Comment=Doble palmada para empezar a trabajar (voz y audio procesados en tu equipo)
+Exec=tisma-asistente escuchar
+Icon=tisma
+X-KDE-autostart-phase=2

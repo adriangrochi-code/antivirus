@@ -1,0 +1,7 @@
+[Unit]
+Description=Centinela - perfil de potencia %i
+
+[Service]
+Type=oneshot
+# Solo se aceptan los tres perfiles conocidos (centinela valida el argumento)
+ExecStart=/usr/bin/centinela power %i
