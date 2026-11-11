@@ -98,3 +98,37 @@ def test_first_login_shows_once_even_if_closed(tmp_path, monkeypatch):
         server.main(["--si-primera-vez", "--no-browser"])          # primera vez: se abre
     assert server.read_conf()["mostrada"] is True
     assert server.main(["--si-primera-vez"]) == 0                  # cerrada con la X: no vuelve en cada inicio
+
+
+def test_profile_apps_install_with_pkexec_and_report_progress(srv, monkeypatch, tmp_path):
+    port, calls = srv
+    estado = tmp_path / "estado.json"
+    monkeypatch.setattr(server, "PERFIL_ESTADO", estado)
+    monkeypatch.setattr(server, "INSTALANDO", {})
+
+    class P:
+        rc = None
+
+        def poll(self):
+            return self.rc
+    proc = P()
+    monkeypatch.setattr(server, "POPEN", lambda argv, **k: calls.append(argv) or proc)
+    monkeypatch.setattr(server, "live_session", lambda: False)
+    assert req(port, "POST", "/api/instalar", {"perfil": "juegos; rm -rf /"})[0] == 400
+    assert req(port, "GET", "/api/faltan?perfil=../x")[0] == 400
+    assert json.loads(req(port, "GET", "/api/instalacion")[1])["fase"] == "ninguna"
+    assert json.loads(req(port, "POST", "/api/instalar", {"perfil": "juegos"})[1])["ok"] is True
+    assert ["pkexec", "tisma-perfil", "instalar", "juegos"] in calls
+    assert json.loads(req(port, "POST", "/api/instalar", {"perfil": "diario"})[1])["ok"] is False   # una a la vez
+    st = json.loads(req(port, "GET", "/api/instalacion")[1])
+    assert st["fase"] == "esperando permiso" and st["activo"] is True
+    import time as _t
+    estado.write_text(json.dumps({"fase": "instalando", "inicio": _t.time(), "paquetes": 17, "ok": None}))
+    st = json.loads(req(port, "GET", "/api/instalacion")[1])
+    assert st["fase"] == "instalando" and st["paquetes"] == 17
+    proc.rc = 126                                                        # cerró la ventana de contraseña
+    estado.unlink()
+    assert json.loads(req(port, "GET", "/api/instalacion")[1])["fase"] == "cancelado"
+    monkeypatch.setattr(server, "live_session", lambda: True)            # live: no se instala en la RAM
+    r = json.loads(req(port, "POST", "/api/instalar", {"perfil": "diario"})[1])
+    assert r["ok"] is False and "live" in r["error"]

@@ -1,0 +1,12 @@
+# Perfil «Ingeniería y diseño»: CAD, electrónica, cálculo, simulación, impresión 3D e informes.
+# (Lo más pesado —OpenFOAM, ParaView, FEniCSx— sigue aparte: centinela-apps simulacion)
+freecad kicad openscad librecad gmsh ngspice
+octave gnuplot wxmaxima r-base-core
+python3-pandas python3-z3 jupyter-notebook
+python3-gmsh python3-meshio python3-trimesh python3-ezdxf python3-networkx python3-uncertainties
+gnucap yosys iverilog verilator
+python3-highspy python3-pulp coinor-cbc glpk-utils
+pandoc lmodern texlive-latex-recommended prusa-slicer
+inkscape blender
+# Componentes desde GitHub (versión y SHA-256 fijados): Craft Anything, CAD por código para TISMA Code
+@craft-anything

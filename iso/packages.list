@@ -1,5 +1,8 @@
 # ===== TISMA OS: paquetes de la imagen (Debian trixie) =====
 # Los paquetes que no existan en el repositorio se omiten con un aviso.
+# Solo la BASE: lo que no todo el mundo usa (ingeniería, creación, juegos, programación…) está en
+# rootfs/usr/share/tisma/perfiles/*.list y se instala al elegir el perfil en la Bienvenida (tisma-perfil), desde
+# los repositorios firmados de Debian. TISMA_ISO_COMPLETA=1 lo mete todo en la ISO (instalación sin conexión).
 
 # --- Base y sesión live ---
 systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
@@ -29,7 +32,6 @@ bluedevil kscreen kdeconnect partitionmanager filelight kfind kwalletmanager kin
 plasma-browser-integration kde-config-sddm plasma-disks plasma-vault kdialog
 libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-qt6
 libreoffice-l10n-es libreoffice-help-es hunspell-es hyphen-es mythes-es
-thunderbird thunderbird-l10n-es-es
 vlc haruna elisa ffmpeg libavcodec-extra gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
 gstreamer1.0-plugins-ugly gstreamer1.0-libav mesa-va-drivers intel-media-va-driver vainfo
 cups printer-driver-all hplip print-manager sane-utils skanpage
@@ -38,21 +40,19 @@ fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea f
 # --- Aspecto: arranque con logo, iconos y tipografía modernos ---
 plymouth plymouth-themes plymouth-label papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
 # --- Más aplicaciones de uso común: vídeo, grabación, audio, descargas, PDF, escritorio remoto, cámara ---
-kdenlive obs-studio audacity qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
-skrooge kalk font-manager
+qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
+kalk font-manager
 # --- Accesibilidad ---
 orca kmag kmousetool
 # --- Privacidad y cifrado: claves GPG con interfaz, quitar metadatos, limpiar rastros, Tor ---
 kleopatra mat2 metadata-cleaner bleachbit torbrowser-launcher
 # --- Diseño ---
-gimp inkscape krita blender
-firefox-esr firefox-esr-l10n-es-es
 # --- Tienda TISMA (Discover): apps de Debian, Flatpak/Flathub y firmware (fwupd); permisos de Flatpak ---
 plasma-discover plasma-discover-backend-flatpak plasma-discover-backend-fwupd flatpak kde-config-flatpak
 flatpak-xdg-utils xdg-desktop-portal-gtk
 # --- Entornos para ejecutar casi cualquier programa ---
 # AppImage (libfuse2), Java + JavaFX, .NET Framework (Mono), Node.js, Python (pip/pipx), Ruby, Qt5/Qt6/SDL
-libfuse2t64 default-jre openjfx mono-runtime nodejs npm python3-pip pipx ruby qtwayland5 qt6-wayland libsdl2-2.0-0
+libfuse2t64 default-jre mono-runtime nodejs npm python3-pip pipx ruby qtwayland5 qt6-wayland libsdl2-2.0-0
 # --- Drivers: detección de hardware, NVIDIA, impresoras y escáneres sin driver (IPP/eSCL) ---
 isenkram-cli apt-file nvidia-detect dkms ipp-usb sane-airscan system-config-printer
 firmware-linux-nonfree firmware-brcm80211 firmware-libertas firmware-ath9k-htc firmware-cirrus firmware-intel-sound
@@ -60,15 +60,13 @@ breeze-gtk-theme kde-config-gtk-style xdg-desktop-portal-kde
 fonts-noto-core fonts-noto-color-emoji
 pipewire pipewire-pulse wireplumber
 # --- Gráficos y firmware ---
-mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 libglx-mesa0:i386
+mesa-vulkan-drivers
 vulkan-tools mesa-utils
 firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics firmware-nvidia-graphics
 firmware-iwlwifi firmware-realtek firmware-atheros firmware-mediatek firmware-sof-signed
 intel-microcode amd64-microcode
 # --- Programas de Windows: Wine + Proton (Steam) ---
-wine wine32:i386 wine64 fonts-wine winetricks
 # --- Steam ---
-steam-installer steam-devices steam-libs gamemode mangohud mangohud:i386 libvulkan1:i386
 # --- Programas de Android: Waydroid (desde repo.waydro.id) ---
 lxc python3-gbinder
 # --- Herramientas de seguridad ---
@@ -77,30 +75,24 @@ opensnitch python3-opensnitch-ui keepassxc nmap
 # --- Tisma engine (laminador): dependencias de ejecución ---
 libgl1 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libssl3t64 unzip git
 # --- Ingeniería y ciencia ---
-freecad kicad openscad librecad gmsh ngspice
-octave gnuplot wxmaxima r-base-core
-python3-numpy python3-scipy python3-matplotlib python3-sympy python3-pandas python3-pint
-python3-z3 python3-yaml python3-pil jupyter-notebook python3-pytest
+python3-numpy python3-scipy
+python3-yaml python3-pil python3-pytest
 # Herramientas que TISMA Code usa con «ingenieria» (mallas, electrónica digital/analógica, optimización, informes).
 # Lo pesado (OpenFOAM, ParaView, FEniCSx, Netgen, PyVista/VTK) va aparte: «centinela-apps simulacion»
-python3-gmsh python3-meshio python3-trimesh python3-ezdxf python3-networkx python3-uncertainties
-gnucap yosys iverilog verilator
-python3-highspy python3-pulp coinor-cbc glpk-utils
-pandoc lmodern texlive-latex-recommended prusa-slicer
 # --- TISMA Code (IA local para programar) ---
+# Hope (cálculo exacto de TISMA Code) usa unidades (pint), gráficos (matplotlib) y álgebra simbólica (sympy)
+python3-pint python3-matplotlib python3-sympy
 bubblewrap strace xvfb
 # llama.cpp no está en trixie: se compila (iso/components/llama-cpp.sh) con estas dependencias
-cmake ninja-build glslc libvulkan-dev
 # planificadores sched_ext (iso/components/scx.sh)
-clang libbpf-dev libelf-dev zlib1g-dev pkg-config
 # --- TISMA Asistente (voz y audio 100 % locales) ---
 # (el paquete «piper» de Debian es un configurador de ratones, no la voz)
 espeak-ng pipewire-bin python3-cffi
 # --- TISMA Navegador, DNS cifrado con bloqueo de anuncios y VPN ---
 chromium chromium-l10n chromium-sandbox dnscrypt-proxy wireguard-tools network-manager-openvpn
 # --- Sandbox por app y herramientas del arnés de TISMA Code ---
-xdg-dbus-proxy ripgrep universal-ctags cppcheck shfmt clang-format clang-tidy shellcheck mypy bandit
-build-essential gdb git
+xdg-dbus-proxy ripgrep universal-ctags shfmt shellcheck
+build-essential git
 python3-yara yara python3-pefile libnotify-bin gpgv
 # Motor ML de Escudo (lightgbm y signify se instalan con iso/components/escudo-ml.sh)
 python3-sklearn python3-asn1crypto python3-oscrypto python3-certvalidator python3-typing-extensions libgomp1
@@ -108,5 +100,5 @@ python3-sklearn python3-asn1crypto python3-oscrypto python3-certvalidator python
 # cada 5 s (CPU y disco siempre despiertos)
 python3-watchdog python3-psutil libglib2.0-bin
 # --- REA (análisis estático) y OpenJarvis ---
-binutils tshark binwalk python3-venv cargo rustc libportaudio2
+binutils python3-venv libportaudio2
 glmark2-es2-wayland

@@ -1,0 +1,165 @@
+#!/usr/bin/python3 -I
+"""tisma-perfil: instala las aplicaciones de un perfil (las que no van en la ISO para que pese menos).
+
+  tisma-perfil listar                      perfiles y qué trae cada uno
+  tisma-perfil instalar <perfil> [...]     (administrador) los descarga de los repositorios firmados de Debian
+  tisma-perfil estado                      progreso de la última instalación (lo lee la Bienvenida)
+  tisma-perfil faltan <perfil> [...]       qué falta por instalar (JSON)
+
+Perfiles: /usr/share/tisma/perfiles/<nombre>.list. Solo se aceptan esos nombres: nada de lo que llega por línea
+de órdenes se pasa a apt salvo los paquetes de esas listas. Una línea «@nombre» es un componente que no está en
+Debian (/usr/lib/tisma/componentes/<nombre>.sh: descarga de su release oficial con SHA-256 fijado).
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+DIR = os.environ.get("TISMA_PERFILES", "/usr/share/tisma/perfiles")
+ESTADO = os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json")
+COMPONENTES = os.environ.get("TISMA_COMPONENTES", "/usr/lib/tisma/componentes")
+APT = ["apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confold", "-o", "Acquire::Retries=3"]
+
+
+def perfiles(d: str | None = None) -> dict[str, list[str]]:
+    """{perfil: [paquete, …, "@componente", …]} (solo nombres con forma válida)."""
+    d = d or DIR
+    out = {}
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return out
+    for f in names:
+        m = re.fullmatch(r"([a-z0-9-]+)\.list", f)
+        if not m:
+            continue
+        pkgs = []
+        for line in open(os.path.join(d, f), encoding="utf-8"):
+            pkgs += [w for w in re.sub(r"#.*", "", line).split() 
+                     if re.fullmatch(r"@?[a-z0-9][a-z0-9+.-]*(:i386)?", w)]
+        out[m.group(1)] = pkgs
+    return out
+
+
+def descripcion(nombre: str, d: str | None = None) -> str:
+    d = d or DIR
+    try:
+        first = open(os.path.join(d, f"{nombre}.list"), encoding="utf-8").readline()
+        return first.lstrip("# ").strip()
+    except OSError:
+        return ""
+
+
+def guardar(estado: dict) -> None:
+    os.makedirs(os.path.dirname(ESTADO), exist_ok=True)
+    tmp = ESTADO + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(estado, fh, ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, ESTADO)
+
+
+def componente_instalado(nombre: str) -> bool:
+    marca = {"rea": "/usr/lib/node_modules/rea-agents", "craft-anything": "/opt/craft-anything/VERSION",
+             "strata": "/opt/strata/VERSION"}.get(nombre)
+    return bool(marca) and os.path.exists(marca)
+
+
+def faltan(pkgs: list[str], run=subprocess.run) -> list[str]:
+    r = run(["dpkg-query", "-W", "-f=${Package}:${Architecture} ${db:Status-Abbrev}\n",
+             *dict.fromkeys(p.split(":")[0] for p in pkgs)], capture_output=True, text=True)
+    hechos = set()
+    for line in (r.stdout or "").splitlines():
+        pa, _, st = line.partition(" ")
+        if st.startswith("ii"):
+            name, _, arch = pa.partition(":")
+            hechos.add((name, arch))
+    out = []
+    for p in pkgs:
+        base, _, arch = p.partition(":")
+        if not any(n == base and (not arch or a == arch) for n, a in hechos):
+            out.append(p)
+    return out
+
+
+def instalar(nombres: list[str], run=subprocess.run) -> int:
+    disp = perfiles()
+    malos = [n for n in nombres if n not in disp]
+    if malos or not nombres:
+        print(f"Perfil desconocido: {', '.join(malos) or '(ninguno)'}. Hay: {', '.join(disp)}", file=sys.stderr)
+        return 2
+    todo = list(dict.fromkeys(p for n in nombres for p in disp[n]))
+    comps = [p[1:] for p in todo if p.startswith("@") and not componente_instalado(p[1:])]
+    pend = faltan([p for p in todo if not p.startswith("@")], run)
+    estado = {"perfiles": nombres, "paquetes": len(pend), "componentes": comps, "fase": "preparando",
+              "inicio": time.time(), "ok": None}
+    guardar(estado)
+    if not pend and not comps:
+        guardar({**estado, "fase": "listo", "ok": True, "mensaje": "Ya estaba todo instalado"})
+        print("Ya estaba todo instalado.")
+        return 0
+    if any(p.startswith(("steam-installer", "steam-libs")) for p in pend):
+        # Licencia de Steam aceptada de antemano (si no, apt se queda esperando una respuesta que nadie da)
+        run(["debconf-set-selections"], input="steam steam/question select I AGREE\nsteam steam/license note \"\"\n",
+            text=True)
+    if any(p.endswith(":i386") for p in pend):
+        run(["dpkg", "--add-architecture", "i386"])
+    env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+    errores = []
+    if pend:
+        guardar({**estado, "fase": "actualizando"})
+        run([*APT, "update"], env=env)
+        guardar({**estado, "fase": "instalando"})
+        r = run([*APT, "install", "--no-install-recommends", *pend], env=env, capture_output=True, text=True)
+        if r.returncode != 0:
+            errores.append((r.stderr or r.stdout)[-600:])
+    for c in comps:
+        guardar({**estado, "fase": f"descargando {c}"})
+        script = os.path.join(COMPONENTES, f"{c}.sh")
+        if not os.access(script, os.X_OK):
+            errores.append(f"falta el componente {c}")
+            continue
+        r = run([script, "/"], capture_output=True, text=True)
+        if r.returncode != 0:
+            errores.append(f"{c}: " + (r.stderr or r.stdout)[-300:])
+    ok = not errores
+    guardar({**estado, "fase": "listo" if ok else "error", "ok": ok, "fin": time.time(),
+             "mensaje": "\n".join(errores)})
+    print("Instalado." if ok else "No se pudo instalar:\n" + "\n".join(errores))
+    return 0 if ok else 1
+
+
+def main(argv: list[str]) -> int:
+    cmd = argv[0] if argv else "listar"
+    if cmd == "listar":
+        for n, pk in perfiles().items():
+            print(f"{n:14} {descripcion(n)}\n{'':14} {' '.join(pk)}")
+        return 0
+    if cmd == "estado":
+        try:
+            print(open(ESTADO, encoding="utf-8").read())
+        except OSError:
+            print("{}")
+        return 0
+    if cmd == "faltan":
+        disp = perfiles()
+        nombres = [n for n in argv[1:] if n in disp]
+        todo = list(dict.fromkeys(p for n in nombres for p in disp[n]))
+        print(json.dumps({"paquetes": faltan([p for p in todo if not p.startswith("@")]),
+                          "componentes": [p[1:] for p in todo if p.startswith("@") and not componente_instalado(p[1:])]}))
+        return 0
+    if cmd == "instalar":
+        if os.geteuid() != 0:
+            print("Necesita permisos de administrador: pkexec tisma-perfil instalar …", file=sys.stderr)
+            return 2
+        return instalar(argv[1:])
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

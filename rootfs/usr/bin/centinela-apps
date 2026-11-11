@@ -5,6 +5,9 @@
 #   centinela-apps android   Waydroid: descarga la imagen de Android y la inicializa
 #   centinela-apps solidcraft  SolidCraft (CAD paramétrico 3D) desde su release oficial, con SHA-256 fijado
 #   centinela-apps simulacion  OpenFOAM (fluidos), FEniCSx (elementos finitos), Netgen, ParaView y PyVista (~1 GB)
+#   centinela-apps strata    Strata (IA local para equipos con GPU dedicada y ≥32 GB), ~300 MB desde GitHub
+#   centinela-apps rea       REA (análisis de binarios para TISMA Code): Node.js + rea-agents, ~200 MB
+#   centinela-apps craft     Craft Anything (CAD por código para TISMA Code), ~35 MB desde GitHub
 #   centinela-apps estado    muestra qué está instalado
 set -euo pipefail
 
@@ -17,11 +20,13 @@ flatpak_ready() {
 case "${1:-estado}" in
 windows)
     need_root "$@"
+    # Steam, Wine, MangoHud y las bibliotecas de 32 bits: perfil «juegos» (no van en la ISO)
+    tisma-perfil instalar juegos
     flatpak_ready
     # Bottles: programas de Windows en "botellas" aisladas (cada una en su sandbox)
     # Heroic: tiendas Epic/GOG/Amazon usando Proton (umu) fuera de Steam
     flatpak install -y --system flathub com.usebottles.bottles com.heroicgameslauncher.hgl
-    echo "Steam ya viene instalado: actívalo en Steam > Ajustes > Compatibilidad > Steam Play (Proton)."
+    echo "Steam instalado: actívalo en Steam > Ajustes > Compatibilidad > Steam Play (Proton)."
     echo "Bottles y Heroic instalados. Los .exe se abren con doble clic mediante Wine."
     ;;
 android)
@@ -54,6 +59,16 @@ simulacion)
         netgen python3-netgen python3-pyvista python3-vtk9 mpi-default-bin
     echo "Simulación lista: TISMA Code ya puede usar ingenieria → openfoam, y FEniCSx/PyVista desde Python."
     ;;
+strata|rea|craft)
+    need_root "$@"
+    # No van en la ISO (pesan ~530 MB entre los tres): se descargan de su release oficial con la versión y el
+    # SHA-256 fijados por TISMA, con el mismo script que usa la construcción de la ISO.
+    script=/usr/lib/tisma/componentes/$1.sh
+    [[ $1 == craft ]] && script=/usr/lib/tisma/componentes/craft-anything.sh
+    [[ -x $script ]] || { echo "Falta $script"; exit 1; }
+    "$script" /
+    echo "Listo: TISMA Code ya puede usarlo (reinicia TISMA Code si estaba abierto)."
+    ;;
 estado)
     printf 'Wine:      %s\n' "$(wine --version 2>/dev/null || echo no instalado)"
     printf 'Steam:     %s\n' "$(command -v steam >/dev/null && echo instalado || echo no instalado)"
@@ -61,8 +76,11 @@ estado)
     printf 'Waydroid:  %s\n' "$(waydroid status 2>/dev/null | head -n1 || echo no instalado)"
     printf 'SolidCraft: %s\n' "$(dpkg-query -W -f '${Version}' solidcraft 2>/dev/null || echo no instalado)"
     printf 'Simulación: %s\n' "$(dpkg-query -W -f '${Version}' openfoam 2>/dev/null || echo no instalada)"
+    printf 'Strata:    %s\n' "$(cat /opt/strata/VERSION 2>/dev/null || echo 'no instalado (centinela-apps strata)')"
+    printf 'REA:       %s\n' "$([[ -e /usr/lib/node_modules/rea-agents ]] && echo instalado || echo 'no instalado (centinela-apps rea)')"
+    printf 'Craft:     %s\n' "$(cat /opt/craft-anything/VERSION 2>/dev/null || echo 'no instalado (centinela-apps craft)')"
     printf 'binderfs:  %s\n' "$(grep -q binder /proc/filesystems && echo soportado || echo NO soportado)"
     flatpak list --app --columns=application 2>/dev/null | grep -E 'bottles|heroic' || true
     ;;
-*) sed -n '2,8p' "$0"; exit 2 ;;
+*) sed -n '2,11p' "$0"; exit 2 ;;
 esac

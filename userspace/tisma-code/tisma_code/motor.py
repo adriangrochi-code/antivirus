@@ -457,7 +457,10 @@ def choose_engine(hw: dict, strata_alive: bool) -> dict:
     if st["ok"] and strata_installed():
         return {"motor": "strata", "motivo": "Este equipo puede con Strata: ábrelo (menú → Strata) para usarlo",
                 "abrir": True}
-    return {"motor": "llama.cpp", "motivo": st["motivo"] or "Strata no está instalado"}
+    if st["ok"]:
+        return {"motor": "llama.cpp", "motivo": "Este equipo puede con Strata (modelos más grandes): instálalo con "
+                "«sudo centinela-apps strata» (~300 MB). Mientras tanto, llama.cpp", "instalar": "strata"}
+    return {"motor": "llama.cpp", "motivo": st["motivo"]}
 
 
 # ---------------------------------------------------------------- terminal

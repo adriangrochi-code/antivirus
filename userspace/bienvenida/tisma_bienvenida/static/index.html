@@ -69,7 +69,7 @@ footer .sp{flex:1}
 .btn.p{background:var(--acc);border-color:var(--acc);color:var(--on-acc);box-shadow:0 8px 22px color-mix(in srgb,var(--acc) 40%,transparent)}
 .btn.p:hover{filter:brightness(1.08)}
 .btn.s{padding:8px 14px;font-weight:500;font-size:14px}
-.btn[hidden]{display:none}
+.btn[hidden],.panel[hidden]{display:none!important}
 .skip{color:var(--faint);font-size:14px;padding:8px}.skip:hover{color:var(--text)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;transition:.25s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%)}
@@ -118,6 +118,10 @@ footer .sp{flex:1}
       <h2>¿Para qué vas a usar el equipo?</h2>
       <p class="lead">Dejamos a mano las aplicaciones que más vas a usar y ajustamos la potencia. Todo lo demás sigue en el menú.</p>
       <div class="grid g3" id="perfiles"></div>
+      <div class="panel" id="instPanel" hidden style="margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px"><b id="instTit">Apps de este perfil</b><div class="muted" id="instTxt" style="margin-top:4px"></div></div>
+        <button class="btn s p" id="instBtn">Instalar ahora</button>
+      </div>
     </section>
 
     <section data-s="3">
@@ -216,6 +220,60 @@ function aplicarTema() {
     res(); }, 350); });
 }
 let temaP = Promise.resolve();
+// Las apps de cada perfil no vienen en la ISO: se descargan de los repositorios firmados de Debian al elegirlo
+let instT = null;
+async function revisarApps() {
+  const panel = $("#instPanel"), txt = $("#instTxt"), btn = $("#instBtn");
+  if (!st.perfil) return;
+  try {
+    const f = await api("/api/faltan?perfil=" + encodeURIComponent(st.perfil));
+    const n = f.paquetes + f.componentes;
+    if (f.sin_herramienta || (!n && !instT)) { panel.hidden = true; return; }
+    panel.hidden = false;
+    btn.hidden = false; btn.disabled = false;
+    if (st.live) {
+      txt.textContent = `Faltan ${n} programas de este perfil. En la sesión live se perderían al apagar: se instalan al elegir el perfil tras instalar TISMA OS.`;
+      btn.hidden = true;
+    } else {
+      txt.textContent = `Faltan ${n} programas de este perfil (no vienen en la ISO para que pese menos). Se descargan de los repositorios oficiales y firmados; tardará unos minutos según tu conexión.`;
+    }
+  } catch (e) { panel.hidden = true; }
+}
+async function instalarApps() {
+  const btn = $("#instBtn");
+  try {
+    const r = await api("/api/instalar", {perfil: st.perfil});
+    if (!r.ok) { toast(r.error); return; }
+    btn.disabled = true;
+    seguirInstalacion();
+  } catch (e) { toast(e.message); }
+}
+const FASES = {"esperando permiso": "Esperando tu contraseña de administrador…", "preparando": "Preparando…",
+  "actualizando": "Leyendo los repositorios…", "instalando": "Descargando e instalando…"};
+async function seguirInstalacion() {
+  clearTimeout(instT);
+  let r;
+  try { r = await api("/api/instalacion"); } catch (e) { instT = setTimeout(seguirInstalacion, 2000); return; }
+  const txt = $("#instTxt"), btn = $("#instBtn");
+  if (r.activo || !["listo", "error", "cancelado"].includes(r.fase)) {
+    txt.textContent = (FASES[r.fase] || (r.fase.startsWith("descargando") ? "Descargando " + r.fase.slice(12) + "…" : r.fase)) +
+      (r.paquetes ? ` (${r.paquetes} paquetes)` : "");
+    instT = setTimeout(seguirInstalacion, 1500);
+    return;
+  }
+  instT = null;
+  btn.disabled = false;
+  if (r.fase === "listo") {
+    toast("Apps instaladas");
+    try { await api("/api/perfil", {perfil: st.perfil}); } catch (e) {}   // anclar las recién instaladas
+    $("#instPanel").hidden = true;
+  } else if (r.fase === "cancelado") {
+    txt.textContent = "Cancelado. Puedes instalarlas ahora o más tarde desde la Tienda.";
+  } else {
+    txt.textContent = "No se pudo instalar (¿hay conexión a Internet?). " + (r.mensaje || "");
+    btn.textContent = "Reintentar";
+  }
+}
 function flushTema() { if (temaT) { clearTimeout(temaT); temaT = null; return api("/api/tema", {modo: st.tema, acento: st.acento}).catch(() => {}); } return temaP; }
 async function cargarIA() {
   try {
@@ -255,7 +313,10 @@ async function terminar() {
     try { const r = await api("/api/perfil", {perfil: b.dataset.perfil}); st.perfil = b.dataset.perfil;
           toast(r.ok ? "Barra de tareas preparada" : "Perfil guardado (la barra se actualiza al reiniciar la sesión)"); }
     catch (e) { toast("No se pudo aplicar: " + e.message); }
+    revisarApps();
   });
+  $("#instBtn").onclick = instalarApps;
+  if (st.perfil) revisarApps();
   $$("[data-abrir]").forEach(b => b.onclick = async () => { try { await api("/api/abrir", {app: b.dataset.abrir}); toast("Abriendo…"); } catch (e) { toast(e.message); } });
   $$(".step").forEach(s => s.onclick = () => ir(+s.dataset.i));
   $("#sig").onclick = () => paso === N - 1 ? terminar() : ir(paso + 1);

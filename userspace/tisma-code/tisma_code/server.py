@@ -92,6 +92,8 @@ class App:
             return
         self.config.update({"endpoint": ep, "model": Path(rec["path"]).name})
         self.save_config()
+        if eng.get("instalar"):
+            self.push({"type": "info", "message": eng["motivo"]})
         c = self.server.config or {}
         self.push({"type": "info", "message": f"Motor TISMA: llama.cpp con {Path(rec['path']).name} — "
                    f"{c.get('motivo', '')}" + ("" if c.get("medido") else

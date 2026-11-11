@@ -15,7 +15,9 @@
 #            TISMA_BORRAR_CHROOT=1 (borra el chroot tras crear el squashfs: para discos justos; la build
 #            siguiente empieza de cero),
 #            TISMA_SIN_COMPILAR=1 (escritorio completo, pero sin compilar componentes externos dentro de la
-#            build: llama.cpp, hardened_malloc, sched_ext, ML de Escudo; para CI y entornos restringidos),
+#            build: hardened_malloc, sched_ext, ML de Escudo; para CI y entornos restringidos),
+#            TISMA_ISO_COMPLETA=1 (mete también las apps de todos los perfiles y Strata/REA/Craft: ISO de
+#            ~5-6 GB para instalar sin conexión; por defecto se descargan al elegir el perfil o al usarlos),
 #            TISMA_BUILD_CA=<archivo.pem> (CA de un proxy HTTPS corporativo: solo durante la build, no va en la ISO)
 set -euo pipefail
 
@@ -41,6 +43,21 @@ compgen -G "$BUILD_DIR/kernel-debs/linux-image-*.deb" >/dev/null \
 
 in_chroot() { chroot "$CHROOT" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
                   LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive "$@"; }
+
+# Paquetes de una lista (packages.list o un perfil de rootfs/usr/share/tisma/perfiles): sin comentarios ni
+# componentes «@nombre» (esos se descargan aparte)
+lista_paquetes() { sed 's/#.*//' "$@" | tr -s ' \t' '\n' | sed '/^$/d; /^@/d'; }
+# Instala los que existan en el repositorio y avisa de los que no
+instalar_paquetes() {
+    local p ok=()
+    for p in "$@"; do
+        if in_chroot apt-cache show "$p" >/dev/null 2>&1; then ok+=("$p")
+        else log "AVISO: paquete no disponible, se omite: $p"; fi
+    done
+    log "Instalando ${#ok[@]} paquetes"
+    ((${#ok[@]} == 0)) || in_chroot apt-get install -y -q --no-install-recommends "${ok[@]}"
+}
+PERFILES="$REPO/rootfs/usr/share/tisma/perfiles"
 
 MOUNTS=()
 mount_chroot() {
@@ -152,15 +169,11 @@ if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then
                      echo "locales locales/locales_to_be_generated multiselect es_ES.UTF-8 UTF-8, en_US.UTF-8 UTF-8" | debconf-set-selections'
     LISTA="$HERE/packages.list"
     [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]] && LISTA="$HERE/packages-minima.list"
-    mapfile -t wanted < <(sed 's/#.*//' "$LISTA" | tr -s ' \t' '\n' | sed '/^$/d')
+    mapfile -t wanted < <(lista_paquetes "$LISTA")
     [[ $WAYDROID == 1 ]] && wanted+=(waydroid)
-    pkgs=()
-    for p in "${wanted[@]}"; do
-        if in_chroot apt-cache show "$p" >/dev/null 2>&1; then pkgs+=("$p")
-        else log "AVISO: paquete no disponible, se omite: $p"; fi
-    done
-    log "Instalando ${#pkgs[@]} paquetes"
-    in_chroot apt-get install -y -q --no-install-recommends "${pkgs[@]}"
+    # TISMA_ISO_COMPLETA=1: también las apps de todos los perfiles (para instalar sin conexión)
+    if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then mapfile -t -O "${#wanted[@]}" wanted < <(lista_paquetes "$PERFILES"/*.list); fi
+    instalar_paquetes "${wanted[@]}"
     # Recomendados solo del escritorio (traducciones, iconos, applets)
     [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]] || in_chroot apt-get install -y -q kde-plasma-desktop
     touch "$CHROOT/.packages-ok"
@@ -172,11 +185,15 @@ rm -rf "$CHROOT/tmp/kernel-debs" && mkdir -p "$CHROOT/tmp/kernel-debs"
 cp "$BUILD_DIR"/kernel-debs/linux-image-*.deb "$CHROOT/tmp/kernel-debs/"
 find "$CHROOT/tmp/kernel-debs" -name '*-dbg_*' -delete
 in_chroot sh -c 'dpkg -i /tmp/kernel-debs/*.deb'
-# Fuera los kernels genéricos de Debian si alguno entró como dependencia
-# shellcheck disable=SC2016  # ${Package} es formato de dpkg-query, no de bash
-mapfile -t debian_kernels < <(in_chroot dpkg-query -W -f='${Package}\n' 'linux-image-*' 2>/dev/null \
-                               | grep -v centinela | grep -v -- '-dbg' || true)
-if ((${#debian_kernels[@]})); then in_chroot apt-get purge -y -q "${debian_kernels[@]}"; fi
+# El kernel firmado de Debian (linux-image-amd64, backports) se QUEDA: es el que arranca con Secure Boot (live,
+# instalador y sistema instalado hasta registrar la clave TISMA). Antes se purgaba aquí y la ISO acababa
+# arrancando el kernel TISMA sin firmar, que el firmware rechaza con Secure Boot activado.
+# (La ISO mínima de prueba en QEMU arranca solo con el kernel TISMA.)
+# shellcheck disable=SC2016  # ${Status} es formato de dpkg-query, no de bash
+if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]] && ! in_chroot dpkg-query -W -f='${Status}' linux-image-amd64 2>/dev/null \
+        | grep -q "ok installed"; then
+    in_chroot apt-get install -y -q --no-install-recommends linux-image-amd64
+fi
 rm -rf "$CHROOT/tmp/kernel-debs"
 
 # ---------------------------------------------------------------- 4. capa del sistema
@@ -206,22 +223,38 @@ elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
 fi
+# Componentes que no están en Debian: sus scripts van también en la imagen para descargarlos al usarlos
+# (centinela-apps strata|rea|craft y los «@componente» de los perfiles), con la misma versión y SHA-256 fijados
+install -d -m 755 "$CHROOT/usr/lib/tisma/componentes"
+for c in strata rea craft-anything; do install -m 755 "$HERE/components/$c.sh" "$CHROOT/usr/lib/tisma/componentes/"; done
 if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
-# Aplicaciones: Tisma engine (laminador) y Strata (IA local)
+# Tisma engine (laminador) y llama.cpp (motor de TISMA Code en equipos sin GPU dedicada: build oficial, ~36 MB)
 "$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-}" \
     || log "AVISO: no se pudo instalar Tisma engine"
-"$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
-"$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
-"$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
+"$HERE/components/llama-cpp.sh" "$CHROOT" || log "AVISO: no se pudo instalar llama.cpp (TISMA Code usará Strata)"
+# Strata (~300 MB, solo útil con GPU dedicada y ≥32 GB), REA (~200 MB) y Craft (~35 MB): se descargan al
+# usarlos salvo en la ISO completa
+if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
+    "$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
+    "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
+    "$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
+fi
 if [[ "${TISMA_SIN_COMPILAR:-0}" == 1 ]]; then
-    log "TISMA_SIN_COMPILAR=1: sin llama.cpp, hardened_malloc, sched_ext, ML de Escudo, ruff ni OpenJarvis"
+    log "TISMA_SIN_COMPILAR=1: sin hardened_malloc, sched_ext, ML de Escudo, ruff ni OpenJarvis"
 else
+# Herramientas para compilar (perfil «programación»): se quitan después salvo en la ISO completa
+mapfile -t compilar < <(lista_paquetes "$PERFILES/programacion.list" | while read -r p; do
+    in_chroot dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
+instalar_paquetes "${compilar[@]}"
 "$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
-"$HERE/components/llama-cpp.sh" "$CHROOT" || log "AVISO: no se pudo compilar llama.cpp (TISMA Code usará Strata)"
 "$HERE/components/scx.sh" "$CHROOT" || log "AVISO: sin planificadores sched_ext (se usa el del kernel)"
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
+if [[ "${TISMA_ISO_COMPLETA:-0}" != 1 ]] && ((${#compilar[@]})); then
+    in_chroot apt-get purge -y -q "${compilar[@]}" || true
+    in_chroot apt-get autoremove --purge -y -q || true
+fi
 fi
 fi
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida

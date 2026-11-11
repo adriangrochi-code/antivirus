@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Comprueba que cada paquete de iso/packages.list existe en Debian (suite y arquitecturas indicadas).
+"""Comprueba que cada paquete de iso/packages.list y de los perfiles (rootfs/usr/share/tisma/perfiles) existe en Debian (suite y arquitecturas indicadas).
 Evita construir una imagen a la que le faltan piezas en silencio (build-iso.sh omite los que no encuentra).
 Uso: check-packages.py [mirror] [suite]"""
 import lzma
@@ -22,8 +22,11 @@ for comp in ("main", "contrib", "non-free", "non-free-firmware"):
         for m in re.finditer(r"^(?:Package|Provides): (.+)$", data, re.M):
             for x in m.group(1).split(","):
                 names.setdefault(arch, set()).add(x.strip().split()[0])
-pkgs = [w for line in (Path(__file__).parent / "packages.list").read_text().splitlines()
-        if not line.startswith("#") for w in line.split()]
+HERE = Path(__file__).resolve().parent
+listas = [HERE / "packages.list", *sorted((HERE.parent / "rootfs/usr/share/tisma/perfiles").glob("*.list"))]
+# «@nombre» = componente descargado de su release (no es de Debian)
+pkgs = list(dict.fromkeys(w for f in listas for line in f.read_text().splitlines()
+                          for w in line.split("#")[0].split() if not w.startswith("@")))
 missing = []
 for p in pkgs:
     name, _, arch = p.partition(":")

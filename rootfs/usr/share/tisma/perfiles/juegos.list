@@ -1,0 +1,5 @@
+# Perfil «Juegos y creación»: Steam con Proton, programas de Windows (Wine) y sus librerías de 32 bits
+steam-installer steam-devices steam-libs gamemode mangohud mangohud:i386 libvulkan1:i386
+mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 libglx-mesa0:i386
+wine wine32:i386 wine64 fonts-wine winetricks
+kdenlive obs-studio audacity

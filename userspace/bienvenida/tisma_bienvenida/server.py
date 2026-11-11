@@ -52,20 +52,26 @@ APP = {
 }
 PERFILES = {
     "diario": {"nombre": "Uso diario", "desc": "Navegar, correo, documentos, fotos y música",
-               "apps": ["archivos", "navegador", "correo", "oficina", "musica", "tienda"], "potencia": "equilibrado"},
+               "apps": ["archivos", "navegador", "correo", "oficina", "musica", "tienda"], "potencia": "equilibrado",
+               "listas": ["diario"]},
     "estudio": {"nombre": "Estudio y oficina", "desc": "Documentos, PDF, presentaciones y la IA para estudiar",
-                "apps": ["archivos", "navegador", "texto", "pdf", "code", "tienda"], "potencia": "equilibrado"},
+                "apps": ["archivos", "navegador", "texto", "pdf", "code", "tienda"], "potencia": "equilibrado",
+                "listas": ["estudio"]},
     "ingenieria": {"nombre": "Ingeniería y diseño", "desc": "CAD, electrónica, simulación, diseño gráfico y 3D",
                    "apps": ["archivos", "navegador", "freecad", "kicad", "openscad", "laminador", "blender", "code"],
-                   "potencia": "rendimiento"},
+                   "potencia": "rendimiento", "listas": ["ingenieria"]},
     "programacion": {"nombre": "Programación", "desc": "Terminal, editor y agentes de IA locales",
                      "apps": ["archivos", "navegador", "terminal", "kate", "code", "strata"],
-                     "potencia": "equilibrado"},
+                     "potencia": "equilibrado", "listas": ["programacion"]},
     "juegos": {"nombre": "Juegos y creación", "desc": "Steam, grabación y edición de vídeo, rendimiento",
-               "apps": ["archivos", "navegador", "steam", "obs", "kdenlive", "rendimiento"], "potencia": "rendimiento"},
+               "apps": ["archivos", "navegador", "steam", "obs", "kdenlive", "rendimiento"], "potencia": "rendimiento",
+               "listas": ["juegos"]},
 }
 ABRIR = {"code": ["tisma-code"], "tienda": ["plasma-discover"], "rendimiento": ["tisma-rendimiento"],
          "ajustes": ["systemsettings"]}
+# Las apps de cada perfil no van en la ISO (pesaría ~6 GB): se instalan aquí con tisma-perfil (pkexec)
+PERFIL_ESTADO = Path(os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json"))
+INSTALANDO: dict = {}             # {"proc": Popen, "perfil": str, "inicio": float}
 SERVICIOS = {"escudo": "Antivirus y cortafuegos (Escudo)", "nftables": "Cortafuegos del sistema",
              "usbguard": "Bloqueo de USB desconocidos", "tisma-copias-instantanea.timer": "Instantáneas diarias del sistema",
              "dnscrypt-proxy": "DNS cifrado y sin rastreadores", "apparmor": "Aislamiento de programas (AppArmor)"}
@@ -158,6 +164,56 @@ def apply_profile(perfil: str) -> dict:
     return {"ok": ok1, "lanzadores": launchers, "potencia": ok2, "salida": out1}
 
 
+def live_session() -> bool:
+    """Sesión live (USB): lo instalado iría a la RAM y se perdería al apagar."""
+    try:
+        return Path("/run/live/medium").exists() or "boot=live" in Path("/proc/cmdline").read_text().split()
+    except OSError:
+        return False
+
+
+def missing_for(perfil: str) -> dict:
+    """Lo que falta de las apps del perfil (paquetes de Debian y componentes de GitHub)."""
+    try:
+        r = RUN(["tisma-perfil", "faltan", *PERFILES[perfil]["listas"]], capture_output=True, text=True, timeout=30)
+        d = json.loads(r.stdout or "{}")
+        return {"paquetes": len(d.get("paquetes", [])), "componentes": len(d.get("componentes", []))}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {"paquetes": 0, "componentes": 0, "sin_herramienta": True}
+
+
+def start_install(perfil: str) -> dict:
+    proc = INSTALANDO.get("proc")
+    if proc is not None and proc.poll() is None:
+        return {"ok": False, "error": "Ya hay una instalación en curso"}
+    if live_session():
+        return {"ok": False, "error": "En la sesión live se perdería al apagar: instala TISMA OS en el disco y "
+                                       "elige el perfil en el primer inicio"}
+    INSTALANDO.update(perfil=perfil, inicio=time.time(), proc=POPEN(
+        ["pkexec", "tisma-perfil", "instalar", *PERFILES[perfil]["listas"]],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
+    return {"ok": True}
+
+
+def install_state() -> dict:
+    proc = INSTALANDO.get("proc")
+    if proc is None:
+        return {"fase": "ninguna"}
+    try:
+        st = json.loads(PERFIL_ESTADO.read_text())
+        if st.get("inicio", 0) < INSTALANDO["inicio"] - 5:
+            st = {}                                 # de una instalación anterior
+    except (OSError, ValueError):
+        st = {}
+    rc = proc.poll()
+    if rc is not None and not st.get("fase") in ("listo", "error"):
+        # pkexec: 126 = no autorizado / ventana cerrada, 127 = no se pudo autenticar
+        st = {"fase": "cancelado" if rc in (126, 127) else "error", "ok": False,
+              "mensaje": "" if rc in (126, 127) else f"terminó con código {rc}"}
+    return {"perfil": INSTALANDO["perfil"], "fase": st.get("fase", "esperando permiso"), "ok": st.get("ok"),
+            "paquetes": st.get("paquetes"), "mensaje": (st.get("mensaje") or "")[-300:], "activo": rc is None}
+
+
 def security_state() -> list[dict]:
     rows = []
     for unit, label in SERVICIOS.items():
@@ -245,7 +301,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
                                     "perfil": c.get("perfil", ""), "acentos": ACENTOS,
                                     "perfiles": {k: {"nombre": v["nombre"], "desc": v["desc"]} for k, v in PERFILES.items()},
-                                    "usuario": os.environ.get("USER", "")})
+                                    "usuario": os.environ.get("USER", ""), "live": live_session()})
+        if u.path == "/api/faltan":
+            if q.get("perfil") not in PERFILES:
+                return self._send(400, {"error": "perfil inválido"})
+            return self._send(200, missing_for(q["perfil"]))
+        if u.path == "/api/instalacion":
+            return self._send(200, install_state())
         if u.path == "/api/ia":
             return self._send(200, ai_state())
         if u.path == "/api/seguridad":
@@ -269,6 +331,10 @@ class Handler(BaseHTTPRequestHandler):
             if b.get("perfil") not in PERFILES:
                 return self._send(400, {"error": "perfil inválido"})
             return self._send(200, apply_profile(b["perfil"]))
+        if u.path == "/api/instalar":
+            if b.get("perfil") not in PERFILES:
+                return self._send(400, {"error": "perfil inválido"})
+            return self._send(200, start_install(b["perfil"]))
         if u.path == "/api/abrir":
             argv = ABRIR.get(b.get("app"))
             if not argv or not shutil.which(argv[0]):
