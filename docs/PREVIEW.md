@@ -19,9 +19,17 @@ ni para equipos con datos importantes sin copia.**
 - **IA local (TISMA Code)**: agente de programación, cálculo, CAD y simulación con el motor que mejor rinde en
   tu equipo (Strata o llama.cpp), herramientas por kits, cuaderno de trabajo y reinicio limpio del contexto
   para modelos pequeños, herramientas de ingeniería con plantillas y comprobación de resultados.
-- **Aplicaciones**: ofimática, correo, multimedia, edición de vídeo y audio, grabación, diseño (GIMP, Inkscape,
-  Krita, Blender), ingeniería (FreeCAD, KiCad, OpenSCAD, gmsh, ngspice, Octave…), Steam y Wine, Tienda con
-  Flathub, y Mesa y firmware recientes (backports de Debian).
+- **Aplicaciones**: en la ISO, la base (ofimática, multimedia, navegador, PDF, escritorio remoto, Tienda con
+  Flathub, Mesa y firmware recientes de backports). El resto se descarga **al elegir tu perfil** en la
+  Bienvenida (o con `sudo tisma-perfil instalar <perfil>`), desde los repositorios firmados de Debian:
+  - *diario / estudio*: correo (Thunderbird), finanzas, informes con LaTeX;
+  - *creación*: GIMP, Inkscape, Krita, Blender, Kdenlive, OBS, Audacity;
+  - *ingeniería*: FreeCAD, KiCad, OpenSCAD, gmsh, ngspice, Octave, Verilog, PrusaSlicer, Jupyter…;
+  - *juegos*: Steam, Wine, MangoHud, GameMode y las bibliotecas de 32 bits;
+  - *programación*: compiladores (clang, Rust), linters, Wireshark CLI, REA.
+
+  Strata (solo útil con GPU dedicada y ≥32 GB), REA y Craft Anything se descargan de GitHub con versión y
+  SHA-256 fijados (`sudo centinela-apps strata|rea|craft`); TISMA Code los propone cuando sirven.
 
 ## Cómo probarla
 
@@ -54,10 +62,14 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
   se actualizan solas en un sistema instalado; Debian (incluidas las de seguridad) sí. Llegará en una versión
   posterior con paquetes .deb y un repositorio firmado.
 - **Solo en español**.
-- **Kernel**: la ISO de prueba en máquina virtual usa el kernel `minimal`; para hardware real se construye con
-  `make kernel` (perfil `generic`, todos los drivers).
-- **Componentes compilados**: una ISO construida con `TISMA_SIN_COMPILAR=1` no trae llama.cpp (TISMA Code
-  solo podrá usar Strata), hardened_malloc, planificadores sched_ext ni el motor ML de Escudo.
+- **Kernel TISMA**: esta preview trae el kernel TISMA `minimal` (pensado para máquinas virtuales) como
+  opción; en hardware real arranca el kernel firmado de Debian, con todos los drivers. El kernel TISMA
+  completo (`make kernel`, perfil `generic`) llegará en la siguiente.
+- **Apps por perfil**: necesitan conexión a Internet para descargarse (la ISO pesa mucho menos a cambio). En
+  la sesión live no se instalan (irían a la RAM): se eligen tras instalar en el disco. Para instalar sin
+  conexión se construye la ISO con `TISMA_ISO_COMPLETA=1`.
+- **Componentes compilados**: una ISO construida con `TISMA_SIN_COMPILAR=1` no trae hardened_malloc,
+  planificadores sched_ext ni el motor ML de Escudo. llama.cpp sí (build oficial con Vulkan y todas las CPU).
 - Sin probar todavía en hardware real: la compatibilidad gráfica (cambio a amdgpu en GCN 1/2), la compresión
   de memoria de apps (cgroups reales), Waydroid, Proton y los límites de potencia.
 

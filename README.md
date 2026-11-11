@@ -65,8 +65,18 @@ está conectado. El instalador usa btrfs con subvolúmenes `@`, `@home`, `@snaps
 
 ## Programas de Windows y Android
 
-- **Windows**: Wine + Steam (Proton), con NTSYNC en el kernel. `centinela-apps windows` instala Bottles y Heroic.
+- **Windows**: Wine + Steam (Proton), con NTSYNC en el kernel. `centinela-apps windows` instala el perfil de
+  juegos (Steam, Wine, 32 bits) y Bottles y Heroic.
 - **Android**: Waydroid (contenedor LXC, sin emular CPU). `centinela-apps android` descarga e inicia la imagen.
+
+## Aplicaciones por perfil (ISO liviana)
+
+La ISO trae la base (escritorio, ofimática, multimedia, navegador, seguridad, TISMA Code con llama.cpp). Las
+apps de cada uso se descargan al elegir el perfil en la Bienvenida o con `sudo tisma-perfil instalar <perfil>`,
+desde los repositorios firmados de Debian: `diario`, `estudio`, `creacion`, `ingenieria`, `juegos`,
+`programacion` (listas en `rootfs/usr/share/tisma/perfiles/`). Strata, REA y Craft Anything se descargan de
+su release de GitHub con SHA-256 fijado: `sudo centinela-apps strata|rea|craft`. Para instalar sin conexión,
+`TISMA_ISO_COMPLETA=1 make iso` lo mete todo en la ISO.
 
 ## TISMA Code
 
@@ -109,7 +119,7 @@ make kernel-minimal     # kernel para VMs (rápido) — o `make kernel` para har
 make qemu-test          # arranca el kernel y comprueba LSMs, lockdown, firmas, PSI, binder, sched_ext
 make cve-check          # CVEs abiertos que afectan a este kernel + fragmento de mitigación
 make test               # pruebas de centinela, escudo, TISMA Code y asistente
-make iso                # ISO híbrida BIOS/UEFI (root; HOPE_SRC=ruta para incluir Hope)
+make iso                # ISO híbrida BIOS/UEFI con Secure Boot (root; HOPE_SRC=ruta para incluir Hope)
 ```
 
 Requisitos de la máquina de build (Debian/Ubuntu): `build-essential bc flex bison libssl-dev libelf-dev
@@ -118,11 +128,14 @@ librsvg2-bin rsync cpio zstd qemu-system-x86 busybox-static git python3-pip`.
 
 ## Estado
 
-Probado: compilación del kernel `minimal` y arranque en QEMU con todas las protecciones activas, comprobador
-de CVEs, detección de hardware y benchmarks, planes de ajuste, Escudo, TISMA Code (contra un motor simulado),
-asistente (detector de palmadas con audio sintético) y las 35 pruebas automáticas.
+**TISMA OS 0.9 Preview**: ver [docs/PREVIEW.md](docs/PREVIEW.md) (qué trae, cómo probarla y limitaciones).
 
-Pendiente de probar: la **ISO completa** (no se construyó todavía), el perfil `generic` del kernel (tarda
-horas en compilar), el kernel a medida en hardware real, Waydroid/Proton/Strata en hardware real y los
-límites de potencia en equipos con RAPL. **Secure Boot** todavía no está soportado (falta shim + MOK):
-hay que desactivarlo para arrancar la ISO.
+Probado: compilación del kernel `minimal` y arranque en QEMU con todas las protecciones activas, la ISO
+completa arrancando en QEMU con **Secure Boot** (shim → GRUB → kernel firmados), comprobador de CVEs,
+detección de hardware y benchmarks, planes de ajuste, Escudo, TISMA Code (contra un motor simulado), las
+herramientas de ingeniería con sus plantillas, la Bienvenida en un navegador real y ~225 pruebas automáticas
+(`make test`, también en la CI de GitHub).
+
+Pendiente de probar: el perfil `generic` del kernel (tarda horas en compilar), el kernel a medida en hardware
+real, Waydroid/Proton/Strata en hardware real, la compatibilidad gráfica con GPU AMD GCN 1/2 y los límites de
+potencia en equipos con RAPL.
