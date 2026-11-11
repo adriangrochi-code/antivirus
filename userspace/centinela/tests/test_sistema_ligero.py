@@ -71,3 +71,10 @@ def test_group_a_hardening_is_in_place():
     assert "Priority: 128" in (pc / "tisma-faillock-fallo").read_text()       # después de pam_unix (256)
     assert "pam_faillock.so authsucc" in (pc / "tisma-faillock-ok").read_text()
     assert ini(SD / "tisma-montajes-seguros.service")["Service"]["ExecStart"] == "/usr/lib/tisma/montajes-seguros"
+
+
+def test_installer_encrypts_by_default():
+    import yaml
+    p = yaml.safe_load((ROOT / "etc/calamares/modules/partition.conf").read_text())
+    assert p["preCheckEncryption"] is True and p["enableLuksAutomatedPartitioning"] is True
+    assert p["luksGeneration"] == "luks1"                          # GRUB descifra /boot
