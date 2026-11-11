@@ -91,7 +91,7 @@ Pin-Priority: 600
 
 Explanation: kernel firmado por Debian (arranca con Secure Boot sin registrar nada); el de backports, para el
 Explanation: hardware más nuevo
-Package: src:linux-signed-amd64 src:linux
+Package: src:linux-signed-amd64 src:linux src:linux-base
 Pin: release n=$SUITE-backports
 Pin-Priority: 600
 
