@@ -17,7 +17,8 @@ LISTAS = ROOT / "rootfs/usr/share/tisma/perfiles"
 
 def test_real_profiles_parse_and_only_hold_valid_names():
     p = mod.perfiles(str(LISTAS))
-    assert {"diario", "estudio", "creacion", "ingenieria", "juegos", "programacion"} <= set(p)
+    assert {"esenciales", "diario", "estudio", "creacion", "ingenieria", "juegos", "programacion"} <= set(p)
+    assert "libreoffice-writer" in p["esenciales"]
     assert "steam-installer" in p["juegos"] and "mangohud:i386" in p["juegos"]
     assert "@craft-anything" in p["ingenieria"] and "@rea" in p["programacion"]
     for pk in p.values():
@@ -83,3 +84,33 @@ def test_unknown_profile_and_apt_failure(tmp_path, monkeypatch):
     assert mod.instalar(["p"], _fake_run([], [], rc=100)) == 1
     st = json.loads((tmp_path / "estado.json").read_text())
     assert st["ok"] is False and "fallo de red" in st["mensaje"]
+
+
+def test_completar_installs_the_base_extras_once(tmp_path, monkeypatch):
+    (tmp_path / "esenciales.list").write_text("# x\nlibreoffice-writer\n")
+    marca = tmp_path / "lib/hecho"
+    monkeypatch.setattr(mod, "DIR", str(tmp_path))
+    monkeypatch.setattr(mod, "ESTADO", str(tmp_path / "estado.json"))
+    monkeypatch.setattr(mod, "HECHO", str(marca))
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 0)
+    calls = []
+    monkeypatch.setattr(mod.subprocess, "run", _fake_run([], calls, rc=100))
+    assert mod.main(["completar"]) == 1 and not marca.exists()          # sin red: lo reintenta el servicio
+    calls.clear()
+    monkeypatch.setattr(mod.subprocess, "run", _fake_run([], calls))
+    assert mod.main(["completar"]) == 0 and marca.exists()
+    assert any("libreoffice-writer" in c for c in calls)
+    calls.clear()
+    assert mod.main(["completar"]) == 0 and calls == []                 # hecho: no vuelve a tocar apt
+
+
+def test_installer_downloads_base_extras_after_final_sources():
+    import yaml
+    s = yaml.safe_load((ROOT / "rootfs/etc/calamares/settings.conf").read_text())
+    assert {"id": "tisma", "module": "shellprocess", "config": "shellprocess-tisma.conf"} in s["instances"]
+    ex = next(p["exec"] for p in s["sequence"] if "exec" in p)
+    assert ex.index("sources-final") < ex.index("shellprocess@tisma") < ex.index("umount")
+    sp = yaml.safe_load((ROOT / "rootfs/etc/calamares/modules/shellprocess-tisma.conf").read_text())
+    assert sp["script"] == ["-/usr/bin/tisma-perfil completar"] and sp["timeout"] >= 1800   # «-»: sin red no falla
+    unit = (ROOT / "rootfs/etc/systemd/system/tisma-completar.service").read_text()
+    assert "ConditionPathExists=!/var/lib/tisma/completar-hecho" in unit and "!boot=live" in unit

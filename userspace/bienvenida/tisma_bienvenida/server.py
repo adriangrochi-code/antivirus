@@ -53,10 +53,10 @@ APP = {
 PERFILES = {
     "diario": {"nombre": "Uso diario", "desc": "Navegar, correo, documentos, fotos y música",
                "apps": ["archivos", "navegador", "correo", "oficina", "musica", "tienda"], "potencia": "equilibrado",
-               "listas": ["diario"]},
+               "listas": ["esenciales", "diario"]},
     "estudio": {"nombre": "Estudio y oficina", "desc": "Documentos, PDF, presentaciones y la IA para estudiar",
                 "apps": ["archivos", "navegador", "texto", "pdf", "code", "tienda"], "potencia": "equilibrado",
-                "listas": ["estudio"]},
+                "listas": ["esenciales", "estudio"]},
     "ingenieria": {"nombre": "Ingeniería y diseño", "desc": "CAD, electrónica, simulación, diseño gráfico y 3D",
                    "apps": ["archivos", "navegador", "freecad", "kicad", "openscad", "laminador", "blender", "code"],
                    "potencia": "rendimiento", "listas": ["ingenieria"]},

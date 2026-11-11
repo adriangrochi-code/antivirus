@@ -5,6 +5,8 @@
   tisma-perfil instalar <perfil> [...]     (administrador) los descarga de los repositorios firmados de Debian
   tisma-perfil estado                      progreso de la última instalación (lo lee la Bienvenida)
   tisma-perfil faltan <perfil> [...]       qué falta por instalar (JSON)
+  tisma-perfil completar                   (administrador) lo de la base que no va en la ISO (perfil «esenciales»):
+                                           lo usan el instalador y tisma-completar.service; deja una marca al terminar
 
 Perfiles: /usr/share/tisma/perfiles/<nombre>.list. Solo se aceptan esos nombres: nada de lo que llega por línea
 de órdenes se pasa a apt salvo los paquetes de esas listas. Una línea «@nombre» es un componente que no está en
@@ -22,7 +24,10 @@ import time
 DIR = os.environ.get("TISMA_PERFILES", "/usr/share/tisma/perfiles")
 ESTADO = os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json")
 COMPONENTES = os.environ.get("TISMA_COMPONENTES", "/usr/lib/tisma/componentes")
-APT = ["apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confold", "-o", "Acquire::Retries=3"]
+HECHO = os.environ.get("TISMA_COMPLETAR_HECHO", "/var/lib/tisma/completar-hecho")
+# Lock::Timeout: si la Bienvenida y tisma-completar coinciden, uno espera al otro en vez de fallar
+APT = ["apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confold", "-o", "Acquire::Retries=3",
+       "-o", "DPkg::Lock::Timeout=900"]
 
 
 def perfiles(d: str | None = None) -> dict[str, list[str]]:
@@ -69,7 +74,8 @@ def componente_instalado(nombre: str) -> bool:
     return bool(marca) and os.path.exists(marca)
 
 
-def faltan(pkgs: list[str], run=subprocess.run) -> list[str]:
+def faltan(pkgs: list[str], run=None) -> list[str]:
+    run = run or subprocess.run
     r = run(["dpkg-query", "-W", "-f=${Package}:${Architecture} ${db:Status-Abbrev}\n",
              *dict.fromkeys(p.split(":")[0] for p in pkgs)], capture_output=True, text=True)
     hechos = set()
@@ -86,7 +92,8 @@ def faltan(pkgs: list[str], run=subprocess.run) -> list[str]:
     return out
 
 
-def instalar(nombres: list[str], run=subprocess.run) -> int:
+def instalar(nombres: list[str], run=None) -> int:
+    run = run or subprocess.run
     disp = perfiles()
     malos = [n for n in nombres if n not in disp]
     if malos or not nombres:
@@ -152,6 +159,17 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"paquetes": faltan([p for p in todo if not p.startswith("@")]),
                           "componentes": [p[1:] for p in todo if p.startswith("@") and not componente_instalado(p[1:])]}))
         return 0
+    if cmd == "completar":
+        if os.geteuid() != 0:
+            print("Necesita permisos de administrador", file=sys.stderr)
+            return 2
+        if os.path.exists(HECHO):
+            return 0
+        rc = instalar(["esenciales"])
+        if rc == 0:
+            os.makedirs(os.path.dirname(HECHO), exist_ok=True)
+            open(HECHO, "w").close()
+        return rc
     if cmd == "instalar":
         if os.geteuid() != 0:
             print("Necesita permisos de administrador: pkexec tisma-perfil instalar …", file=sys.stderr)

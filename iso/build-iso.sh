@@ -279,6 +279,8 @@ in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estad
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
+# Lo que no va en la ISO (LibreOffice…): el instalador lo descarga; si no había red, al primer arranque con red
+in_chroot systemctl enable tisma-completar.service 2>/dev/null || true
 in_chroot systemctl enable tisma-drivers.timer 2>/dev/null || true
 # Driver gráfico en prueba (GPU AMD GCN 1/2 → amdgpu): confirmar o descartar tras arrancar
 in_chroot systemctl enable centinela-graficos.timer 2>/dev/null || true
@@ -358,9 +360,14 @@ cp -a "$CHROOT/usr/lib/shim/." "$SBROOT/usr/lib/shim/"
 cp -a "$CHROOT/usr/lib/grub/x86_64-efi-signed" "$SBROOT/usr/lib/grub/"
 
 # ---------------------------------------------------------------- 5. ISO
-log "Creando squashfs (zstd)"
+log "Creando squashfs (${TISMA_COMPRESION:-xz})"
 rm -rf "$ISODIR" && mkdir -p "$ISODIR/live" "$ISODIR/boot/grub"
-mksquashfs "$CHROOT" "$ISODIR/live/filesystem.squashfs" -comp zstd -Xcompression-level 19 \
+# xz con filtro x86 (por defecto): ~8 % menos que zstd -19, para que la ISO quepa en una release de GitHub
+# (< 2 GiB por archivo). La sesión live descomprime algo más lento; el sistema instalado no se ve afectado.
+# TISMA_COMPRESION=zstd: más rápida en la sesión live, ISO más grande.
+if [[ "${TISMA_COMPRESION:-xz}" == zstd ]]; then COMP=(-comp zstd -Xcompression-level 19)
+else COMP=(-comp xz -Xbcj x86 -Xdict-size 100%); fi
+mksquashfs "$CHROOT" "$ISODIR/live/filesystem.squashfs" "${COMP[@]}" \
     -b 1M -noappend -e boot/efi -e .base-ok -e .packages-ok -quiet
 # Sesión live e instalador con el kernel FIRMADO de Debian: arranca con Secure Boot en cualquier PC y trae todos
 # los drivers. El kernel TISMA, como entrada aparte (con Secure Boot, solo si está firmado y su clave registrada).

@@ -1,0 +1,6 @@
+# Aplicaciones de la base que no van en la ISO (para que se pueda descargar desde GitHub, < 2 GB): se descargan
+# solas al instalar TISMA OS en el disco, o en el primer arranque con conexión (tisma-completar)
+libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-qt6
+libreoffice-l10n-es libreoffice-help-es
+# Fuentes chinas, japonesas y coreanas (páginas web y documentos en esos idiomas)
+fonts-noto-cjk
