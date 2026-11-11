@@ -29,7 +29,9 @@ PROFILES = ("silencioso", "equilibrado", "rendimiento")
 OC_MAX = 15
 STATE = Path(os.environ.get("CENTINELA_STATE", "/var/lib/centinela"))
 PLAN = Path(os.environ.get("CENTINELA_ETC", "/etc")) / "centinela/plan.json"
-TOKEN = secrets.token_urlsafe(24)
+TOKEN = secrets.token_urlsafe(24)       # de la API: solo dentro de la página y en una cookie HttpOnly
+BOOT = secrets.token_urlsafe(24)        # de la URL (argv del navegador, legible en /proc): un solo uso
+BOOT_USED = threading.Event()
 RUN = subprocess.run          # punto de sustitución en las pruebas
 PROGRESS = Path(os.environ.get("CENTINELA_PROGRESS", "/run/centinela/autotune.json"))
 AUTOTUNE = {"proc": None}
@@ -69,6 +71,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype + "; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if getattr(self, "_cookie", None):
+                self.send_header("Set-Cookie", self._cookie)
+                self._cookie = None
             self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
                              "script-src 'self' 'unsafe-inline'; img-src 'self' data:")
             self.end_headers()
@@ -83,14 +88,24 @@ class Handler(BaseHTTPRequestHandler):
     def _auth(self):
         return self._host_ok() and secrets.compare_digest(self.headers.get("X-Token", ""), TOKEN)
 
+    def _cookie_ok(self):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "tr" and secrets.compare_digest(v, TOKEN):
+                return True
+        return False
+
     def do_GET(self):  # noqa: N802
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if not self._host_ok():
             return self._send(403, {"error": "host"})
         if u.path == "/":
-            if not secrets.compare_digest(q.get("t", ""), TOKEN):
+            boot = secrets.compare_digest(q.get("t", ""), BOOT) and not BOOT_USED.is_set()
+            if not (boot or self._cookie_ok()):
                 return self._send(403, b"Abre TISMA Rendimiento desde su lanzador.", "text/plain")
+            BOOT_USED.set()
+            self._cookie = f"tr={TOKEN}; HttpOnly; SameSite=Strict; Path=/"
             return self._send(200, (STATIC / "index.html").read_text().replace("__TOKEN__", TOKEN).encode(), "text/html")
         if u.path == "/static/logo.svg":
             return self._send(200, (STATIC / "logo.svg").read_bytes(), "image/svg+xml")
@@ -170,8 +185,10 @@ def main(argv=None) -> int:
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args(argv)
     httpd = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    url = f"http://127.0.0.1:{httpd.server_port}/?t={TOKEN}"
-    print(f"TISMA Rendimiento en {url}", flush=True)
+    url = f"http://127.0.0.1:{httpd.server_port}/?t={BOOT}"
+    print(f"TISMA Rendimiento en el puerto {httpd.server_port}", flush=True)   # la URL no va al registro
+    if a.no_browser:
+        print(url, flush=True)
     if not a.no_browser:
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:

@@ -26,7 +26,10 @@ DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1"   # Strata
 
 class App:
     def __init__(self):
-        self.token = secrets.token_urlsafe(24)
+        self.token = secrets.token_urlsafe(24)      # de la API: solo dentro de la página y en una cookie HttpOnly
+        # El de la URL va en el argv del navegador (cualquier usuario local lo lee en /proc): un solo uso
+        self.boot = secrets.token_urlsafe(24)
+        self.boot_used = threading.Event()
         self.session: Session | None = None
         self.log: list[dict] = []
         self.base = 0
@@ -196,6 +199,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if getattr(self, "_cookie", None):
+            self.send_header("Set-Cookie", self._cookie)
+            self._cookie = None
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:")
         try:
@@ -212,6 +218,13 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         return self._host_ok() and secrets.compare_digest(self.headers.get("X-Token", ""), APP.token)
 
+    def _cookie_ok(self) -> bool:
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "tc" and secrets.compare_digest(v, APP.token):
+                return True
+        return False
+
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length", 0) or 0)
         return json.loads(self.rfile.read(min(n, 5_000_000)) or b"{}")
@@ -223,8 +236,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._send(403, {"error": "host no permitido"})
         if url.path == "/":
-            if not secrets.compare_digest(q.get("t", ""), APP.token):
+            boot = secrets.compare_digest(q.get("t", ""), APP.boot) and not APP.boot_used.is_set()
+            if not (boot or self._cookie_ok()):
                 return self._send(403, b"Abre TISMA Code desde su lanzador.", "text/plain")
+            APP.boot_used.set()                       # la URL del argv ya no sirve a nadie más
+            self._cookie = f"tc={APP.token}; HttpOnly; SameSite=Strict; Path=/"
             html = (STATIC / "index.html").read_text().replace("__TOKEN__", APP.token)
             return self._send(200, html.encode(), "text/html")
         if url.path in STATIC_FILES:                 # lista blanca: nada de rutas arbitrarias
@@ -370,8 +386,10 @@ def main(argv: list[str] | None = None) -> int:
     APP = App()
     threading.Thread(target=APP.auto_motor, daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.token}"
-    print(f"TISMA Code en {url}", flush=True)
+    url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.boot}"
+    print(f"TISMA Code en el puerto {httpd.server_port}", flush=True)     # la URL no va al registro
+    if args.no_browser:
+        print(url, flush=True)
     if not args.no_browser:
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:

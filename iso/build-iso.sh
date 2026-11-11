@@ -83,6 +83,12 @@ Explanation: TISMA: Mesa (OpenGL/Vulkan: RADV, ANV, NVK…) y firmware de GPU, W
 Package: src:mesa src:firmware-nonfree
 Pin: release n=$SUITE-backports
 Pin-Priority: 600
+
+Explanation: también las versiones i386 (Steam): «src:» solo cubre la arquitectura nativa y Mesa es Multi-Arch
+Explanation: «same» (las dos arquitecturas deben tener la misma versión o apt no encuentra solución)
+Package: src:mesa:i386
+Pin: release n=$SUITE-backports
+Pin-Priority: 600
 EOF
 echo "tisma" > "$CHROOT/etc/hostname"
 # Proxy HTTPS que reescribe TLS (empresas, entornos de CI): apt del chroot confía en su CA SOLO durante la build
