@@ -16,6 +16,9 @@ zstd lz4 curl ca-certificates gnupg pciutils usbutils lshw dmidecode
 shim-signed shim-helpers-amd64-signed grub-efi-amd64-signed mokutil sbsigntool linux-image-amd64
 # --- Instalador gráfico ---
 calamares calamares-settings-debian grub-efi-amd64-bin grub-pc-bin efibootmgr os-prober
+# Lo que el instalador usa por debajo y que la build (sin «recomendados») no traía: sin dosfstools no se crea la
+# partición EFI y sin squashfs-tools no se copia el sistema (la instalación fallaba en todo equipo UEFI)
+dosfstools squashfs-tools exfatprogs eject network-manager-l10n
 # Abrir el disco cifrado al arrancar (sin esto, una instalación cifrada no arranca)
 cryptsetup cryptsetup-initramfs
 # --- Seguridad ---

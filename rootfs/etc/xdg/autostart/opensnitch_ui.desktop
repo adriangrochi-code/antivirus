@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenSnitch
+Exec=true
+# TISMA: la ventana de OpenSnitch no se abre sola. Al arrancar preguntaba por cada servicio del sistema (DNS, hora,
+# actualizaciones) y, si nadie contestaba, lo BLOQUEABA: sin DNS no había Internet (visto en la preview 5). Sin la
+# ventana, el cortafuegos de aplicaciones sigue activo con sus reglas y deja pasar lo demás, como Windows. Para
+# vigilar las conexiones a mano: menú > OpenSnitch.
+Hidden=true
