@@ -65,7 +65,7 @@ PERFILES = {
 ABRIR = {"code": ["tisma-code"], "tienda": ["plasma-discover"], "rendimiento": ["tisma-rendimiento"],
          "ajustes": ["systemsettings"]}
 SERVICIOS = {"escudo": "Antivirus y cortafuegos (Escudo)", "nftables": "Cortafuegos del sistema",
-             "usbguard": "Bloqueo de USB desconocidos", "tisma-copias-instantanea.timer": "Instantáneas cada hora",
+             "usbguard": "Bloqueo de USB desconocidos", "tisma-copias-instantanea.timer": "Instantáneas diarias del sistema",
              "dnscrypt-proxy": "DNS cifrado y sin rastreadores", "apparmor": "Aislamiento de programas (AppArmor)"}
 
 

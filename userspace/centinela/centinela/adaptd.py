@@ -69,23 +69,45 @@ class Holt:
         return (self.level or 0.0) + self.trend * steps
 
 
-def running_workloads() -> set[str]:
+_SEEN: dict[str, frozenset] = {}      # pid → cargas detectadas: cada proceso se examina UNA vez
+_CALLS = 0
+
+
+def _classify(pid: str) -> frozenset:
+    comm = sysfs.read(f"/proc/{pid}/comm") or ""
+    exe = ""
+    try:
+        exe = os.readlink(sysfs.path(f"/proc/{pid}/exe"))
+    except OSError:
+        pass
+    cmd0 = (sysfs.read(f"/proc/{pid}/cmdline", "") or "").split("\0")[0]
     found = set()
-    for pid in os.listdir(sysfs.path("/proc")):
-        if not pid.isdigit():
-            continue
-        comm = sysfs.read(f"/proc/{pid}/comm") or ""
-        exe = ""
-        try:
-            exe = os.readlink(sysfs.path(f"/proc/{pid}/exe"))
-        except OSError:
-            pass
-        cmd0 = (sysfs.read(f"/proc/{pid}/cmdline", "") or "").split("\0")[0]
-        for s in (comm, exe, cmd0):
-            if s and GAME_PROCESS.search(s.replace("\\", "/")):
-                found.add("juego")
-            if s and ANDROID_PROCESS.search(s):
-                found.add("android")
+    for s in (comm, exe, cmd0):
+        if s and GAME_PROCESS.search(s.replace("\\", "/")):
+            found.add("juego")
+        if s and ANDROID_PROCESS.search(s):
+            found.add("android")
+    return frozenset(found)
+
+
+def running_workloads() -> set[str]:
+    """Juegos y Android en marcha. Antes se leían 3 archivos y un enlace de CADA proceso cada 3 s (~1.500
+    aperturas con un escritorio normal); ahora solo los procesos nuevos (un juego cambia su nombre con exec
+    pocas veces, y el siguiente proceso del lanzador ya se clasifica)."""
+    global _CALLS
+    _CALLS += 1
+    if _CALLS % 10 == 0:
+        _SEEN.clear()          # cada ~30 s todo de nuevo: un proceso que hizo exec a un juego (Wine) se detecta
+    pids = [p for p in os.listdir(sysfs.path("/proc")) if p.isdigit()]
+    live = set(pids)
+    for gone in [p for p in _SEEN if p not in live]:
+        del _SEEN[gone]
+    found: set[str] = set()
+    for pid in pids:
+        cats = _SEEN.get(pid)
+        if cats is None:
+            cats = _SEEN[pid] = _classify(pid)
+        found |= cats
     return found
 
 

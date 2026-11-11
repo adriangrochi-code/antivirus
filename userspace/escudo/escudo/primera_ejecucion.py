@@ -125,7 +125,23 @@ class Gate:
                 log.warning("No se pudo vigilar %s (errno %d)", mp, ctypes.get_errno())
 
     def _watch_mounts(self) -> None:
-        while not self._stop.wait(5):                  # memorias USB que se conectan después
+        """Memorias USB que se conectan después. El kernel avisa (POLLPRI en /proc/self/mountinfo) cuando cambia
+        la tabla de montajes: antes se releía cada 5 s aunque no cambiara nada."""
+        import select
+        try:
+            fh = open("/proc/self/mountinfo", "rb")
+            poller = select.poll()
+            poller.register(fh, select.POLLPRI | select.POLLERR)
+        except (OSError, ValueError):
+            fh = poller = None
+        while not self._stop.is_set():
+            if poller is None:
+                if self._stop.wait(5):
+                    return
+            else:
+                poller.poll(600_000)
+                fh.seek(0)
+                fh.read()                              # leer «confirma» el cambio para el próximo aviso
             self.mark_mounts()
 
     def _events(self) -> None:

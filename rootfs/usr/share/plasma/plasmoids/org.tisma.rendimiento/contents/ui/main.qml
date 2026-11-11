@@ -32,16 +32,20 @@ PlasmoidItem {
             disconnectSource(fuente)
         }
     }
+    // Cada lectura arranca un proceso de Python: abierto, cada 2 s; plegado, cada minuto (solo para el aviso de
+    // temperatura) y al pasar el ratón (para el tooltip). Antes: cada 15 s siempre, ~5.800 procesos al día.
+    function actualizar() { ejecutar.connectSource("/usr/bin/centinela estado") }
     Timer {
-        interval: root.expanded ? 2000 : 15000
+        interval: root.expanded ? 2000 : 60000
         running: true; repeat: true; triggeredOnStart: true
-        onTriggered: ejecutar.connectSource("/usr/bin/centinela estado")
+        onTriggered: root.actualizar()
     }
 
     compactRepresentation: Kirigami.Icon {
         source: "tisma"
         active: zona.containsMouse
-        MouseArea { id: zona; anchors.fill: parent; hoverEnabled: true; onClicked: root.expanded = !root.expanded }
+        MouseArea { id: zona; anchors.fill: parent; hoverEnabled: true; onClicked: root.expanded = !root.expanded
+                    onEntered: root.actualizar() }
     }
 
     fullRepresentation: ColumnLayout {

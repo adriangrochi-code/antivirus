@@ -118,62 +118,64 @@ def _is_public(ip: str) -> bool:
     return a.is_global
 
 
-def _proc_net_connections() -> list[tuple[str, int, str]]:
-    """Fallback sin psutil en Linux: lee /proc/net/tcp{,6}. Devuelve (ip_remota, puerto_local, estado)
-    SOLO de conexiones entrantes (puerto local en escucha, o handshake entrante SYN_RECV): las
-    conexiones salientes (descargas, navegador) nunca cuentan como escaneo."""
-    states = {"01": "ESTABLISHED", "03": "SYN_RECV"}
-    listening = set()
-    for fname in ("/proc/net/tcp", "/proc/net/tcp6"):
-        try:
-            for line in Path(fname).read_text().splitlines()[1:]:
-                parts = line.split()
-                if parts[3] == "0A":
-                    listening.add(int(parts[1].split(":")[1], 16))
-        except OSError:
-            continue
-    out = []
+LOOPBACK = {"0100007F", "00000000000000000000000001000000"}
+
+
+def _read_proc_net() -> list[tuple[list[str], bool]]:
+    rows = []
     for fname, v6 in (("/proc/net/tcp", False), ("/proc/net/tcp6", True)):
         try:
-            lines = Path(fname).read_text().splitlines()[1:]
+            rows += [(line.split(), v6) for line in Path(fname).read_text().splitlines()[1:]]
         except OSError:
             continue
-        for line in lines:
-            parts = line.split()
-            local, remote, st = parts[1], parts[2], parts[3]
-            if st not in states:
-                continue
-            lport = int(local.split(":")[1], 16)
-            rhex = remote.split(":")[0]
-            raw = bytes.fromhex(rhex)
-            if v6:
-                raw = b"".join(raw[i:i + 4][::-1] for i in range(0, 16, 4))
-                addr = ipaddress.IPv6Address(raw)
-                ip = str(addr.ipv4_mapped or addr)
-            else:
-                ip = str(ipaddress.IPv4Address(raw[::-1]))
-            if states[st] == "SYN_RECV" or lport in listening:
-                out.append((ip, lport, states[st]))
+    return rows
+
+
+def external_listeners(rows: list[tuple[list[str], bool]] | None = None) -> bool:
+    """¿Hay algún puerto TCP en escucha fuera de loopback? Si no, nadie puede conectarse desde fuera."""
+    for parts, _ in (rows if rows is not None else _read_proc_net()):
+        if len(parts) > 3 and parts[3] == "0A" and parts[1].split(":")[0] not in LOOPBACK:
+            return True
+    return False
+
+
+def _proc_net_connections(rows: list[tuple[list[str], bool]] | None = None) -> list[tuple[str, int, str]]:
+    """Lee /proc/net/tcp{,6} UNA vez. Devuelve (ip_remota, puerto_local, estado) SOLO de conexiones entrantes
+    (puerto local en escucha, o handshake entrante SYN_RECV): las salientes (descargas, navegador) nunca
+    cuentan como escaneo. Antes se usaba psutil.net_connections dos veces cada 2 s, que como root recorre
+    los descriptores de TODOS los procesos para saber de quién es cada conexión (dato que aquí no se usa)."""
+    rows = rows if rows is not None else _read_proc_net()
+    states = {"01": "ESTABLISHED", "03": "SYN_RECV"}
+    listening = {int(p[1].split(":")[1], 16) for p, _ in rows if len(p) > 3 and p[3] == "0A"}
+    out = []
+    for parts, v6 in rows:
+        if len(parts) < 4 or parts[3] not in states:
+            continue
+        local, remote, st = parts[1], parts[2], parts[3]
+        lport = int(local.split(":")[1], 16)
+        raw = bytes.fromhex(remote.split(":")[0])
+        if v6:
+            raw = b"".join(raw[i:i + 4][::-1] for i in range(0, 16, 4))
+            addr = ipaddress.IPv6Address(raw)
+            ip = str(addr.ipv4_mapped or addr)
+        else:
+            ip = str(ipaddress.IPv4Address(raw[::-1]))
+        if states[st] == "SYN_RECV" or lport in listening:
+            out.append((ip, lport, states[st]))
     return out
 
 
 def inbound_connections() -> list[tuple[str, int, str]]:
+    if not IS_WINDOWS:
+        return _proc_net_connections()
     try:
         import psutil  # type: ignore
     except ImportError:
-        psutil = None
-    if psutil:
-        listening = {c.laddr.port for c in psutil.net_connections("inet") if c.status == "LISTEN"}
-        res = []
-        for c in psutil.net_connections("inet"):
-            if c.raddr and c.status in ("ESTABLISHED", "SYN_RECV"):
-                # Conexión entrante = puerto local en escucha, o SYN_RECV (handshake entrante)
-                if c.laddr.port in listening or c.status == "SYN_RECV":
-                    res.append((c.raddr.ip, c.laddr.port, c.status))
-        return res
-    if not IS_WINDOWS:
-        return _proc_net_connections()
-    return []
+        return []
+    conns = psutil.net_connections("inet")
+    listening = {c.laddr.port for c in conns if c.status == "LISTEN"}
+    return [(c.raddr.ip, c.laddr.port, c.status) for c in conns
+            if c.raddr and c.status in ("ESTABLISHED", "SYN_RECV") and (c.laddr.port in listening or c.status == "SYN_RECV")]
 
 
 class NetGuard:
@@ -204,6 +206,8 @@ class NetGuard:
 
     # --------------------------------------------------------- fuentes
     def _follow_file(self, path: str) -> None:
+        from .inotify import Watch
+        watch = Watch(os.path.dirname(path) or ".", fallback_s=0.5)   # despierta solo si el registro cambia
         first = True
         while not self._stop.is_set():                # bucle (no recursión) para sobrevivir a las rotaciones
             try:
@@ -223,7 +227,7 @@ class NetGuard:
                         if msg:
                             self.process_log_line(msg)
                         continue
-                    time.sleep(0.5)
+                    watch.wait(30)
                     try:
                         if os.stat(path).st_ino != inode:
                             break                    # rotado: reabrir
@@ -286,13 +290,23 @@ class NetGuard:
 
     def _watch_connections(self) -> None:
         while not self._stop.is_set():
+            wait = 2
             try:
-                for ip, port, _ in inbound_connections():
+                if IS_WINDOWS:
+                    conns = inbound_connections()
+                else:
+                    rows = _read_proc_net()
+                    conns = _proc_net_connections(rows)
+                    # Sin puertos abiertos al exterior (lo normal en un escritorio) nadie puede entrar:
+                    # basta con mirar cada 15 s si alguien abrió uno (antes: cada 2 s siempre)
+                    if not conns and not external_listeners(rows):
+                        wait = 15
+                for ip, port, _ in conns:
                     self.handle_connection(ip, port)
             except Exception as e:  # noqa: BLE001
                 log.debug("Error leyendo conexiones: %s", e)
             self.fw.expire()
-            self._stop.wait(2)
+            self._stop.wait(wait)
 
     # --------------------------------------------------------- ciclo
     def start(self) -> list[threading.Thread]:

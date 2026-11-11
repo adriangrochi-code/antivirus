@@ -72,3 +72,16 @@ def test_pairs_by_name_pattern_and_config():
     assert mod.related("Casa", "Casa-5G", {}) and mod.related("Casa_5GHz", "Casa", {})
     assert not mod.related("Casa", "Vecino", {})
     assert mod.related("MiRed", "Rapida", {"MiRed": "Rapida"})
+
+
+def test_polls_slowly_when_switching_cannot_help():
+    good5 = "Connected to aa:aa:aa:aa:aa:02 (on wlan0)\n\tSSID: Casa\n\tfreq: 5180\n\tsignal: -55 dBm\n"
+    st = mod.Steer("wlan0", run=Radio(good5))
+    st.step({})
+    assert st.next_poll() == 30                              # 5 GHz con buena señal
+    st = mod.Steer("wlan0", run=Radio(LINK_24))
+    st.step({})
+    assert st.next_poll() == mod.POLL_S                      # en 2,4 GHz: vigilar si llega la de 5
+    st = mod.Steer("wlan0", run=Radio(""))
+    st.step({})
+    assert st.next_poll() == 30                              # sin conexión

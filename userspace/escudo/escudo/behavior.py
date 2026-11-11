@@ -134,15 +134,31 @@ def evaluate(records: list[dict]) -> Alert | None:
     return None
 
 
-def follow(path: str, stop: threading.Event):
-    with open(path, encoding="utf-8", errors="replace") as fh:
+def follow(path: str, stop: threading.Event, timeout: float = 30.0):
+    """Líneas nuevas del registro. Duerme hasta que el kernel avisa de un cambio (inotify) en vez de mirar cada
+    0,3 s; sobrevive a la rotación (auditd renombra audit.log y crea otro)."""
+    from .inotify import Watch
+    w = Watch(os.path.dirname(path) or ".", fallback_s=0.3)
+    try:
+        fh = open(path, encoding="utf-8", errors="replace")
         fh.seek(0, os.SEEK_END)
+        ino = os.fstat(fh.fileno()).st_ino
         while not stop.is_set():
             line = fh.readline()
             if line:
                 yield line
-            else:
-                time.sleep(0.3)
+                continue
+            w.wait(timeout)
+            try:
+                if os.stat(path).st_ino != ino:           # rotado: el nuevo archivo, desde el principio
+                    fh.close()
+                    fh = open(path, encoding="utf-8", errors="replace")
+                    ino = os.fstat(fh.fileno()).st_ino
+            except OSError:
+                pass
+        fh.close()
+    finally:
+        w.close()
 
 
 def watch_audit(stop: threading.Event, path: str = AUDIT_LOG, on_alert=emit) -> None:

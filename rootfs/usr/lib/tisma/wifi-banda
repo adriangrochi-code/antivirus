@@ -136,8 +136,18 @@ class Steer:
         return (f"{cur['ssid']} {band(cur['freq'])} GHz ({cur['signal']} dBm) → {target['ssid']} "
                 f"{band(target['freq'])} GHz ({target['signal']:.0f} dBm) por {how}")
 
+    def next_poll(self) -> int:
+        """Segundos hasta el próximo vistazo: rápido solo cuando cambiar de banda puede servir."""
+        cur = getattr(self, "cur", None)
+        if not cur:
+            return 30                                   # sin conexión: nada que mejorar
+        if band(cur["freq"]) != "2.4" and cur["signal"] >= -67 and not self.pending:
+            return 30                                   # ya en 5/6 GHz con buena señal
+        return POLL_S
+
     def step(self, pairs: dict[str, str] | None = None) -> str | None:
         cur = parse_link(self.run(["iw", "dev", self.dev, "link"]))
+        self.cur = cur
         if not cur:
             self.pending = None
             return None
@@ -162,13 +172,16 @@ def main() -> int:
     steers: dict[str, Steer] = {}
     while True:
         active, pairs = conf()
+        wait = 60                                       # sin Wi-Fi o desactivado: casi nada
         if active:
             for w in os.listdir("/sys/class/net"):
                 if os.path.isdir(f"/sys/class/net/{w}/wireless"):
-                    msg = steers.setdefault(w, Steer(w)).step(pairs)
+                    st = steers.setdefault(w, Steer(w))
+                    msg = st.step(pairs)
                     if msg:
                         print(f"tisma-wifi-banda: {msg}", flush=True)
-        time.sleep(POLL_S)
+                    wait = min(wait, st.next_poll())
+        time.sleep(wait)
 
 
 if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":

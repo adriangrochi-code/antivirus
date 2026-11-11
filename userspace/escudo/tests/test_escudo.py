@@ -195,3 +195,108 @@ def test_M3_outgoing_connections_ignored(monkeypatch, tmp_path):
     monkeypatch.setattr(netguard.Path, "read_text", fake_read)
     conns = netguard._proc_net_connections()
     assert conns == [("192.168.0.7", 22, "ESTABLISHED")]
+
+
+def test_realtime_worker_sleeps_until_work_and_still_scans(tmp_path):
+    """El hilo no se despierta sin trabajo, pero un archivo nuevo se analiza en ~1 s."""
+    import threading
+    import time as _t
+
+    from escudo import monitor
+    seen = []
+
+    class FakeScanner:
+        def _excluded(self, p):
+            return False
+
+        def scan_file(self, p):
+            seen.append(p)
+            return []
+    rtp = monitor.RealTimeProtection(FakeScanner(), quarantine=None)
+    th = threading.Thread(target=rtp._worker, daemon=True)
+    th.start()
+    _t.sleep(0.3)
+    assert not rtp._wake.is_set() and seen == []
+    f = tmp_path / "nuevo.bin"
+    f.write_bytes(b"x")
+    rtp._enqueue(str(f))
+    for _ in range(40):
+        if seen:
+            break
+        _t.sleep(0.1)
+    assert seen == [str(f)]
+    rtp.stop()
+    th.join(2)
+    assert not th.is_alive()
+
+
+def test_fanotify_watcher_on_real_mount(tmp_path):
+    """Con root: un tmpfs montado, una sola marca; carpetas nuevas y descargas renombradas se analizan."""
+    import os as _os
+    import subprocess as _sp
+    import time as _t
+
+    import pytest as _pytest
+
+    from escudo import monitor
+    mnt = tmp_path / "mnt"
+    mnt.mkdir()
+    if _os.geteuid() != 0 or _sp.run(["mount", "-t", "tmpfs", "tmpfs", str(mnt)], capture_output=True).returncode:
+        _pytest.skip("requiere root y poder montar tmpfs")
+    seen = []
+
+    class S:
+        def _excluded(self, p):
+            return "/.cache/" in p
+
+        def scan_file(self, p):
+            seen.append(_os.path.relpath(p, mnt))
+            return []
+    rtp = monitor.RealTimeProtection(S(), quarantine=None)
+    try:
+        rtp.start([str(mnt)])
+        assert rtp._fan.covered == [str(mnt)]
+        (mnt / "a/b/c").mkdir(parents=True)
+        (mnt / "a/b/c/hondo.bin").write_bytes(b"x")
+        (mnt / "Unconfirmed 1.crdownload").write_bytes(b"y")
+        _os.rename(mnt / "Unconfirmed 1.crdownload", mnt / "programa.exe")
+        (mnt / ".cache").mkdir()
+        (mnt / ".cache/c.bin").write_bytes(b"z")
+        for _ in range(40):
+            if len(seen) >= 2:
+                break
+            _t.sleep(0.1)
+        _t.sleep(0.3)
+        assert sorted(seen) == ["a/b/c/hondo.bin", "programa.exe"]
+    finally:
+        rtp.stop()
+        _sp.run(["umount", str(mnt)])
+
+
+def test_follow_wakes_on_change_and_survives_rotation(tmp_path):
+    import threading
+    import time as _t
+
+    from escudo import behavior
+    log_ = tmp_path / "audit.log"
+    log_.write_text("viejo\n")
+    stop = threading.Event()
+    got = []
+
+    def run():
+        for line in behavior.follow(str(log_), stop, timeout=5):
+            got.append(line.strip())
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    _t.sleep(0.3)
+    with open(log_, "a") as f:
+        f.write("uno\n")
+    _t.sleep(0.5)
+    log_.rename(tmp_path / "audit.log.1")                 # rotación
+    log_.write_text("dos\n")
+    for _ in range(30):
+        if len(got) >= 2:
+            break
+        _t.sleep(0.1)
+    stop.set()
+    assert got == ["uno", "dos"]

@@ -1,39 +1,85 @@
 #!/usr/bin/python3 -I
-"""Muestra en el escritorio las alertas de Escudo (/run/escudo/alertas.jsonl)."""
+"""Muestra en el escritorio las alertas de Escudo (/run/escudo/alertas.jsonl).
+
+Duerme hasta que el archivo cambia (inotify): antes comprobaba cada segundo en cada sesión de usuario, lo que
+despertaba la CPU 86.400 veces al día sin ninguna alerta. Sin inotify, vuelve al sondeo.
+"""
+import ctypes
 import json
 import os
+import select
 import shutil
 import subprocess
 import time
 
-PATH = "/run/escudo/alertas.jsonl"
+DIR = os.environ.get("ESCUDO_ALERTAS_DIR", "/run/escudo")
+PATH = DIR + "/alertas.jsonl"
 ICON = {"critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
 TITLE = {"kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}
+IN_MODIFY, IN_MOVED_TO, IN_CREATE = 0x2, 0x80, 0x100
+IN_NONBLOCK, IN_CLOEXEC = 0o4000, 0o2000000
+
+
+def inotify(path: str):
+    """Descriptor que se vuelve legible cuando algo cambia en la carpeta, o None."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        fd = libc.inotify_init1(IN_NONBLOCK | IN_CLOEXEC)
+        if fd < 0:
+            return None
+        if libc.inotify_add_watch(fd, path.encode(), IN_MODIFY | IN_MOVED_TO | IN_CREATE) < 0:
+            os.close(fd)
+            return None
+        return fd
+    except (OSError, AttributeError):
+        return None
+
+
+def notify(line: str) -> None:
+    try:
+        a = json.loads(line)
+    except ValueError:
+        return
+    urgency = "critical" if a.get("severity") in ("critical", "high") else "normal"
+    body = f"{a.get('detail', '')}\n{a.get('action', '')}"[:400]
+    subprocess.run(["notify-send", "-a", "Escudo", "-u", urgency, "-i", ICON.get(a.get("severity"), "security-medium"),
+                    TITLE.get(a.get("kind"), "Escudo"), body], check=False)
 
 
 def main():
     if not shutil.which("notify-send"):
         return
-    while not os.path.exists(PATH):
-        time.sleep(10)
-    with open(PATH, encoding="utf-8") as fh:
-        fh.seek(0, os.SEEK_END)
-        while True:
-            line = fh.readline()
-            if not line:
-                time.sleep(1)
-                continue
-            try:
-                a = json.loads(line)
-            except ValueError:
-                continue
-            urgency = "critical" if a.get("severity") in ("critical", "high") else "normal"
-            body = f"{a.get('detail', '')}\n{a.get('action', '')}"[:400]
-            subprocess.run(["notify-send", "-a", "Escudo", "-u", urgency, "-i", ICON.get(a.get("severity"), "security-medium"),
-                            TITLE.get(a.get("kind"), "Escudo"), body], check=False)
+    while not os.path.isdir(DIR):
+        time.sleep(30)                                  # Escudo aún no ha arrancado
+    fd = inotify(DIR)
+    pos = os.path.getsize(PATH) if os.path.exists(PATH) else 0   # solo lo nuevo desde que se abre la sesión
+    while True:
+        try:
+            size = os.path.getsize(PATH)
+        except OSError:
+            size = 0
+        if size < pos:
+            pos = 0                                     # archivo recreado (reinicio de Escudo)
+        if size > pos:
+            with open(PATH, "rb") as fh:
+                fh.seek(pos)
+                for raw in fh:
+                    if not raw.endswith(b"\n"):
+                        break                           # línea a medio escribir: se lee en el próximo aviso
+                    notify(raw.decode("utf-8", "replace"))
+                    pos += len(raw)
+        if fd is None:
+            time.sleep(2)
+            continue
+        select.select([fd], [], [], 600)
+        try:
+            while os.read(fd, 4096):                    # vaciar los eventos acumulados
+                pass
+        except BlockingIOError:
+            pass
 
 
 main()
