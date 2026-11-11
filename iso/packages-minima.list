@@ -1,0 +1,11 @@
+# ===== TISMA OS: imagen MÍNIMA para validar la construcción y el arranque (TISMA_ISO_MINIMA=1) =====
+# Sin escritorio ni aplicaciones: comprueba initramfs, DNS, firewall, servicios y protecciones en QEMU.
+systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
+live-boot live-config live-config-systemd initramfs-tools
+network-manager wpasupplicant iw rfkill
+zstd lz4 curl ca-certificates gnupg pciutils usbutils dmidecode
+grub-efi-amd64-bin grub-pc-bin efibootmgr
+apparmor apparmor-utils nftables unattended-upgrades
+systemd-zram-generator python3 systemd-oomd btrfs-progs restic chrony
+dnscrypt-proxy usbguard auditd bubblewrap rasdaemon smartmontools
+python3-numpy python3-pefile libnotify-bin gpgv

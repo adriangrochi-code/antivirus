@@ -7,7 +7,8 @@
 #   4. capa del sistema (rootfs/), herramientas centinela/escudo y marca TISMA
 #   5. squashfs + GRUB (BIOS y UEFI) → ISO híbrida (USB y DVD)
 #
-# Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas)
+# Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas),
+#            TISMA_ISO_MINIMA=1 (sin escritorio ni componentes pesados: valida construcción y arranque)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,7 +97,9 @@ if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then
                      echo "steam steam/license note \"\"" | debconf-set-selections
                      echo "locales locales/default_environment_locale select es_ES.UTF-8" | debconf-set-selections
                      echo "locales locales/locales_to_be_generated multiselect es_ES.UTF-8 UTF-8, en_US.UTF-8 UTF-8" | debconf-set-selections'
-    mapfile -t wanted < <(sed 's/#.*//' "$HERE/packages.list" | tr -s ' \t' '\n' | sed '/^$/d')
+    LISTA="$HERE/packages.list"
+    [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]] && LISTA="$HERE/packages-minima.list"
+    mapfile -t wanted < <(sed 's/#.*//' "$LISTA" | tr -s ' \t' '\n' | sed '/^$/d')
     [[ $WAYDROID == 1 ]] && wanted+=(waydroid)
     pkgs=()
     for p in "${wanted[@]}"; do
@@ -106,7 +109,7 @@ if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then
     log "Instalando ${#pkgs[@]} paquetes"
     in_chroot apt-get install -y -q --no-install-recommends "${pkgs[@]}"
     # Recomendados solo del escritorio (traducciones, iconos, applets)
-    in_chroot apt-get install -y -q kde-plasma-desktop
+    [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]] || in_chroot apt-get install -y -q kde-plasma-desktop
     touch "$CHROOT/.packages-ok"
 fi
 
@@ -142,11 +145,14 @@ rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asisten
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
 # Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
-if "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
+if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
+    log "Imagen mínima: sin Hope ni componentes pesados"
+elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
     rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
 fi
+if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
 # Aplicaciones: Tisma engine (laminador) y Strata (IA local)
 "$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-}" \
     || log "AVISO: no se pudo instalar Tisma engine"
@@ -158,6 +164,7 @@ fi
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
+fi
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
 gcc -O2 -static -pthread -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
@@ -173,11 +180,16 @@ in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-cop
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
 # Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
-in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
-    || log "AVISO: no se pudo añadir Flathub"
+if in_chroot sh -c 'command -v flatpak' >/dev/null; then
+    in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+        || log "AVISO: no se pudo añadir Flathub"
+fi
 in_chroot systemctl disable systemd-timesyncd 2>/dev/null || true
-in_chroot systemctl enable nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer \
-    centinela-power centinela-adaptd escudo
+# Esenciales: si alguno no existe se avisa (antes un fallo aquí cortaba la build entera)
+for u in nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer centinela-power \
+         centinela-adaptd escudo; do
+    in_chroot systemctl enable "$u" 2>/dev/null || log "AVISO: no se pudo habilitar $u"
+done
 # Arranque escalonado: lo no esencial sale de multi-user.target y lo lanza la fase 2
 # (dejarlo en ambos crearía un ciclo de orden con graphical.target)
 for u in bluetooth ModemManager clamav-freshclam; do
