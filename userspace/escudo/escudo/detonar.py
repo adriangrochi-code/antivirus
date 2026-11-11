@@ -213,6 +213,10 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
         if vm:
             (base / "orden.json").write_text(json.dumps({"muestra": name, "args": args}))
             cmd = vm_argv(base, segundos, kvm=os.access("/dev/kvm", os.W_OK))
+            if os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
+                # QEMU sin KVM traduce código al vuelo (JIT): heredar MemoryDenyWriteExecute del servicio lo rompía
+                cmd = ["systemd-run", "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec",
+                       "-p", f"RuntimeMaxSec={segundos + 600}", "--", *cmd]
             entorno = "máquina virtual"
         else:
             cmd = sandbox_argv(home, workdir, f"/tmp/muestra/{name}", args, traza)
@@ -220,8 +224,7 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
                 for p in base.rglob("*"):
                     os.lchown(p, uid, gid if gid is not None else uid)
                 os.chown(base, uid, gid if gid is not None else uid)
-                cmd = ["setpriv", f"--reuid={uid}", f"--regid={gid if gid is not None else uid}",
-                       "--clear-groups", "--", *cmd]
+                cmd = como_usuario(cmd, uid, gid if gid is not None else uid, segundos + 5)
             entorno = "sandbox"
         try:
             run(cmd, capture_output=True, timeout=segundos + (600 if vm else 5), start_new_session=True)
@@ -233,9 +236,32 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
         if not texto:
             inf.nota = "no se pudo observar la ejecución (sin traza)"
             inf.veredicto = "sospechoso" if inf.veredicto == "limpio" else inf.veredicto
+        elif not vm and not se_ejecuto(texto, f"/tmp/muestra/{name}"):
+            # Fallar CERRADO: si el aislamiento no llegó a arrancar la muestra (p. ej. bubblewrap no pudo montar
+            # /proc dentro de un servicio con ProtectKernelTunables), la traza solo tiene el fallo del
+            # aislamiento y la muestra «no hizo nada»: antes eso salía «limpio» y se le dejaba ejecutarse.
+            inf.nota = "la muestra no llegó a ejecutarse en el aislamiento"
+            inf.veredicto = "sospechoso" if inf.veredicto == "limpio" else inf.veredicto
         return inf
     finally:
         shutil.rmtree(base, ignore_errors=True)
+
+
+def se_ejecuto(traza: str, ruta: str) -> bool:
+    """¿La traza muestra que la propia muestra se ejecutó (execve con éxito)?"""
+    return re.search(r'execve(at)?\([^"]*"' + re.escape(ruta) + r'".*\)\s*=\s*0\s*$', traza, re.M) is not None
+
+
+def como_usuario(cmd: list[str], uid: int, gid: int, segundos: int) -> list[str]:
+    """La muestra corre con la identidad del usuario. Bajo systemd (el servicio Escudo), en una unidad propia y
+    temporal: así no hereda las restricciones del servicio. Heredar MemoryDenyWriteExecute rompía cualquier
+    programa con JIT (Node, Java, .NET…), que se cerraba sin hacer nada y salía «limpio»: una forma de evadir el
+    análisis. Y no hace falta que Escudo pueda cambiar de identidad (setpriv necesita CAP_SETUID)."""
+    if os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
+        return ["systemd-run", "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec",
+                f"--uid={uid}", f"--gid={gid}", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=",
+                "-p", f"RuntimeMaxSec={segundos}", "--", *cmd]
+    return ["setpriv", f"--reuid={uid}", f"--regid={gid}", "--clear-groups", "--", *cmd]
 
 
 # ---------------------------------------------------------------- lista de permitidos

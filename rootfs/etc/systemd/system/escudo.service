@@ -27,7 +27,9 @@ RuntimeDirectoryMode=0755
 # Se conserva entre reinicios: los notificadores de las sesiones vigilan esta carpeta con inotify
 RuntimeDirectoryPreserve=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/escudo /home /tmp /var/tmp
+# /var/lib/escudo-detonar: donde se copia cada muestra para analizarla. Faltaba: con ProtectSystem=strict el
+# directorio era de solo lectura y la puerta de primera ejecución se APAGABA al arrancar (EROFS)
+ReadWritePaths=/var/lib/escudo -/var/lib/escudo-detonar /home /tmp /var/tmp
 PrivateTmp=no
 NoNewPrivileges=yes
 ProtectKernelTunables=yes
@@ -41,7 +43,9 @@ SystemCallArchitectures=native
 # KILL: congelar ransomware · AUDIT_*: reglas y registro de auditd · NET_ADMIN: nftables
 # SYS_ADMIN: fanotify (puerta de primera ejecución y análisis en tiempo real); sin ella fanotify_init da EPERM
 # y ambas quedaban apagadas en el sistema instalado
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
+# SETUID/SETGID: solo si no hay systemd para analizar la muestra en su propia unidad (ver detonar.py), para
+# ejecutarla con la identidad del usuario y nunca como root
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SYS_ADMIN CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 Nice=10
 # best-effort (no «idle»): con E/S idle, durante el arranque o una copia grande el análisis podía quedarse

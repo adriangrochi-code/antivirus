@@ -82,3 +82,22 @@ def test_gate_analyzes_and_learns(tmp_path, monkeypatch):
     g.analyze(str(f), fake.sha256, 1000, 1000)
     assert g.allow[fake.sha256]["veredicto"] == "limpio" and "Ya puedes abrirlo" in alerts[-1].action
     assert pe.decide("/tmp/prog", True, fake.sha256, g.allow) == "permitir"
+
+
+def test_sample_runs_as_user_in_its_own_unit_under_systemd(monkeypatch):
+    monkeypatch.setattr(detonar.shutil, "which", lambda n: "/usr/bin/" + n)
+    monkeypatch.setenv("INVOCATION_ID", "abc")
+    cmd = detonar.como_usuario(["strace", "x"], 1000, 1000, 50)
+    assert cmd[0] == "systemd-run" and "--uid=1000" in cmd and "--wait" in cmd and cmd[-2:] == ["strace", "x"]
+    assert "MemoryDenyWriteExecute" not in " ".join(cmd)          # no hereda la restricción del servicio
+    monkeypatch.delenv("INVOCATION_ID")
+    assert detonar.como_usuario(["x"], 1000, 1000, 50)[:2] == ["setpriv", "--reuid=1000"]
+
+
+def test_sandbox_failure_never_yields_clean():
+    ok = '776   execve("/tmp/muestra/x.sh", ["/tmp/muestra/x.sh"], 0x7f /* 5 vars */) = 0\n'
+    fallo = ('799   mount("proc", "/newroot/proc", "proc", MS_NOSUID, NULL) = -1 EPERM (Operation not permitted)\n'
+             '776   execve("/usr/bin/bwrap", ["/usr/bin/bwrap", "/tmp/muestra/x.sh"], 0x7f) = 0\n')
+    assert detonar.se_ejecuto(ok, "/tmp/muestra/x.sh")
+    assert not detonar.se_ejecuto(fallo, "/tmp/muestra/x.sh")        # bwrap sí, la muestra no
+    assert not detonar.se_ejecuto('776 execve("/tmp/muestra/x.sh", [...]) = -1 EACCES\n', "/tmp/muestra/x.sh")
