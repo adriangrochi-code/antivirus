@@ -84,6 +84,10 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
 - **Apps por perfil**: necesitan conexión a Internet para descargarse (la ISO pesa mucho menos a cambio). En
   la sesión live no se instalan (irían a la RAM): se eligen tras instalar en el disco. Para instalar sin
   conexión se construye la ISO con `TISMA_ISO_COMPLETA=1`.
+- **Endurecido como Kicksecure en lo que no cuesta nada**: tras 10 contraseñas fallidas seguidas la cuenta se
+  bloquea 10 minutos (también en la pantalla de bloqueo; un administrador la desbloquea con
+  `sudo faillock --user <usuario> --reset`); `su` solo para administradores; sin programas de 32 bits hasta
+  instalar el perfil de juegos (Steam y Wine los necesitan: el perfil los activa y pide reiniciar).
 - **Más liviana a cambio de**: la sesión live no trae LibreOffice (se descarga al instalar) y arranca algo más
   lenta (squashfs con xz, para que la ISO quepa en un archivo de GitHub); solo traducciones al español (y al inglés), sin documentación de paquetes (las
   licencias sí), sin fuentes chinas/japonesas/coreanas, sin 32 bits hasta instalar el perfil de juegos, y el
