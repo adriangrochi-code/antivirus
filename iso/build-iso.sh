@@ -8,7 +8,8 @@
 #   5. squashfs + GRUB (BIOS y UEFI) → ISO híbrida (USB y DVD)
 #
 # Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas),
-#            TISMA_ISO_MINIMA=1 (sin escritorio ni componentes pesados: valida construcción y arranque)
+#            TISMA_ISO_MINIMA=1 (sin escritorio ni componentes pesados: valida construcción y arranque),
+#            TISMA_BUILD_CA=<archivo.pem> (CA de un proxy HTTPS corporativo: solo durante la build, no va en la ISO)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +67,12 @@ deb $MIRROR $SUITE-updates main contrib non-free non-free-firmware
 deb https://security.debian.org/debian-security $SUITE-security main contrib non-free non-free-firmware
 EOF
 echo "tisma" > "$CHROOT/etc/hostname"
+# Proxy HTTPS que reescribe TLS (empresas, entornos de CI): apt del chroot confía en su CA SOLO durante la build
+BUILD_CA_APT="$CHROOT/etc/apt/apt.conf.d/00-tisma-build-ca"
+if [[ -n "${TISMA_BUILD_CA:-}" ]]; then
+    install -m 644 "$TISMA_BUILD_CA" "$CHROOT/etc/ssl/tisma-build-ca.crt"
+    echo 'Acquire::https::CaInfo "/etc/ssl/tisma-build-ca.crt";' > "$BUILD_CA_APT"
+fi
 in_chroot dpkg --add-architecture i386
 
 # Waydroid (Android) desde su repositorio oficial firmado
@@ -88,7 +95,18 @@ else
     WAYDROID=0
 fi
 rm -rf "$WGPG"
-in_chroot apt-get update -q
+# Un fallo al leer los repositorios debe parar la build (antes solo avisaba y luego se omitían paquetes como
+# «no disponibles»). Si falla con Waydroid, que es opcional, se quita su repositorio y se reintenta.
+if ! in_chroot apt-get -o APT::Update::Error-Mode=any update -q; then
+    if [[ $WAYDROID == 1 ]]; then
+        log "AVISO: fallo al leer los repositorios; se reintenta sin Waydroid"
+        rm -f "$CHROOT/etc/apt/sources.list.d/waydroid.list"
+        WAYDROID=0
+        in_chroot apt-get -o APT::Update::Error-Mode=any update -q || die "no se pudieron leer los repositorios de Debian"
+    else
+        die "no se pudieron leer los repositorios de Debian"
+    fi
+fi
 
 # ---------------------------------------------------------------- 2. paquetes
 if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then
@@ -215,6 +233,7 @@ mkdir -p "$CHROOT/etc/skel/Desktop"
 
 in_chroot update-initramfs -u -k all
 in_chroot apt-get clean
+rm -f "$BUILD_CA_APT" "$CHROOT/etc/ssl/tisma-build-ca.crt"      # la CA de la build nunca va en la imagen
 rm -rf "$CHROOT"/var/lib/apt/lists/* "$CHROOT"/tmp/* "$CHROOT"/root/.bash_history
 # resolv.conf definitivo al final (durante la build el chroot usa el DNS del anfitrión)
 mv -f "$CHROOT/etc/resolv.conf.final" "$CHROOT/etc/resolv.conf"
