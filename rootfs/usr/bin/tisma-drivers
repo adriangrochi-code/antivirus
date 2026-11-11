@@ -83,6 +83,30 @@ def nvidia_advice(run=sh) -> str | None:
             f"--install y después sudo apt install {pkg}.")
 
 
+# Clases PCI que un usuario echa de menos si no funcionan: almacenamiento, red, gráfica, audio, USB, Wi-Fi/BT
+IMPORTANT_CLASS = ("0x01", "0x02", "0x03", "0x0403", "0x0c03", "0x0d")
+
+
+def without_driver(root: str = "/sys/bus/pci/devices", run=sh) -> list[str]:
+    """Dispositivos importantes sin driver en este kernel: casi siempre, hardware más nuevo que el kernel."""
+    out = []
+    try:
+        devs = sorted(os.listdir(root))
+    except OSError:
+        return out
+    for d in devs:
+        base = os.path.join(root, d)
+        try:
+            cls = open(os.path.join(base, "class")).read().strip()
+        except OSError:
+            continue
+        if not cls.startswith(IMPORTANT_CLASS) or os.path.exists(os.path.join(base, "driver")):
+            continue
+        _, name = run(["lspci", "-nn", "-s", d], timeout=10)
+        out.append(name.strip().split(" ", 1)[-1] if name.strip() else d)
+    return out
+
+
 def plan(run=sh) -> dict:
     fw_files = missing_firmware(run)
     cands = sorted(set(hardware_packages(run)) | set(firmware_owner(fw_files, run)))
@@ -91,7 +115,7 @@ def plan(run=sh) -> dict:
     return {"firmware_que_falto": fw_files,
             "instalar": [p for p in pending if not DKMS.search(p)],
             "manual_dkms": [p for p in pending if DKMS.search(p)],
-            "nvidia": nvidia_advice(run)}
+            "nvidia": nvidia_advice(run), "sin_driver": without_driver(run=run)}
 
 
 def install(pkgs: list[str], run=sh) -> bool:
@@ -140,6 +164,11 @@ def main(argv: list[str]) -> int:
             print(f"Drivers que requieren firma (DKMS): {', '.join(p['manual_dkms'])}")
         if p["nvidia"]:
             print(p["nvidia"])
+        for name in p["sin_driver"]:
+            print(f"Sin driver en el kernel {os.uname().release}: {name}")
+        if p["sin_driver"]:
+            print("Suele ser hardware más nuevo que el kernel: la versión siguiente del kernel de TISMA lo "
+                  "reconocerá (tisma-drivers lo comprobará solo cada semana).")
         return 0
     ok = install(p["instalar"])
     if cmd == "instalar":
@@ -154,6 +183,10 @@ def main(argv: list[str]) -> int:
     for msg in filter(None, [p["nvidia"]] + ([f"Drivers que requieren firma: {', '.join(p['manual_dkms'])}"]
                                              if p["manual_dkms"] else [])):
         alert(msg, "Detalles: tisma-drivers buscar")
+    if p["sin_driver"]:
+        alert("Hay hardware sin driver en el kernel actual: " + "; ".join(p["sin_driver"][:3]),
+              "Suele ser hardware más nuevo que el kernel; se arreglará al actualizar el kernel de TISMA. "
+              "Detalles: tisma-drivers buscar", "medium")
     ups = firmware_updates()
     if ups:
         alert("Actualizaciones de firmware disponibles: " + "; ".join(ups[:4]),

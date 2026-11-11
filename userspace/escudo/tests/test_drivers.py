@@ -53,3 +53,20 @@ def test_nvidia_advice_mentions_signing():
 def test_shipped_auto_updates_cover_stable_point_releases():
     conf = (ROOT / "rootfs/etc/apt/apt.conf.d/52-tisma-actualizaciones").read_text()
     assert "codename=${distro_codename}-updates" in conf and "Automatic-Reboot \"false\"" in conf
+
+
+def test_devices_without_driver_are_reported(tmp_path):
+    root = tmp_path / "pci"
+    for dev, cls, drv in (("0000:01:00.0", "0x030000", False),     # GPU nueva sin driver → se avisa
+                          ("0000:02:00.0", "0x028000", True),      # Wi-Fi con driver
+                          ("0000:00:1f.0", "0x060100", False),     # puente ISA: no importa
+                          ("0000:00:1f.3", "0x040300", False)):    # audio sin driver → se avisa
+        d = root / dev
+        d.mkdir(parents=True)
+        (d / "class").write_text(cls + "\n")
+        if drv:
+            (d / "driver").mkdir()
+    names = {"0000:01:00.0": "01:00.0 VGA compatible controller [0300]: Vendor GPU X [1002:7590]\n",
+             "0000:00:1f.3": "00:1f.3 Audio device [0403]: Vendor HDA [8086:a0c8]\n"}
+    out = mod.without_driver(str(root), run=lambda argv, timeout=10: (0, names.get(argv[-1], "")))
+    assert len(out) == 2 and any("GPU X" in o for o in out) and any("HDA" in o for o in out)

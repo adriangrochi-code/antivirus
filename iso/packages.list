@@ -60,7 +60,7 @@ pipewire pipewire-pulse wireplumber
 # --- Gráficos y firmware ---
 mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 libglx-mesa0:i386
 vulkan-tools mesa-utils
-firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics
+firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics firmware-nvidia-graphics
 firmware-iwlwifi firmware-realtek firmware-atheros firmware-mediatek firmware-sof-signed
 intel-microcode amd64-microcode
 # --- Programas de Windows: Wine + Proton (Steam) ---

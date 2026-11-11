@@ -69,6 +69,17 @@ cat > "$CHROOT/etc/apt/sources.list" <<EOF
 deb $MIRROR $SUITE main contrib non-free non-free-firmware
 deb $MIRROR $SUITE-updates main contrib non-free non-free-firmware
 deb https://security.debian.org/debian-security $SUITE-security main contrib non-free non-free-firmware
+deb $MIRROR $SUITE-backports main contrib non-free non-free-firmware
+EOF
+# Gráficos y firmware de backports (firmados y mantenidos por Debian, con avisos de seguridad): Mesa y el
+# firmware de trixie son de abril de 2025 y no reconocen bien las GPU, el Wi-Fi ni el audio más nuevos. Solo
+# estos dos orígenes: el resto de backports queda a prioridad 100 (no se instala salvo que se pida).
+mkdir -p "$CHROOT/etc/apt/preferences.d"
+cat > "$CHROOT/etc/apt/preferences.d/50-tisma-graficos" <<EOF
+Explanation: TISMA: Mesa (OpenGL/Vulkan: RADV, ANV, NVK…) y firmware de GPU, Wi-Fi y audio, de backports
+Package: src:mesa src:firmware-nonfree
+Pin: release n=$SUITE-backports
+Pin-Priority: 600
 EOF
 echo "tisma" > "$CHROOT/etc/hostname"
 # Proxy HTTPS que reescribe TLS (empresas, entornos de CI): apt del chroot confía en su CA SOLO durante la build
