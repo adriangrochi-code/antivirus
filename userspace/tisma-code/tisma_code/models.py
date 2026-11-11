@@ -61,7 +61,7 @@ def hardware() -> dict:
             "ram_bandwidth_gbs": bw}
 
 
-def fit(size_bytes: int, hw: dict, context_overhead: float = 1.2) -> dict:
+def fit(size_bytes: int, hw: dict, context_overhead: float = 1.2, name: str = "") -> dict:
     """¿Cabe el modelo? Pesos + ~20 % para contexto (KV cache) y búferes."""
     need_mb = size_bytes / (1 << 20) * context_overhead
     vram, ram = hw.get("vram_mb", 0), hw.get("ram_mb", 0)
@@ -75,9 +75,37 @@ def fit(size_bytes: int, hw: dict, context_overhead: float = 1.2) -> dict:
         where, label = "no", "No cabe en este equipo"
     est = None
     if where in ("cpu", "mixto") and hw.get("ram_bandwidth_gbs"):
-        # La generación está limitada por leer todos los pesos en cada token
-        est = round(hw["ram_bandwidth_gbs"] / (size_bytes / 1e9), 1)
+        # La generación está limitada por leer los pesos ACTIVOS en cada token (~60 % del ancho de banda medido)
+        est = round(hw["ram_bandwidth_gbs"] * 0.6 / (size_bytes * active_fraction(name) / 1e9), 1)
+        if where == "cpu" and IQ_QUANT.search(name or ""):
+            est = round(est * 0.75, 1)     # IQ*: menos bytes, pero más cálculo por byte: en CPUs sin AVX-512 pesa
     return {"where": where, "label": label, "need_mb": round(need_mb), "tokens_s_estimate": est}
+
+
+IQ_QUANT = re.compile(r"(?i)\bI?Q\d_?(XXS|XS|S|M|NL)\b|[-_.]IQ\d")
+_MOE = re.compile(r"(?i)(\d+(?:\.\d+)?)B-A(\d+(?:\.\d+)?)B")
+
+
+def active_fraction(name: str | None) -> float:
+    """MoE por el nombre (p. ej. «30B-A3B»): solo se leen los parámetros activos en cada token."""
+    m = _MOE.search(name or "")
+    if m:
+        total, act = float(m.group(1)), float(m.group(2))
+        if 0 < act < total:
+            return max(0.05, act / total * 1.15)     # + capas comunes (atención, embeddings)
+    return 1.0
+
+
+def recommend(files: list[dict], usable: float = 4.0) -> None:
+    """Marca la mejor opción para ESTE equipo: la de más calidad (más bytes) que vaya a velocidad usable; si
+    ninguna llega, la más rápida que quepa. Con poco ancho de banda (A275, ~13 GB/s) suele ser una Q4 pequeña."""
+    ok = [f for f in files if f["fit"]["where"] != "no"]
+    if not ok:
+        return
+    usable_ones = [f for f in ok if (f["fit"].get("tokens_s_estimate") or 0) >= usable or f["fit"]["where"] == "gpu"]
+    best = max(usable_ones, key=lambda f: f["size"]) if usable_ones else \
+        max(ok, key=lambda f: f["fit"].get("tokens_s_estimate") or 0)
+    best["recomendado"] = True
 
 
 # ---------------------------------------------------------------- búsqueda
@@ -107,7 +135,9 @@ def files(model_id: str, hw: dict | None = None) -> list[dict]:
             total = sum(s for n, s in sizes.items() if n.startswith(prefix) and _SPLIT.search(n))
         if "mmproj" in name.lower():
             continue
-        out.append({"file": name, "size": total, "parts": int(m.group(2)) if m else 1, "fit": fit(total, hw)})
+        out.append({"file": name, "size": total, "parts": int(m.group(2)) if m else 1,
+                    "fit": fit(total, hw, name=f"{model_id}/{name}")})
+    recommend(out)
     return out
 
 

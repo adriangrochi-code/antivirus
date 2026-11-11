@@ -120,6 +120,10 @@ def render_files(plan: Plan) -> dict[str, str]:
     files["centinela/hardware.config"] = "\n".join(plan.kernel_fragment) + "\n"
     files["centinela/builtin-modules.txt"] = "\n".join(plan.builtin_modules) + "\n"
     files["centinela/plan.json"] = json.dumps(plan.to_dict(), indent=2, ensure_ascii=False)
+    if getattr(plan, "memlock_mb", 0):
+        files["systemd/system.conf.d/60-centinela-memlock.conf"] = (
+            HEADER + "# Lo que cada proceso puede fijar en RAM (modelos de IA con --mlock): 40 % de la RAM\n"
+            f"[Manager]\nDefaultLimitMEMLOCK={plan.memlock_mb}M\n")
     if plan.oomd:
         files["systemd/oomd.conf.d/60-centinela.conf"] = HEADER + "[OOM]\n" + "".join(
             f"{k}={v}\n" for k, v in plan.oomd.items())

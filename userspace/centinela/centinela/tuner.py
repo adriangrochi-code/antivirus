@@ -30,6 +30,7 @@ class Plan:
     kernel_fragment: list[str] = field(default_factory=list)
     builtin_modules: list[str] = field(default_factory=list)
     cmdline: list[str] = field(default_factory=list)
+    memlock_mb: int = 0
     sysctl: dict[str, str] = field(default_factory=dict)
     io_schedulers: dict[str, dict] = field(default_factory=dict)
     zram: dict = field(default_factory=dict)
@@ -373,8 +374,15 @@ def _shared_memory(plan: Plan, hw: dict, bench: dict) -> None:
         plan.desktop_light = True
         plan.why(f"Ancho de banda medido {bw:.1f} GB/s con GPU integrada: escritorio ligero (sin desenfoque ni "
                  "translucidez de ventanas, que leen y escriben toda la pantalla en cada fotograma).")
-    plan.cmdline.append("amdgpu.gttsize=4096" if igpu.get("vendor") == "amd" and hw["memory"].get("total_mb", 0) >= 12288
+    # GTT: cuánta RAM puede usar la GPU integrada (no la reserva, solo la permite). Con 4096 un modelo de IA de
+    # 7-8 B en Q4 (~4,5 GB) no cabía en la gráfica; ahora el 75 % de la RAM (el kernel limita además a lo que
+    # TTM permita, por defecto la mitad).
+    total = hw["memory"].get("total_mb", 0)
+    plan.cmdline.append(f"amdgpu.gttsize={total * 3 // 4 // 256 * 256}" if igpu.get("vendor") == "amd" and total >= 12288
                         else "")
+    if total:
+        # Memoria que un usuario puede fijar en RAM (llama.cpp --mlock para que el modelo no se expulse): 40 %
+        plan.memlock_mb = int(total * 0.4)
     if A275.search(hw.get("product", "")):
         r.append("ThinkPad A275: sube la VRAM reservada (UMA Frame Buffer) de 512 MB a 1 GB. Con el BIOS mod "
                  "(github.com/adriangrochi-code/bios-mod-a275): variable AmdSetup "

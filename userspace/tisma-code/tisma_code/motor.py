@@ -214,8 +214,22 @@ def plan(info: dict, size: int, hw: dict, ctx_wanted: int = 32768) -> dict:
             return {"dispositivo": "mixto", "args": ["-ngl", str(ngl)], "ctx": c,
                     "motivo": f"{ngl} de {layers} capas en la GPU, el resto en RAM"}
     c = fits_ctx(budget_ram - w_mb)
-    return {"dispositivo": "cpu", "args": ["-ngl", "0", "--device", "none"], "ctx": c,
+    return {"dispositivo": "cpu", "args": ["-ngl", "0", "--device", "none"] + mlock_args(w_mb, hw), "ctx": c,
             "motivo": "sin GPU dedicada: CPU (se mide también la gráfica integrada)" if has_igpu() else "CPU"}
+
+
+def mlock_args(model_mb: float, hw: dict) -> list[str]:
+    """Pesos fijos en RAM (--mlock) si el modelo ocupa como mucho el 40 % y el límite del usuario lo permite: con
+    el navegador abierto, el kernel podía expulsar páginas del modelo y releerlas del SSD (la velocidad se
+    hundía). Con modelos más grandes no: bloquearían demasiada memoria al resto del sistema."""
+    import resource
+    if model_mb > hw.get("ram_mb", 0) * 0.4:
+        return []
+    try:
+        soft, _ = resource.getrlimit(resource.RLIMIT_MEMLOCK)
+    except (OSError, ValueError):
+        return []
+    return ["--mlock"] if soft == resource.RLIM_INFINITY or soft >= model_mb * 1.1 * (1 << 20) else []
 
 
 def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = None) -> list[dict]:
@@ -223,6 +237,10 @@ def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = 
     out = [dict(base, nombre="plan")]
     if base["dispositivo"] == "cpu" and has_igpu():
         out.append(dict(base, nombre="gráfica integrada", dispositivo="igpu", args=["-ngl", "999"]))
+        # Pesos en la CPU (generar depende del ancho de banda, que es el mismo) pero el PROMPT, que es cálculo puro,
+        # en la gráfica: llama.cpp manda ahí las multiplicaciones grandes si no se le prohíbe con --device none
+        out.append(dict(base, nombre="CPU + gráfica para el prompt", dispositivo="cpu",
+                        args=["-ngl", "0"] + [a for a in base["args"] if a == "--mlock"]))
     if "--n-cpu-moe" in base["args"]:
         n = int(base["args"][base["args"].index("--n-cpu-moe") + 1])
         for d in (-2, 2):
@@ -325,6 +343,17 @@ def bench(path: str, hw: dict, args: list[str], ctx: int, threads: tuple[int, in
         srv.stop()
 
 
+# Un paso típico del agente: ~1.500 tokens nuevos que leer (herramientas, archivos) y ~200 que escribir. Elegir
+# solo por la velocidad de generación premiaba configuraciones que leen el prompt muy despacio.
+PASO_PROMPT, PASO_GEN = 1500, 200
+
+
+def step_seconds(r: dict) -> float:
+    if not r.get("gen"):
+        return float("inf")
+    return PASO_PROMPT / max(r.get("prompt") or 0.1, 0.1) + PASO_GEN / r["gen"]
+
+
 def thread_options() -> list[tuple[int, int]]:
     sysd = models._read_json(models.HILOS_SISTEMA)
     logical = int(sysd.get("ia_lote") or os.cpu_count() or 1)
@@ -345,13 +374,14 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
         results.append({**c, "hilos": list(threads[0]), "gen": round(g, 2), "prompt": round(pp, 1)})
         if on_step:
             on_step(f"{c['nombre']}: {g:.1f} tokens/s generando, {pp:.0f} leyendo")
-    best = max(results, key=lambda r: (r["gen"], r["prompt"]))
+    best = min(results, key=step_seconds)
     if best["gen"] > 0 and len(threads) > 1 and best["dispositivo"] in ("cpu", "mixto"):
         g, pp = run(path, hw, best["args"], best["ctx"], threads[1])
         if on_step:
             on_step(f"{best['nombre']} con {threads[1][0]} hilos: {g:.1f} tokens/s")
-        if g > best["gen"]:
-            best = {**best, "hilos": list(threads[1]), "gen": round(g, 2), "prompt": round(pp, 1)}
+        alt = {**best, "hilos": list(threads[1]), "gen": round(g, 2), "prompt": round(pp, 1)}
+        if step_seconds(alt) < step_seconds(best):
+            best = alt
     rec = {"equipo": hw_key(hw), "args": best["args"], "ctx": best["ctx"], "hilos": best["hilos"],
            "dispositivo": best["dispositivo"], "nombre": best["nombre"], "gen": best["gen"], "prompt": best["prompt"],
            "motivo": best["motivo"], "pruebas": [{k: r[k] for k in ("nombre", "gen", "prompt")} for r in results],

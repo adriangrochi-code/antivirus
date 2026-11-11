@@ -86,8 +86,9 @@ def test_candidates(monkeypatch):
     monkeypatch.setattr(motor, "has_igpu", lambda: True)
     base = motor.plan(INFO_DENSO, int(4.7 * GB), A275)
     c = motor.candidates(INFO_DENSO, int(4.7 * GB), A275, base, draft="/m/d.gguf")
-    assert [x["nombre"] for x in c] == ["plan", "gráfica integrada", "con borrador"]
-    assert c[2]["args"][-6:] == ["-md", "/m/d.gguf", "--draft-max", "16", "--draft-min", "2"]
+    assert [x["nombre"] for x in c] == ["plan", "gráfica integrada", "CPU + gráfica para el prompt", "con borrador"]
+    assert "--device" not in c[2]["args"]                     # sin --device none: el prompt puede ir a la gráfica
+    assert c[3]["args"][-6:] == ["-md", "/m/d.gguf", "--draft-max", "16", "--draft-min", "2"]
     base = motor.plan(INFO_MOE, 18 * GB, RTX8)
     assert len(motor.candidates(INFO_MOE, 18 * GB, RTX8, base)) == 3
 
@@ -148,3 +149,18 @@ def test_local_server_uses_motor_plan(modeldir, monkeypatch):
     assert argv[argv.index("--device") + 1] == "none" and argv[argv.index("-c") + 1] == "32768"
     with pytest.raises(ValueError, match="borrador"):
         srv.start(str(modeldir / "grande.gguf"), A275, extra=["-md", "/etc/passwd"])
+
+
+def test_choice_by_agent_step_time_and_quant_recommendation():
+    slow_prompt = {"gen": 5.0, "prompt": 15.0}                  # CPU sola: genera algo más rápido...
+    fast_prompt = {"gen": 4.6, "prompt": 90.0}                  # ...pero la gráfica lee el prompt 6 veces más rápido
+    assert motor.step_seconds(fast_prompt) < motor.step_seconds(slow_prompt)
+    hw = {"ram_mb": 15600, "vram_mb": 0, "ram_bandwidth_gbs": 13.0}
+    files = [{"file": n, "size": int(s * GB), "fit": models.fit(int(s * GB), hw, name=n)}
+             for n, s in (("m-7B-Q4_K_M.gguf", 4.4), ("m-3B-Q4_K_M.gguf", 1.9), ("m-3B-Q8_0.gguf", 3.2),
+                          ("m-30B-A3B-Q3_K_M.gguf", 13.5))]
+    models.recommend(files)
+    rec = [f["file"] for f in files if f.get("recomendado")]
+    assert rec == ["m-3B-Q4_K_M.gguf"]                          # con ~13 GB/s, lo que va a velocidad usable
+    assert files[3]["fit"]["where"] == "no"                     # el MoE de 13,5 GB no cabe con 16 GB
+    assert models.active_fraction("Qwen3-30B-A3B-Q4_K_M") < 0.15

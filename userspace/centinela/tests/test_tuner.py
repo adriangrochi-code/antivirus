@@ -94,7 +94,9 @@ def test_a275_shared_memory_profile():
     assert any("canal simple" in r for r in p.recommendations)
     assert any("0x09" in r and "AmdSetup" in r for r in p.recommendations)
     assert p.gpu_oc_percent == 10 and "amdgpu.ppfeaturemask=0xffffffff" in p.cmdline
-    assert "amdgpu.gttsize=4096" in p.cmdline
+    gtt = [c for c in p.cmdline if c.startswith("amdgpu.gttsize=")]
+    assert gtt and int(gtt[0].split("=")[1]) >= 8192          # un modelo de 7-8 B en Q4 cabe en la gráfica
+    assert p.memlock_mb > 0
     quiet = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "equilibrado")
     assert quiet.gpu_oc_percent == 0                 # el OC solo en perfil rendimiento
 

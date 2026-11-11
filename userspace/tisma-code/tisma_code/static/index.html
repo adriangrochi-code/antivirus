@@ -131,6 +131,7 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .repo .rh small { margin-left: auto; color: var(--faint); font-family: inherit; white-space: nowrap; }
 .file { display: flex; gap: 10px; align-items: center; padding: 6px 0 6px 14px; font-size: 13px; flex-wrap: wrap; }
 .file .fn { flex: 1; min-width: 200px; font-family: var(--mono); word-break: break-all; }
+.rec { color: var(--accent-2); font-weight: 600; }
 .fit-gpu { color: var(--ok); } .fit-mixto { color: var(--blue-2); } .fit-cpu { color: var(--warn); } .fit-no { color: var(--err); }
 .pbar { width: 90px; height: 5px; background: var(--ctl); border-radius: 3px; overflow: hidden; }
 .esp { border-top: 1px solid var(--line); padding: 9px 2px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; font-size: 13px; }
@@ -459,7 +460,7 @@ $("#qBtn").onclick = async () => {
       if (box.dataset.l) { box.hidden = !box.hidden; return; }
       box.dataset.l = 1; box.innerHTML = '<div class="note">Cargando…</div>';
       const fs = await api("/api/models/files?id=" + encodeURIComponent(r.dataset.id));
-      box.innerHTML = fs.map(f => `<div class="file"><span class="fn">${esc(f.file)}</span><span>${gb(f.size)}</span><span class="fit-${f.fit.where}">${esc(f.fit.label)}</span><div class="pbar" id="pb-${btoa(r.dataset.id + "/" + f.file).replace(/=/g, "")}"><i></i></div><button class="btn p" data-f="${esc(f.file)}" ${f.fit.where === "no" ? "disabled" : ""}>Descargar</button></div>`).join("") || '<div class="note">Sin archivos GGUF</div>';
+      box.innerHTML = fs.map(f => `<div class="file"><span class="fn">${esc(f.file)}</span><span>${gb(f.size)}</span><span class="fit-${f.fit.where}">${esc(f.fit.label)}${f.fit.tokens_s_estimate ? ` · ~${f.fit.tokens_s_estimate} tok/s` : ""}${f.recomendado ? ' <b class="rec" title="La de más calidad que va a velocidad usable en este equipo">★ recomendado</b>' : ""}</span><div class="pbar" id="pb-${btoa(r.dataset.id + "/" + f.file).replace(/=/g, "")}"><i></i></div><button class="btn p" data-f="${esc(f.file)}" ${f.fit.where === "no" ? "disabled" : ""}>Descargar</button></div>`).join("") || '<div class="note">Sin archivos GGUF</div>';
       box.querySelectorAll("[data-f]").forEach(b => b.onclick = async () => {
         try { await api("/api/models/download", {id: r.dataset.id, file: b.dataset.f}); b.textContent = "Descargando"; b.disabled = true; }
         catch (e) { alert(e.message); }
