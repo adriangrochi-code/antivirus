@@ -49,6 +49,11 @@ def main(branding: Path, root: Path) -> None:
         svg(branding / "logo.svg", d / "tisma.png", size)
     (icons / "scalable/apps").mkdir(parents=True, exist_ok=True)
     (icons / "scalable/apps/tisma.svg").write_bytes((branding / "logo.svg").read_bytes())
+    # Instalador (Calamares): logo y portada de la marca TISMA
+    cal = root / "etc/calamares/branding/tisma"
+    cal.mkdir(parents=True, exist_ok=True)
+    svg(branding / "logo.svg", cal / "logo.png", 128)
+    svg(branding / "wordmark.svg", cal / "bienvenida.png", 480)
     # Plymouth (pantalla de arranque): el tema «spinner» de Debian (dos pasos: también pide la clave de LUKS
     # y muestra los mensajes) con el logo de TISMA y su fondo grafito
     spinner = root / "usr/share/plymouth/themes/spinner"

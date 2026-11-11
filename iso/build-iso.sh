@@ -9,6 +9,8 @@
 #
 # Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas),
 #            TISMA_ISO_MINIMA=1 (sin escritorio ni componentes pesados: valida construcción y arranque),
+#            TISMA_SIN_COMPILAR=1 (escritorio completo, pero sin compilar componentes externos dentro de la
+#            build: llama.cpp, hardened_malloc, sched_ext, ML de Escudo; para CI y entornos restringidos),
 #            TISMA_BUILD_CA=<archivo.pem> (CA de un proxy HTTPS corporativo: solo durante la build, no va en la ISO)
 set -euo pipefail
 
@@ -19,7 +21,8 @@ SUITE="${DEBIAN_SUITE:-trixie}"
 MIRROR="${DEBIAN_MIRROR:-https://deb.debian.org/debian}"
 CHROOT="$BUILD_DIR/chroot"
 ISODIR="$BUILD_DIR/iso"
-ISO_NAME="${ISO_NAME:-tisma-os-$(date +%Y%m%d)-amd64.iso}"
+TISMA_VERSION="$(sed -n 's/^VERSION_ID="\(.*\)"/\1/p' "$REPO/rootfs/usr/lib/os-release")"
+ISO_NAME="${ISO_NAME:-tisma-os-${TISMA_VERSION}-preview-$(date +%Y%m%d)-amd64.iso}"
 
 log() { printf '\033[1;35m[iso]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[iso] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -193,12 +196,16 @@ if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
 "$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
 "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
 "$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
+if [[ "${TISMA_SIN_COMPILAR:-0}" == 1 ]]; then
+    log "TISMA_SIN_COMPILAR=1: sin llama.cpp, hardened_malloc, sched_ext, ML de Escudo, ruff ni OpenJarvis"
+else
 "$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
 "$HERE/components/llama-cpp.sh" "$CHROOT" || log "AVISO: no se pudo compilar llama.cpp (TISMA Code usará Strata)"
 "$HERE/components/scx.sh" "$CHROOT" || log "AVISO: sin planificadores sched_ext (se usa el del kernel)"
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
+fi
 fi
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"

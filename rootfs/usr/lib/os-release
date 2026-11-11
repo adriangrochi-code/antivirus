@@ -1,7 +1,7 @@
-PRETTY_NAME="TISMA OS 0.1"
+PRETTY_NAME="TISMA OS 0.9 Preview"
 NAME="TISMA OS"
-VERSION_ID="0.1"
-VERSION="0.1 (trixie)"
+VERSION_ID="0.9"
+VERSION="0.9 Preview (trixie)"
 # unattended-upgrades (vía lsb_release) usa el nombre en clave para elegir las actualizaciones de seguridad
 VERSION_CODENAME=trixie
 ID=tisma

@@ -1,0 +1,33 @@
+# Instalador TISMA OS (Calamares). Imágenes generadas por iso/make-branding.py a partir de branding/*.svg
+---
+componentName:   tisma
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 900px,620px
+windowPlacement: center
+strings:
+    productName:         TISMA OS
+    shortProductName:    TISMA
+    version:             0.9 Preview
+    shortVersion:        0.9
+    versionedName:       TISMA OS 0.9 Preview
+    shortVersionedName:  TISMA 0.9
+    bootloaderEntryName: TISMA
+    productUrl:          https://github.com/adriangrochi-code/antivirus
+    supportUrl:          https://github.com/adriangrochi-code/antivirus/issues
+    knownIssuesUrl:      https://github.com/adriangrochi-code/antivirus/blob/main/docs/PREVIEW.md
+    releaseNotesUrl:     https://github.com/adriangrochi-code/antivirus/blob/main/docs/PREVIEW.md
+sidebar: widget
+navigation: widget
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+    productWelcome:      "bienvenida.png"
+slideshow:               "show.qml"
+style:
+   SidebarBackground:    "#1C1B20"
+   SidebarText:          "#E6E6EA"
+   SidebarTextCurrent:   "#FFFFFF"
+   SidebarBackgroundCurrent: "#5A2B8F"
+slideshowAPI: 2
