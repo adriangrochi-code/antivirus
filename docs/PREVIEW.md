@@ -28,14 +28,31 @@ ni para equipos con datos importantes sin copia.**
 1. **En una máquina virtual** (lo más seguro): QEMU/virt-manager o VirtualBox con UEFI, 4 GB de RAM o más y
    un disco de 40 GB.
 2. **En un equipo real**: graba la ISO en un USB (`dd` o Ventoy) y arranca en modo live; desde el escritorio se
-   puede instalar con «Instalar TISMA OS». **Desactiva Secure Boot** (aún no está soportado).
+   puede instalar con «Instalar TISMA OS». **Secure Boot puede quedarse activado**.
+
+## Secure Boot
+
+La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firmado por Debian) → kernel firmado.
+
+- La sesión live, el instalador y, de inicio, el sistema instalado arrancan con el **kernel firmado de Debian**
+  (backports, el más nuevo con firma): funciona con Secure Boot en cualquier PC y trae todos los drivers.
+- El **kernel TISMA** (endurecido y ajustado a tu equipo) se firma con la clave propia de TISMA. Para usarlo con
+  Secure Boot, regístrala una vez: `sudo tisma-secureboot activar`, reinicia y en la pantalla azul de MokManager
+  elige «Enroll MOK» y escribe la contraseña de un solo uso que te mostró. `tisma-secureboot elegir` (al
+  arrancar) solo pone el kernel TISMA por defecto cuando es seguro; si no, el de Debian: el equipo siempre
+  arranca.
+- Con Secure Boot desactivado, el kernel TISMA arranca directamente.
+- Quien construye la ISO crea la clave con `iso/crear-clave-secureboot.sh` en su equipo y la pasa con
+  `TISMA_SB_KEY`/`TISMA_SB_CERT`; la clave privada nunca va al repositorio. Sin clave, el kernel TISMA queda sin
+  firmar (solo arranca con Secure Boot desactivado).
+- Pendiente: kernel en imagen unificada (UKI) que firme también el initramfs y la línea de arranque, y
+  desbloqueo del disco con TPM2 + PIN (requiere LUKS2).
 
 ## Limitaciones conocidas de la preview
 
 - **Sin canal de actualizaciones propio**: las apps de TISMA (Escudo, Centinela, TISMA Code, Bienvenida…) no
   se actualizan solas en un sistema instalado; Debian (incluidas las de seguridad) sí. Llegará en una versión
   posterior con paquetes .deb y un repositorio firmado.
-- **Secure Boot**: hay que desactivarlo (falta shim + clave propia + kernel firmado como UKI).
 - **Solo en español**.
 - **Kernel**: la ISO de prueba en máquina virtual usa el kernel `minimal`; para hardware real se construye con
   `make kernel` (perfil `generic`, todos los drivers).
