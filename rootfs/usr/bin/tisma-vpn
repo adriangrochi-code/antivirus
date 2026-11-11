@@ -63,6 +63,8 @@ activar)
     ip="$(getent ahosts "$host" | awk 'NR==1{print $1}')"
     [[ -n "$ip" ]] || die "no se pudo resolver $host"
     nmcli connection up "$name" >/dev/null
+    # Con VPN todo va por el túnel: sin reparto entre dos conexiones (evitaría el túnel)
+    /usr/lib/tisma/red-secundaria quitar 2>/dev/null || true
     if [[ $ks == 1 ]]; then
         killswitch_on "$name" "$ip" "$port" "$lan"
         echo "VPN «$name» activa con kill-switch: nada sale fuera del túnel."
@@ -75,6 +77,7 @@ desactivar)
     name="${2:?nombre}"; valid_name "$name"
     nmcli connection down "$name" >/dev/null 2>&1 || true
     nft delete table "${TABLE[@]}" 2>/dev/null || true
+    /usr/lib/tisma/red-secundaria actualizar >/dev/null 2>&1 || true
     echo "VPN «$name» desactivada."
     ;;
 estado)

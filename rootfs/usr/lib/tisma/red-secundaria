@@ -1,0 +1,144 @@
+#!/usr/bin/python3 -I
+"""TISMA: dos conexiones a la vez; el tráfico menos importante va por la más lenta.
+
+Si hay dos conexiones con salida a Internet (p. ej. Wi-Fi + cable, Wi-Fi + móvil por USB, o dos adaptadores
+Wi-Fi), la RÁPIDA queda para lo que usas (navegador, juegos, llamadas) y la LENTA se lleva el trabajo de
+fondo: actualizaciones del sistema y de Flatpak, copias de seguridad, firmas de Escudo… (todo lo que corre en
+tisma-segundo-plano.slice). Así una actualización grande no frena una videollamada.
+
+Cómo: nftables marca los paquetes de ese grupo de procesos (cgroup) y una regla de enrutado los manda por la
+conexión secundaria, con su propia dirección de origen (masquerade). Con la VPN activa NO se aplica (todo el
+tráfico debe ir por el túnel). La llama NetworkManager al subir o bajar una conexión.
+Uso: red-secundaria [actualizar | estado | quitar]
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+SLICE = "tisma.slice/tisma-segundo.slice/tisma-segundo-plano.slice"
+MARK, TABLE, PRIO = "0x2", "200", "100"
+CONF = "/etc/tisma/red-secundaria.conf"     # ACTIVA=si|no  (por defecto si)
+
+
+def sh(argv: list[str], inp: str | None = None) -> str:
+    r = subprocess.run(argv, capture_output=True, text=True, input=inp, timeout=15)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def enabled(path: str = CONF) -> bool:
+    try:
+        for line in open(path, encoding="utf-8"):
+            if line.strip().upper() in ("ACTIVA=NO", "ACTIVA=0"):
+                return False
+    except OSError:
+        pass
+    return True
+
+
+def speed_mbps(dev: str, run=sh) -> float:
+    """Velocidad del enlace: Wi-Fi = tasa de transmisión negociada; cable = velocidad del puerto."""
+    if os.path.isdir(f"/sys/class/net/{dev}/wireless") or run(["iw", "dev", dev, "info"]):
+        m = re.search(r"tx bitrate:\s*([\d.]+)\s*MBit/s", run(["iw", "dev", dev, "link"]))
+        return float(m.group(1)) if m else 1.0
+    try:
+        v = int(open(f"/sys/class/net/{dev}/speed").read().strip())
+        return float(v) if v > 0 else 100.0
+    except (OSError, ValueError):
+        return 10.0                                   # USB del móvil y similares: desconocida, se asume lenta
+
+
+def default_routes(run=sh) -> list[dict]:
+    try:
+        routes = json.loads(run(["ip", "-j", "route", "show", "default"]) or "[]")
+    except ValueError:
+        return []
+    out, seen = [], set()
+    for r in sorted(routes, key=lambda r: r.get("metric", 0)):
+        dev = r.get("dev")
+        if dev and r.get("gateway") and dev not in seen and not dev.startswith(("wg", "tun", "tisma")):
+            seen.add(dev)
+            out.append({"dev": dev, "gateway": r["gateway"], "metric": r.get("metric", 0)})
+    return out
+
+
+def vpn_active(run=sh) -> bool:
+    """Kill-switch de tisma-vpn o cualquier túnel WireGuard levantado (aunque sea sin kill-switch)."""
+    if run(["nft", "list", "table", "inet", "tisma_vpn"]):
+        return True
+    try:
+        return any("UP" in (l.get("flags") or []) for l in json.loads(run(["ip", "-j", "link", "show", "type", "wireguard"]) or "[]"))
+    except ValueError:
+        return False
+
+
+def plan(run=sh) -> dict | None:
+    if not enabled() or vpn_active(run):
+        return None
+    routes = default_routes(run)
+    if len(routes) < 2:
+        return None
+    for r in routes:
+        r["mbps"] = speed_mbps(r["dev"], run)
+    routes.sort(key=lambda r: -r["mbps"])
+    fast, slow = routes[0], routes[-1]
+    if fast["dev"] == slow["dev"]:
+        return None
+    return {"rapida": fast, "lenta": slow}
+
+
+def nft_rules(slow_dev: str) -> str:
+    return f"""table inet tisma_red
+delete table inet tisma_red
+table inet tisma_red {{
+    chain marcar {{
+        type route hook output priority mangle; policy accept;
+        socket cgroupv2 level 3 "{SLICE}" meta mark set {MARK}
+    }}
+    chain salida_nat {{
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "{slow_dev}" meta mark {MARK} masquerade
+    }}
+}}
+"""
+
+
+def apply(run=sh) -> str:
+    p = plan(run)
+    remove(run)
+    if not p:
+        return "Una sola conexión (o VPN activa): todo el tráfico va por la principal."
+    slow = p["lenta"]
+    run(["systemctl", "start", "tisma-segundo-plano.slice"])   # el cgroup debe existir para la regla
+    run(["ip", "route", "replace", "default", "via", slow["gateway"], "dev", slow["dev"], "table", TABLE])
+    run(["ip", "rule", "add", "fwmark", MARK, "table", TABLE, "priority", PRIO])
+    # La respuesta llega por la interfaz secundaria: comprobación de ruta inversa «laxa» solo en ella
+    run(["sysctl", "-q", f"net.ipv4.conf.{slow['dev']}.rp_filter=2"])
+    run(["nft", "-f", "-"], inp=nft_rules(slow["dev"]))
+    return (f"Principal: {p['rapida']['dev']} ({p['rapida']['mbps']:.0f} Mbit/s). "
+            f"Segundo plano por {slow['dev']} ({slow['mbps']:.0f} Mbit/s).")
+
+
+def remove(run=sh) -> None:
+    run(["nft", "delete", "table", "inet", "tisma_red"])
+    run(["ip", "rule", "del", "fwmark", MARK, "table", TABLE, "priority", PRIO])
+    run(["ip", "route", "flush", "table", TABLE])
+
+
+def main(argv: list[str]) -> int:
+    cmd = argv[0] if argv else "actualizar"
+    if cmd == "estado":
+        p = plan()
+        print(json.dumps(p, indent=2) if p else "Sin conexión secundaria activa.")
+    elif cmd == "quitar":
+        remove()
+    else:
+        print(apply())
+    return 0
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

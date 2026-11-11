@@ -1,0 +1,6 @@
+#!/bin/sh
+# Al subir o bajar una conexión, recalcular qué red lleva el tráfico de segundo plano.
+case "$2" in
+    up|down|dhcp4-change|connectivity-change) exec /usr/lib/tisma/red-secundaria actualizar ;;
+esac
+exit 0
