@@ -8,4 +8,4 @@ grub-efi-amd64-bin grub-pc-bin efibootmgr
 apparmor apparmor-utils nftables unattended-upgrades
 systemd-zram-generator python3 systemd-oomd btrfs-progs restic chrony
 dnscrypt-proxy usbguard auditd bubblewrap strace rasdaemon smartmontools
-python3-numpy python3-pefile libnotify-bin gpgv
+python3-numpy python3-pefile libnotify-bin gpgv python3-watchdog python3-psutil libglib2.0-bin

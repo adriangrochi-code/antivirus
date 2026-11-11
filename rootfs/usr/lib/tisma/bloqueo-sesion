@@ -85,13 +85,32 @@ class Guard:
         return None
 
 
+def watch_cmd() -> list[str]:
+    # Un solo proceso que escucha a logind: sin sondear (antes, varios procesos loginctl cada 2 s)
+    return ["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1"]
+
+
 def main() -> int:
+    import select
     g = Guard()
+    mon = None
     while True:
+        if mon is None or mon.poll() is not None:
+            try:
+                mon = subprocess.Popen(watch_cmd(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            except OSError:
+                mon = None
         ev = g.step()
         if ev:
             print(f"tisma-bloqueo-sesion: {ev}", flush=True)
-        time.sleep(POLL)
+        if mon is None:
+            time.sleep(POLL)                       # sin gdbus: sondeo como antes
+            continue
+        # Espera un cambio de logind (bloqueo, desbloqueo, sesiones) o, como mucho, 60 s (reinicio automático)
+        # (lectura sin búfer: lo que haya se descarta y se vuelve a mirar el estado real con step)
+        ready, _, _ = select.select([mon.stdout], [], [], 60)
+        if ready:
+            os.read(mon.stdout.fileno(), 65536)
 
 
 if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":

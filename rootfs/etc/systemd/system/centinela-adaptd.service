@@ -3,6 +3,8 @@ Description=Centinela adaptd - adaptación del sistema al hardware en tiempo rea
 After=systemd-sysctl.service centinela-firstboot.service
 
 [Service]
+# Despertares agrupados con los de otros procesos: la CPU duerme más tiempo seguido
+TimerSlackNSec=50ms
 Type=simple
 ExecStart=/usr/bin/centinela adaptd
 Restart=on-failure

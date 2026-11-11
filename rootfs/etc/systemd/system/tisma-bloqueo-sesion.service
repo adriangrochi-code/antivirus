@@ -3,6 +3,8 @@ Description=TISMA - USB bloqueado con la pantalla bloqueada y reinicio automáti
 After=systemd-logind.service usbguard.service
 
 [Service]
+# Despertares agrupados con los de otros procesos: la CPU duerme más tiempo seguido
+TimerSlackNSec=50ms
 ExecStart=/usr/lib/tisma/bloqueo-sesion
 Restart=always
 RestartSec=5

@@ -112,7 +112,9 @@ class RealTimeProtection:
                         if not first:
                             self._enqueue(f)
             first = False
-            self._stop.wait(5)
+            # Solo si falta python3-watchdog (eventos inotify): recorrer carpetas despierta CPU y disco,
+            # así que se hace poco (cada 2 min)
+            self._stop.wait(120)
 
     def stop(self) -> None:
         self._stop.set()

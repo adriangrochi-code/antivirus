@@ -87,6 +87,9 @@ build-essential gdb git
 python3-yara yara python3-pefile libnotify-bin gpgv
 # Motor ML de Escudo (lightgbm y signify se instalan con iso/components/escudo-ml.sh)
 python3-sklearn python3-asn1crypto python3-oscrypto python3-certvalidator python3-typing-extensions libgomp1
+# Eventos del kernel (inotify) en vez de sondeo, y conexiones de red: sin ellos Escudo recorría las carpetas
+# cada 5 s (CPU y disco siempre despiertos)
+python3-watchdog python3-psutil libglib2.0-bin
 # --- REA (análisis estático) y OpenJarvis ---
 binutils tshark binwalk python3-venv cargo rustc libportaudio2
 glmark2-es2-wayland

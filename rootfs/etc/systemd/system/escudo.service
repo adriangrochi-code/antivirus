@@ -6,6 +6,8 @@ Wants=nftables.service auditd.service
 PartOf=nftables.service
 
 [Service]
+# Despertares agrupados con los de otros procesos: la CPU duerme más tiempo seguido
+TimerSlackNSec=50ms
 Type=simple
 ExecStartPre=-/usr/lib/escudo/audit-usuarios
 ExecStart=/usr/bin/escudo protect /home /tmp /var/tmp

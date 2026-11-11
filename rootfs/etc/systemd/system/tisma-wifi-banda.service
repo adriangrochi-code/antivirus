@@ -4,6 +4,8 @@ After=NetworkManager.service
 ConditionPathExistsGlob=/sys/class/net/*/wireless
 
 [Service]
+# Despertares agrupados con los de otros procesos: la CPU duerme más tiempo seguido
+TimerSlackNSec=50ms
 ExecStart=/usr/lib/tisma/wifi-banda
 Restart=on-failure
 RestartSec=10
