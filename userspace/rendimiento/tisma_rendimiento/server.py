@@ -53,7 +53,9 @@ def device_info() -> dict:
             "ancho_banda": (bench.get("memory", {}) or {}).get("bandwidth_gbs"),
             "latencia": (bench.get("memory", {}) or {}).get("latency_ns"),
             "recomendaciones": plan.get("recommendations", []), "razones": plan.get("reasons", []),
-            "rapl": plan.get("power", {}).get("rapl", {})}
+            "rapl": plan.get("power", {}).get("rapl", {}),
+            "bateria": (hw.get("power") or {}).get("battery", False),
+            "umbral_carga": read_json(STATE / "prefs.json").get("umbral_carga")}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -136,6 +138,14 @@ class Handler(BaseHTTPRequestHandler):
             AUTOTUNE["proc"] = POPEN(["pkexec", "/usr/bin/centinela", "autotune", "--segundos", str(seg), "--json"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self._send(200, {"ok": True})
+        if u.path == "/api/umbral":
+            on = b.get("activo")
+            if on not in (True, False):
+                return self._send(400, {"error": "activo debe ser verdadero o falso"})
+            r = RUN(["pkexec", "/usr/bin/centinela", "energia", "umbral", "80" if on else "100"],
+                    capture_output=True, text=True, timeout=120)
+            return self._send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0,
+                                                                   "salida": (r.stdout or r.stderr)[-400:]})
         if u.path == "/api/oc":
             argv = ["pkexec", "/usr/bin/centinela", "oc"]
             if "gpu" in b:

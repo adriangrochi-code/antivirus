@@ -63,6 +63,7 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     <h3>Potencia y overclock <small>los cambios se aplican al momento</small></h3>
     <div class="seg" id="perfil"><button data-p="silencioso">Silencioso</button><button data-p="equilibrado">Equilibrado</button><button data-p="rendimiento">Rendimiento</button></div>
     <div class="row"><div class="k">Turbo del procesador (Core Performance Boost)<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite</div></div><button class="tog" id="turbo"></button></div>
+    <div class="row" id="umbralRow" hidden><div class="k">Cuidar la batería<div class="note" style="margin:0">Carga solo hasta el 80 %: alarga años su vida si el portátil pasa mucho tiempo enchufado</div></div><button class="tog" id="umbral"></button></div>
     <div class="row" style="align-items:flex-start;flex-direction:column;gap:6px">
       <div style="display:flex;width:100%"><div class="k">Overclock de la GPU integrada</div><div class="v" id="ocVal">0 %</div></div>
       <input type="range" id="oc" min="0" max="15" step="1" value="0">
@@ -119,6 +120,7 @@ function updOc(){const v=+$("#oc").value;$("#oc").style.setProperty("--p",(100*v
 $("#oc").oninput=()=>{$("#oc").dataset.touched=1;updOc()};
 $("#applyOc").onclick=async()=>{const r=await api("/api/oc",{gpu:+$("#oc").value});toast(r.ok?"Overclock aplicado":"No se aplicó: "+r.salida,!r.ok);delete $("#oc").dataset.touched};
 $("#resetOc").onclick=async()=>{$("#oc").value=0;updOc();const r=await api("/api/oc",{gpu:0});toast(r.ok?"GPU a frecuencia de fábrica":"Error: "+r.salida,!r.ok)};
+$("#umbral").onclick=async()=>{const on=!$("#umbral").classList.contains("on");const r=await api("/api/umbral",{activo:on});if(r.ok)$("#umbral").classList.toggle("on",on);toast(r.ok?r.salida.trim():"Error: "+r.salida,!r.ok)};
 $("#turbo").onclick=async()=>{const on=!$("#turbo").classList.contains("on");const r=await api("/api/oc",{turbo:on});toast(r.ok?(on?"Turbo activado":"Turbo desactivado"):"Error: "+r.salida,!r.ok)};
 document.querySelectorAll("#perfil button").forEach(b=>b.onclick=async()=>{const r=await api("/api/perfil",{perfil:b.dataset.p});toast(r.ok?`Perfil ${b.textContent}`:"Error: "+r.salida,!r.ok);tick()});
 let autoSec=45,autoTimer=null;
@@ -135,6 +137,7 @@ pollAuto();
 $("#boot").onclick=async()=>{$("#bootOut").textContent="Analizando…";const r=await api("/api/arranque");if(r.error){$("#bootOut").textContent=r.error;return}
  const e=r.etapas;$("#bootOut").innerHTML=`<div class="bars">${Object.entries(e).map(([k,v])=>`<div class="b"><span>${esc(k)}</span><div class="t"><i style="width:${Math.min(100,v*8)}%"></i></div><span class="n">${v.toFixed(1)} s</span></div>`).join("")}</div>`+(r.recomendaciones.length?`<ul class="rec">${r.recomendaciones.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:"<div class='note'>Sin retrasos importantes.</div>")};
 (async()=>{history.replaceState(null,"","/");try{const d=await api("/api/equipo");
+ if(d.bateria){$("#umbralRow").hidden=false;$("#umbral").classList.toggle("on",!!d.umbral_carga)}
  $("#dev").textContent=[d.producto,d.cpu].filter(Boolean).join(" · ");
  $("#mods").textContent=d.modulos.map(m=>`${m.mb/1024} GB @ ${m.configured_mts} MT/s`).join(" + ");
  if(d.modulos.length===1)$("#memWarn").innerHTML=`<div class="warn">Canal simple: CPU, gráfica e IA comparten ${d.modulos[0].configured_mts?(d.modulos[0].configured_mts*8/1000).toFixed(1)+" GB/s teóricos":"un solo canal"}.</div>`;

@@ -68,3 +68,10 @@ def test_autotune_endpoint_validated(srv, monkeypatch):
     assert req(port, "POST", "/api/autotune", {"segundos": 45})[0] == 409      # una sola a la vez
     assert started == [["pkexec", "/usr/bin/centinela", "autotune", "--segundos", "45", "--json"]]
     server.AUTOTUNE["proc"] = None
+
+
+def test_battery_threshold_endpoint_validates_and_uses_pkexec(srv):
+    port, calls = srv
+    assert req(port, "POST", "/api/umbral", {"activo": True})[0] == 200
+    assert calls[-1] == ["pkexec", "/usr/bin/centinela", "energia", "umbral", "80"]
+    assert req(port, "POST", "/api/umbral", {"activo": "sí"})[0] == 400
