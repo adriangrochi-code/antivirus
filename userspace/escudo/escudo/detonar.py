@@ -239,14 +239,16 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
 
 
 # ---------------------------------------------------------------- lista de permitidos
-def cargar_permitidos(path: Path = ALLOWLIST) -> dict:
+def cargar_permitidos(path: Path | None = None) -> dict:
+    path = path or ALLOWLIST                  # al llamar, no al definir: así ESCUDO_PERMITIDOS/pruebas lo cambian
     try:
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
 
 
-def guardar_veredicto(inf: Informe, ruta: str, path: Path = ALLOWLIST) -> None:
+def guardar_veredicto(inf: Informe, ruta: str, path: Path | None = None) -> None:
+    path = path or ALLOWLIST
     data = cargar_permitidos(path)
     data[inf.sha256] = {"veredicto": inf.veredicto, "ruta": ruta, "t": time.time(), "motivos": inf.motivos[:5]}
     path.parent.mkdir(parents=True, exist_ok=True)
