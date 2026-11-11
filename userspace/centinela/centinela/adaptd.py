@@ -148,6 +148,9 @@ class AdaptDaemon:
         self.mem = Holt()
         self.state = "normal"
         self._stop = threading.Event()
+        from .memoria import Compactor
+        self.compactor = Compactor()
+        self._ticks = 0
         self.total_mb = mem_available_mb()
         for line in (sysfs.read("/proc/meminfo", "") or "").splitlines():
             if line.startswith("MemTotal:"):
@@ -217,6 +220,12 @@ class AdaptDaemon:
         self.thermal_guard()
         avail = mem_available_mb()
         self.mem.update(avail)
+        self._ticks += 1
+        if self._ticks % 20 == 0:                 # cada ~minuto: comprimir la memoria fría de apps sin usar
+            try:
+                self.compactor.step(avail, self.total_mb)
+            except Exception:  # noqa: BLE001 — una pasada fallida no detiene la adaptación
+                log.exception("Error compactando apps en segundo plano")
         d = decide(read_psi("memory"), read_psi("cpu"), avail,
                    self.mem.forecast(self.horizon_steps), self.total_mb, running_workloads())
         self.enter(d.state, d.reasons)
