@@ -84,13 +84,16 @@ _OWNER_OK: dict[int, float] = {}
 def _check_local_owner(endpoint: str) -> None:
     from urllib.parse import urlparse
 
-    from .models import port_owner_is_me
+    from .models import port_listening, port_owner_is_me
     u = urlparse(endpoint)
     if u.hostname not in ("127.0.0.1", "localhost", "::1"):
         return
     port = u.port or 80
     if time.monotonic() - _OWNER_OK.get(port, -1e9) < 30:
         return
+    if not port_listening(port):
+        raise LLMError("No hay ningún motor de IA en marcha. Abre Strata o, en «Modelo», elige un modelo descargado "
+                       "(o descarga uno con «＋ Añadir modelo…»).")
     if not port_owner_is_me(port):
         raise LLMError(f"El motor en el puerto {port} no pertenece a tu usuario: por seguridad no se usa "
                        "(otro usuario del equipo podría estar suplantándolo)")

@@ -102,7 +102,11 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .pop .it.sel { color: var(--accent-2); }
 .pop .it small.hilos { margin-left: 6px; max-width: none; color: var(--blue-2); }
 .pop .it small.hilos:hover { color: var(--accent-2); }
-.pop .path { font-family: var(--mono); font-size: 12px; color: var(--blue-2); padding: 4px 8px; word-break: break-all; }
+.pop .path { font-family: var(--mono); font-size: 12px; color: var(--blue-2); padding: 6px 8px; word-break: break-all;
+  width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: 8px; outline: none; }
+.pop input.path:hover { border-color: var(--line); } .pop input.path:focus { border-color: var(--accent); background: var(--bg); }
+.pop .hint { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); border-radius: 8px;
+  padding: 8px 10px; margin: 2px 2px 8px; font-size: 13px; }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
 
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; place-items: center; z-index: 20; }
@@ -279,7 +283,7 @@ async function send() {
   if (busy) { await api("/api/stop", {}); return; }
   const text = $("#input").value.trim();
   if (!text) return;
-  if (!state.workspace) { openDirs(); return; }
+  if (!state.workspace) { openDirs(undefined, "Primero elige la carpeta del proyecto: tu mensaje se queda escrito."); return; }
   put(esc(text), "u");
   $("#input").value = ""; grow();
   setBusy(true, "Pensando");
@@ -293,16 +297,23 @@ $("#send").onclick = send;
 /* ---------- carpeta / repo ---------- */
 function closePops() { document.querySelectorAll(".pop").forEach(p => p.classList.remove("on")); }
 document.addEventListener("click", e => { if (!e.target.closest(".pop, .chip")) closePops(); });
-async function openDirs(path) {
-  const d = await api("/api/dirs?path=" + encodeURIComponent(path ?? state.workspace ?? ""));
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePops(); });
+async function openDirs(path, hint) {
+  let d;
+  try { d = await api("/api/dirs?path=" + encodeURIComponent(path ?? state.workspace ?? "")); }
+  catch (e) { put(esc(e.message), "err"); return; }
   const recent = (state.config.recent || []).map(r => `<div class="it" data-open="${esc(r)}">🕘 ${esc(r.split("/").pop())}<small>${esc(r)}</small></div>`).join("");
-  $("#dirPop").innerHTML = (recent ? `<div class="tt">Recientes</div>${recent}<hr>` : "") +
-    `<div class="tt">Explorar</div><div class="path">${esc(d.path)}${d.git ? `  ⎇ ${esc(d.git)}` : ""}</div>
+  $("#dirPop").innerHTML = (hint ? `<div class="hint">${esc(hint)}</div>` : "") +
+    (recent ? `<div class="tt">Recientes</div>${recent}<hr>` : "") +
+    `<div class="tt">Explorar${d.git ? ` · ⎇ ${esc(d.git)}` : ""}</div>
+     <input class="path" id="dirPath" value="${esc(d.path)}" spellcheck="false" aria-label="Ruta de la carpeta" title="Escribe una ruta y pulsa Intro">
      <div class="it" data-go="${esc(d.parent)}">↑ ..</div>` +
     d.dirs.map(n => `<div class="it" data-go="${esc(d.path + "/" + n)}">📁 ${esc(n)}</div>`).join("") +
     `<hr><div class="it sel" data-open="${esc(d.path)}">✓ Usar esta carpeta</div>`;
   $("#dirPop").querySelectorAll("[data-go]").forEach(el => el.onclick = e => { e.stopPropagation(); openDirs(el.dataset.go); });
   $("#dirPop").querySelectorAll("[data-open]").forEach(el => el.onclick = () => useDir(el.dataset.open));
+  $("#dirPath").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); openDirs($("#dirPath").value.trim()); } };
+  $("#dirPath").onclick = e => e.stopPropagation();
   $("#modelPop").classList.remove("on");
   $("#dirPop").classList.add("on");
 }

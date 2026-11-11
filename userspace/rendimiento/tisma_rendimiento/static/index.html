@@ -48,6 +48,7 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
 .toast{position:fixed;right:18px;bottom:18px;background:var(--panel);border:1px solid var(--acc);border-radius:10px;padding:10px 14px;display:none;max-width:420px}
 @media(max-width:980px){main{grid-template-columns:repeat(2,1fr)}.w4{grid-column:span 2}}
 @media(max-width:600px){main{grid-template-columns:1fr}.w2,.w4{grid-column:span 1}}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -62,8 +63,9 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
   <section class="card w2">
     <h3>Potencia y overclock <small>los cambios se aplican al momento</small></h3>
     <div class="seg" id="perfil"><button data-p="silencioso">Silencioso</button><button data-p="equilibrado">Equilibrado</button><button data-p="rendimiento">Rendimiento</button></div>
-    <div class="row"><div class="k">Turbo del procesador (Core Performance Boost)<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite</div></div><button class="tog" id="turbo"></button></div>
+    <div class="row" id="turboRow"><div class="k">Turbo del procesador (Core Performance Boost)<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite</div></div><button class="tog" id="turbo"></button></div>
     <div class="row" id="umbralRow" hidden><div class="k">Cuidar la batería<div class="note" style="margin:0">Carga solo hasta el 80 %: alarga años su vida si el portátil pasa mucho tiempo enchufado</div></div><button class="tog" id="umbral"></button></div>
+    <div id="ocBox">
     <div class="row" style="align-items:flex-start;flex-direction:column;gap:6px">
       <div style="display:flex;width:100%"><div class="k">Overclock de la GPU integrada</div><div class="v" id="ocVal">0 %</div></div>
       <input type="range" id="oc" min="0" max="15" step="1" value="0">
@@ -71,6 +73,8 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     </div>
     <div style="display:flex;gap:8px"><button class="btn p" id="applyOc">Aplicar overclock</button><button class="btn" id="resetOc">Volver a fábrica</button></div>
     <div class="warn" id="ocWarn">Límite de seguridad: 15 %. Si la GPU supera 90 °C, vuelve sola a la frecuencia de fábrica. Pide tu contraseña de administrador.</div>
+    </div>
+    <div class="note" id="ocNo" hidden>Este equipo no tiene una gráfica con overclock ajustable desde TISMA.</div>
   </section>
 
   <section class="card w2">
@@ -110,11 +114,12 @@ async function tick(){try{const s=await api("/api/estado");state=s;
  const t=s.temperaturas,tc=t.cpu??Object.values(t)[0];$("#tmp").innerHTML=tc!=null?`${tc}<small>°C</small>`:"—";$("#tmpSub").textContent=Object.entries(t).map(([k,v])=>`${k} ${v} °C`).join(" · ")||"sin sensores";push("tmp",tc);spark("#sTmp",hist.tmp,100,"#F0B030");
  const m=s.memoria;$("#ram").innerHTML=`${(m.used_mb/1024).toFixed(1)}<small>/ ${(m.total_mb/1024).toFixed(0)} GB</small>`;$("#ramSub").textContent=`${(m.available_mb/1024).toFixed(1)} GB libres · presión ${s.presion.memory??0} %`;$("#zram").textContent=m.zram?`zram ${m.zram.algoritmo} ${m.zram.ratio}×`:"";push("ram",100*m.used_mb/m.total_mb);spark("#sRam",hist.ram,100,"#4A9CF0");
  const g=s.gpus[0];if(g){$("#gpu").innerHTML=`${g.uso??"—"}<small>%</small>`;$("#gpuSub").textContent=`${g.mhz??"—"} MHz · VRAM ${g.vram_usada_mb}/${g.vram_total_mb} MB · compartida ${g.gtt_usada_mb} MB`;$("#gpuName").textContent=g.card;push("gpu",g.uso);spark("#sGpu",hist.gpu,100,"#4CC38A");
+   $("#ocBox").hidden=false;$("#ocNo").hidden=true;
    gpuMax=g.mhz_max;if(!$("#oc").dataset.touched){$("#oc").value=g.oc_porcentaje||0}updOc();$("#applyOc").disabled=!g.oc_disponible;
    if(!g.oc_disponible)$("#ocWarn").textContent="El driver aún no expone el overclock: elige el perfil Rendimiento (activa amdgpu overdrive) y reinicia una vez.";}
- else{$("#gpu").textContent="—";$("#gpuSub").textContent="sin GPU con métricas";$("#applyOc").disabled=true}
+ else{$("#gpu").textContent="—";$("#gpuSub").textContent="sin GPU con métricas";$("#applyOc").disabled=true;$("#ocBox").hidden=true;$("#ocNo").hidden=false}
  document.querySelectorAll("#perfil button").forEach(b=>b.classList.toggle("on",b.dataset.p===s.perfil));
- $("#turbo").classList.toggle("on",c.turbo==="1");$("#turbo").disabled=c.turbo==null;
+ $("#turbo").classList.toggle("on",c.turbo==="1");$("#turbo").disabled=c.turbo==null;$("#turboRow").hidden=c.turbo==null;
 }catch(e){}}
 function updOc(){const v=+$("#oc").value;$("#oc").style.setProperty("--p",(100*v/15)+"%");$("#ocVal").textContent=`+${v} %`;$("#ocMhz").textContent=gpuMax?`Frecuencia máxima: ${gpuMax} MHz → ${Math.round(gpuMax*(1+v/100))} MHz`:""}
 $("#oc").oninput=()=>{$("#oc").dataset.touched=1;updOc()};

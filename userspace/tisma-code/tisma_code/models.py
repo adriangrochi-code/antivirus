@@ -247,6 +247,18 @@ def strata_status(hw: dict) -> dict:
 
 
 # ---------------------------------------------------------------- servidor llama.cpp
+def port_listening(port: int) -> bool:
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            for line in Path(table).read_text().splitlines()[1:]:
+                f = line.split()
+                if f[3] == "0A" and int(f[1].rsplit(":", 1)[1], 16) == port:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def port_owner_is_me(port: int) -> bool:
     """¿El proceso que escucha en 127.0.0.1:port es de este usuario? (evita que otro usuario local
     suplante al motor de IA y le dicte llamadas a herramientas al agente)."""
