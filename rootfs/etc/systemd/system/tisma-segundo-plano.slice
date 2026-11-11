@@ -5,5 +5,7 @@ Before=slices.target
 
 [Slice]
 # El escritorio y las apps tienen prioridad: este trabajo solo usa lo que sobra.
-CPUWeight=20
+# «idle» (cgroup v2, equivale a SCHED_IDLE): solo usa CPU cuando nadie más la necesita; ni un ciclo
+# robado a lo que estás haciendo. El disco sigue con peso bajo.
+CPUWeight=idle
 IOWeight=20

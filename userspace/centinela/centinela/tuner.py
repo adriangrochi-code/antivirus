@@ -101,13 +101,22 @@ def _kernel(plan: Plan, hw: dict) -> None:
         plan.why("Un solo nodo NUMA: se desactiva el balanceo NUMA (evita fallos de página inútiles).")
 
     if plan.use_case == "servidor":
-        k += ["CONFIG_PREEMPT_VOLUNTARY=y", "CONFIG_HZ_250=y"]
-        plan.cmdline.append("preempt=voluntary")
-        plan.why("Servidor: preempción voluntaria y HZ=250 maximizan el rendimiento total.")
+        k += ["CONFIG_PREEMPT_DYNAMIC=y", "CONFIG_HZ_250=y"]
+        plan.cmdline.append("preempt=lazy")
+        plan.why("Servidor: preempción «lazy» (Linux 6.13+, sustituye a la voluntaria, que el kernel está retirando "
+                 "en x86) y HZ=250: menos cambios de contexto, más trabajo útil por ciclo.")
+    elif plan.use_case == "portatil":
+        k += ["CONFIG_PREEMPT_DYNAMIC=y", "CONFIG_HZ_1000=y"]
+        plan.cmdline.append("preempt=lazy")
+        plan.why("Portátil: preempción «lazy» (solo interrumpe una tarea cuando es urgente: menos cambios de contexto "
+                 "y menos despertares de CPU, más batería) con HZ=1000 para que el escritorio siga ágil.")
     else:
         k += ["CONFIG_PREEMPT_DYNAMIC=y", "CONFIG_HZ_1000=y"]
         plan.cmdline.append("preempt=full")
         plan.why(f"{plan.use_case.capitalize()}: preempción completa y HZ=1000 para mínima latencia de respuesta.")
+    # El watchdog NMI interrumpe cada CPU periódicamente (y ocupa un contador de rendimiento). Los cuelgues totales
+    # los cubre el watchdog de hardware que gestiona systemd (RuntimeWatchdogSec).
+    plan.cmdline.append("nmi_watchdog=0")
 
     # Drivers de arranque integrados: sin cargar módulos para montar la raíz.
     boot = hw.get("boot", {})

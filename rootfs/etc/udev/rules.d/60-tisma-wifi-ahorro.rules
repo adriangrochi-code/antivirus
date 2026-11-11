@@ -1,2 +1,2 @@
-# Wi-Fi sin modo ahorro con el cargador conectado (ver /usr/lib/tisma/wifi-ahorro)
-ACTION=="add|change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="/usr/lib/tisma/wifi-ahorro"
+# Al conectar o desconectar el cargador: ahorro de energía del Wi-Fi y del resto de componentes
+ACTION=="add|change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="/usr/lib/tisma/wifi-ahorro", RUN+="/usr/bin/centinela energia auto"

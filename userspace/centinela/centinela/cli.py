@@ -51,7 +51,9 @@ def _plan_from_state(args) -> Plan:
     _factory_power_limits(probe)
     measures = ap.load_state("bench.json") or {}
     prefs = ap.load_state("prefs.json") or {}
-    use = getattr(args, "uso", None) or prefs.get("uso", "escritorio")
+    # Con batería, el uso por defecto es «portátil» (antes todo era «escritorio», también la A275)
+    default_use = "portatil" if (probe.get("power") or {}).get("battery") else "escritorio"
+    use = getattr(args, "uso", None) or prefs.get("uso", default_use)
     prof = getattr(args, "perfil", None) or prefs.get("perfil", "equilibrado")
     return make_plan(probe, measures, use, prof)
 
@@ -204,6 +206,18 @@ def cmd_setup(args) -> int:
     return cmd_apply(args)
 
 
+def cmd_energia(args) -> int:
+    from . import energia
+    act = ap.Actuator(dry_run=args.dry_run)
+    if args.modo == "umbral":
+        print(energia.set_threshold(args.valor, act))
+        return 0
+    mode = args.modo if args.modo != "auto" else ("corriente" if energia.on_ac() else "bateria")
+    r = energia.apply(mode, act)
+    print(f"Energía: modo {'batería' if mode == 'bateria' else 'cargador'} ({r['cambios']} ajustes)")
+    return 0
+
+
 def cmd_status(args) -> int:
     from . import status
     print(json.dumps(status.snapshot(), ensure_ascii=False))
@@ -313,6 +327,12 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--interval", type=float, default=3.0)
             s.add_argument("--no-game-boost", action="store_true")
 
+    s = sub.add_parser("energia", help="ahorro de energía según cargador/batería, y umbral de carga")
+    s.add_argument("modo", choices=["auto", "bateria", "corriente", "umbral"])
+    s.add_argument("valor", nargs="?", type=int, help="umbral: % máximo de carga (100 = sin límite)")
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(func=cmd_energia)
+
     s = sub.add_parser("estado", help="métricas en vivo en JSON (sin privilegios)")
     s.set_defaults(func=cmd_status)
 
@@ -343,7 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
 # Lo único que se puede pedir con pkexec (autorización de «overclock» desde TISMA Rendimiento). El resto
 # (compilar e instalar kernels, aplicar planes…) exige sudo: si no, la misma autorización (que se recuerda unos
 # minutos) permitiría a cualquier programa de la sesión instalar un kernel compilado desde una carpeta suya.
-PKEXEC_ALLOWED = {"oc", "autotune", "estado", "arranque"}
+PKEXEC_ALLOWED = {"oc", "autotune", "estado", "arranque", "energia"}
 
 
 def main(argv: list[str] | None = None) -> int:

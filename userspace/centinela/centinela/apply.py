@@ -35,6 +35,15 @@ WRITABLE = [
     "/sys/class/drm/card*/device/pp_sclk_od",
     "/sys/class/drm/card*/device/pp_od_clk_voltage",
     "/sys/module/damon_reclaim/parameters/*",
+    # energía adaptativa (centinela energia)
+    "/sys/class/scsi_host/host*/link_power_management_policy",
+    "/sys/module/pcie_aspm/parameters/policy",
+    "/sys/bus/pci/devices/*/power/control",
+    "/sys/bus/usb/devices/*/power/control",
+    "/sys/module/snd_hda_intel/parameters/power_save",
+    "/proc/sys/vm/dirty_writeback_centisecs", "/proc/sys/vm/stat_interval",
+    "/sys/class/power_supply/BAT*/charge_control_start_threshold",
+    "/sys/class/power_supply/BAT*/charge_control_end_threshold",
 ]
 OC_MAX = 15               # % máximo de overclock de la GPU integrada que centinela acepta
 

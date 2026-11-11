@@ -192,3 +192,45 @@ def test_user_oc_choice_beats_plan_and_apply_keeps_prefs(tmp_path, monkeypatch):
     act = Actuator(dry_run=True)
     apply.apply_power(p, act)
     assert not any(path.endswith("pp_sclk_od") and v == "10" for path, v in act.changes)   # el usuario puso 0
+
+
+def test_energy_modes_battery_and_ac(tmp_path, monkeypatch):
+    from centinela import apply, energia, sysfs
+    r = tmp_path
+    def mk(path, value):
+        p = r / path.lstrip("/")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(value)
+    mk("/sys/class/power_supply/AC/type", "Mains")
+    mk("/sys/class/power_supply/AC/online", "0")
+    mk("/sys/class/power_supply/BAT0/type", "Battery")
+    mk("/sys/class/power_supply/BAT0/status", "Discharging")
+    mk("/sys/class/power_supply/BAT0/charge_control_end_threshold", "100")
+    mk("/sys/class/power_supply/BAT0/charge_control_start_threshold", "0")
+    mk("/sys/class/scsi_host/host0/link_power_management_policy", "max_performance")
+    mk("/sys/module/pcie_aspm/parameters/policy", "default")
+    mk("/sys/bus/pci/devices/0000:00:01.0/power/control", "on")
+    mk("/sys/bus/usb/devices/1-1/idVendor", "046d")                     # ratón: no se suspende
+    mk("/sys/bus/usb/devices/1-1/power/control", "on")
+    mk("/sys/bus/usb/devices/1-1/1-1:1.0/bInterfaceClass", "03")
+    mk("/sys/bus/usb/devices/1-2/idVendor", "0bda")                     # lector de tarjetas
+    mk("/sys/bus/usb/devices/1-2/power/control", "on")
+    mk("/sys/bus/usb/devices/1-2/1-2:1.0/bInterfaceClass", "08")
+    mk("/proc/sys/vm/dirty_writeback_centisecs", "500")
+    mk("/proc/sys/vm/stat_interval", "1")
+    monkeypatch.setattr(sysfs, "ROOT", str(r))
+    monkeypatch.setattr(apply, "STATE_DIR", str(tmp_path / "estado"))
+    assert not energia.on_ac()
+    act = Actuator(dry_run=True)
+    energia.apply("bateria", act)
+    ch = dict(act.changes)
+    assert ch["/sys/class/scsi_host/host0/link_power_management_policy"] == "med_power_with_dipm"
+    assert ch["/sys/module/pcie_aspm/parameters/policy"] == "powersupersave"
+    assert ch["/sys/bus/usb/devices/1-2/power/control"] == "auto"
+    assert "/sys/bus/usb/devices/1-1/power/control" not in ch               # HID intacto
+    assert ch["/proc/sys/vm/dirty_writeback_centisecs"] == "1500"
+    act = Actuator(dry_run=True)
+    assert "80 %" in energia.set_threshold(80, act)
+    assert dict(act.changes)["/sys/class/power_supply/BAT0/charge_control_end_threshold"] == "80"
+    p = make_plan({**A275_HW, "power": {**A275_HW["power"], "battery": True}}, {}, "portatil", "equilibrado")
+    assert "preempt=lazy" in p.cmdline and "nmi_watchdog=0" in p.cmdline
