@@ -19,8 +19,9 @@ ni para equipos con datos importantes sin copia.**
 - **IA local (TISMA Code)**: agente de programación, cálculo, CAD y simulación con el motor que mejor rinde en
   tu equipo (Strata o llama.cpp), herramientas por kits, cuaderno de trabajo y reinicio limpio del contexto
   para modelos pequeños, herramientas de ingeniería con plantillas y comprobación de resultados.
-- **Aplicaciones**: en la ISO, la base (ofimática, multimedia, navegador, PDF, escritorio remoto, Tienda con
-  Flathub, Mesa y firmware recientes de backports). El resto se descarga **al elegir tu perfil** en la
+- **Aplicaciones**: en la ISO, la base (multimedia, navegador, PDF, escritorio remoto, Tienda con Flathub, Mesa y
+  firmware recientes de backports). **LibreOffice** (en español) se descarga solo **al instalar** TISMA OS en el
+  disco; si no había conexión, en el primer arranque con red. El resto se descarga **al elegir tu perfil** en la
   Bienvenida (o con `sudo tisma-perfil instalar <perfil>`), desde los repositorios firmados de Debian:
   - *diario / estudio*: correo (Thunderbird), finanzas, informes con LaTeX;
   - *creación*: GIMP, Inkscape, Krita, Blender, Kdenlive, OBS, Audacity;
@@ -68,7 +69,8 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
 - **Apps por perfil**: necesitan conexión a Internet para descargarse (la ISO pesa mucho menos a cambio). En
   la sesión live no se instalan (irían a la RAM): se eligen tras instalar en el disco. Para instalar sin
   conexión se construye la ISO con `TISMA_ISO_COMPLETA=1`.
-- **Más liviana a cambio de**: solo traducciones al español (y al inglés), sin documentación de paquetes (las
+- **Más liviana a cambio de**: la sesión live no trae LibreOffice (se descarga al instalar) y arranca algo más
+  lenta (squashfs con xz, para que la ISO quepa en un archivo de GitHub); solo traducciones al español (y al inglés), sin documentación de paquetes (las
   licencias sí), sin fuentes chinas/japonesas/coreanas, sin 32 bits hasta instalar el perfil de juegos, y el
   firmware de NVIDIA se instala al detectar la GPU (`tisma-drivers`). La máquina virtual de análisis de Escudo
   solo va en la ISO completa: en la normal, lo descargado se analiza en su sandbox.

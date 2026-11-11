@@ -71,7 +71,8 @@ está conectado. El instalador usa btrfs con subvolúmenes `@`, `@home`, `@snaps
 
 ## Aplicaciones por perfil (ISO liviana)
 
-La ISO trae la base (escritorio, ofimática, multimedia, navegador, seguridad, TISMA Code con llama.cpp). Las
+La ISO (< 2 GB, para descargarla desde una release de GitHub) trae la base: escritorio, multimedia, navegador,
+seguridad y TISMA Code con llama.cpp. LibreOffice se descarga solo al instalar en el disco. Las
 apps de cada uso se descargan al elegir el perfil en la Bienvenida o con `sudo tisma-perfil instalar <perfil>`,
 desde los repositorios firmados de Debian: `diario`, `estudio`, `creacion`, `ingenieria`, `juegos`,
 `programacion` (listas en `rootfs/usr/share/tisma/perfiles/`). Strata, REA y Craft Anything se descargan de
