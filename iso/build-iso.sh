@@ -60,6 +60,10 @@ if [[ ! -f "$CHROOT/.base-ok" ]]; then
     touch "$CHROOT/.base-ok"
 fi
 mount_chroot
+# Durante la build el chroot resuelve con el DNS del anfitrión. Al final se pone el definitivo (127.0.2.1,
+# dnscrypt-proxy), que dentro del chroot no responde: sin esto, reconstruir sobre un chroot ya terminado fallaba.
+rm -f "$CHROOT/etc/resolv.conf"
+cp -L /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 
 cat > "$CHROOT/etc/apt/sources.list" <<EOF
 deb $MIRROR $SUITE main contrib non-free non-free-firmware
