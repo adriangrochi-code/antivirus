@@ -51,3 +51,7 @@ def test_actuator_whitelist():
     assert a.allowed("/proc/sys/vm/swappiness")
     assert not a.allowed("/proc/sys/kernel/modules_disabled")
     assert not a.allowed("/sys/block/../../etc/shadow")
+    assert not a.allowed("/proc/sys/vm/mmap_min_addr")              # antes lo permitía «vm/*»
+    assert not a.allowed("/proc/sys/vm/unprivileged_userfaultfd")
+    assert not a.allowed("/sys/class/drm/card0/device/hwmon/hwmon1/x/power1_cap")  # «*» no cruza «/»
+    assert a.allowed("/sys/class/drm/card0/device/hwmon/hwmon1/power1_cap")

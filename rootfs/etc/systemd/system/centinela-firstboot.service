@@ -7,11 +7,30 @@ After=local-fs.target
 Before=display-manager.service
 
 [Service]
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d /etc/centinela /boot/grub /var/cache
 Type=oneshot
 ExecStart=/usr/bin/centinela setup --quick
 ExecStartPost=/usr/bin/touch /var/lib/centinela/plan-applied
 TimeoutStartSec=300
 StandardOutput=journal+console
+
+# Sandbox: solo necesita /proc/sys, /sys y su estado
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE CAP_SYS_RAWIO
 
 [Install]
 WantedBy=multi-user.target

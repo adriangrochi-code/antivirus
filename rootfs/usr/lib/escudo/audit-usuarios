@@ -1,0 +1,24 @@
+#!/bin/sh
+# Reglas de auditd por usuario (uid >= 1000): secretos, datos del navegador y persistencia.
+# Corre como root sobre carpetas de los usuarios: NO crea ni modifica nada en ellas y se salta
+# los enlaces simbólicos (un usuario podría apuntar ~/.config a /etc).
+set -u
+command -v auditctl >/dev/null || exit 0
+
+vigilar() { # ruta permisos clave
+    if [ -e "$1" ] && [ ! -L "$1" ]; then
+        auditctl -w "$1" -p "$2" -k "$3" 2>/dev/null || true
+    fi
+}
+
+getent passwd | while IFS=: read -r _ _ uid _ _ home _; do
+    if [ "$uid" -lt 1000 ] || [ "$uid" -ge 60000 ] || [ ! -d "$home" ] || [ -L "$home" ]; then
+        continue
+    fi
+    for d in .ssh .gnupg .local/share/keyrings; do vigilar "$home/$d" r secretos; done
+    for d in .config/chromium .mozilla/firefox; do vigilar "$home/$d" r navegador; done
+    for d in .config/autostart .config/systemd/user .local/share/systemd/user .bashrc .profile \
+             .bash_profile .zshrc .pam_environment; do
+        vigilar "$home/$d" wa persistencia
+    done
+done

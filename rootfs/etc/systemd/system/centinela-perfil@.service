@@ -2,6 +2,26 @@
 Description=Centinela - perfil de potencia %i
 
 [Service]
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela
 Type=oneshot
 # Solo se aceptan los tres perfiles conocidos (centinela valida el argumento)
 ExecStart=/usr/bin/centinela power %i
+
+# Sandbox: solo necesita /proc/sys, /sys y su estado
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
+

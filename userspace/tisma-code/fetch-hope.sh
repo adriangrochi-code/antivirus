@@ -7,6 +7,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="${1:-https://github.com/adriangrochi-code/hope-0.1}"
+# Commit FIJADO: la build siempre usa exactamente este código revisado
+HOPE_COMMIT="${HOPE_COMMIT:-7a3a9e633d627df8db4335d73acb488b73d4f9ca}"
 DEST="$HERE/vendor"
 WORK=""
 if [[ -d "$SRC/hope" ]]; then
@@ -14,8 +16,11 @@ if [[ -d "$SRC/hope" ]]; then
 else
     WORK="$(mktemp -d)"
     trap 'rm -rf "$WORK"' EXIT
-    git clone -q --depth 1 "$SRC" "$WORK/hope"
+    git init -q "$WORK/hope"
+    git -C "$WORK/hope" fetch -q --depth 1 "$SRC" "$HOPE_COMMIT"
+    git -C "$WORK/hope" checkout -q FETCH_HEAD
     REPO="$WORK/hope"
+    [[ "$(git -C "$REPO" rev-parse HEAD)" == "$HOPE_COMMIT" ]] || { echo "Commit de Hope inesperado" >&2; exit 1; }
 fi
 rm -rf "$DEST" && mkdir -p "$DEST/configs"
 # Fuera: núcleo neuronal, entrenamiento, plasticidad, topología, benchmarks de la red y su app

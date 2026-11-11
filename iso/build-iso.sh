@@ -65,12 +65,16 @@ echo "tisma" > "$CHROOT/etc/hostname"
 in_chroot dpkg --add-architecture i386
 
 # Waydroid (Android) desde su repositorio oficial firmado
-if curl -fsSL --retry 3 https://repo.waydro.id/waydroid.gpg -o "$CHROOT/usr/share/keyrings/waydroid.gpg"; then
+# Huella fijada de la clave del repositorio de Waydroid
+WAYDROID_FPR="7CE0331F71E0A238BB1002D70E406D181DCEE19C"
+if curl -fsSL --retry 3 https://repo.waydro.id/waydroid.gpg -o "$CHROOT/usr/share/keyrings/waydroid.gpg" &&
+   gpg --show-keys --with-colons "$CHROOT/usr/share/keyrings/waydroid.gpg" | grep -q "^fpr:::::::::$WAYDROID_FPR:"; then
     echo "deb [signed-by=/usr/share/keyrings/waydroid.gpg] https://repo.waydro.id/ $SUITE main" \
         > "$CHROOT/etc/apt/sources.list.d/waydroid.list"
     WAYDROID=1
 else
-    log "AVISO: no se pudo acceder a repo.waydro.id; la ISO saldrá sin Waydroid"
+    rm -f "$CHROOT/usr/share/keyrings/waydroid.gpg"
+    log "AVISO: repo.waydro.id inaccesible o clave con huella distinta; la ISO saldrá sin Waydroid"
     WAYDROID=0
 fi
 in_chroot apt-get update -q

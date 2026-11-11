@@ -25,20 +25,40 @@ from .firewall import Firewall
 log = logging.getLogger("escudo.netguard")
 
 _IP = r"(?P<ip>[0-9a-fA-F:.]{3,45})"
+# Anclados al formato exacto de sshd y con la IP real AL FINAL: la parte que controla el atacante
+# (el nombre de usuario) es «.*» voraz, así que una IP escrita dentro del usuario nunca se toma.
 AUTH_PATTERNS = [re.compile(p) for p in (
-    rf"Failed password for (invalid user )?\S+ from {_IP}",
-    rf"Invalid user \S* from {_IP}",
-    rf"authentication failure;.*rhost={_IP}",
-    rf"Connection closed by (invalid|authenticating) user \S+ {_IP} port \d+ \[preauth\]",
-    rf"Did not receive identification string from {_IP}",
-    rf"maximum authentication attempts exceeded for .* from {_IP}",
-    rf"Unable to negotiate with {_IP}",
-    rf"Disconnected from invalid user \S+ {_IP}",
+    rf"^Failed (?:password|publickey|keyboard-interactive/pam|none) for (?:invalid user )?.* from {_IP} port \d+(?: ssh2)?$",
+    rf"^Invalid user .* from {_IP} port \d+$",
+    rf"^pam_unix\(sshd:auth\): authentication failure; logname=\S* uid=\d+ euid=\d+ tty=\S* ruser=\S* rhost={_IP}(?:\s+user=.*)?$",
+    rf"^Connection closed by (?:invalid|authenticating) user .* {_IP} port \d+ \[preauth\]$",
+    rf"^Did not receive identification string from {_IP} port \d+$",
+    rf"^maximum authentication attempts exceeded for .* from {_IP} port \d+ ssh2 \[preauth\]$",
+    rf"^Unable to negotiate with {_IP} port \d+: ",
+    rf"^Disconnected from invalid user .* {_IP} port \d+ \[preauth\]$",
 )]
+# En los archivos de log (syslog) cualquier usuario puede escribir con «logger -t sshd»:
+# solo se aceptan líneas cuyo PID corresponde AHORA a un sshd real.
+_SYSLOG = re.compile(r"\b(sshd(?:-session)?)\[(\d+)\]: (.*)$")
+SSHD_EXES = {"/usr/sbin/sshd", "/usr/lib/openssh/sshd-session", "/usr/lib/openssh/sshd-auth"}
 LINUX_AUTH_LOGS = ["/var/log/auth.log", "/var/log/secure"]
 
 
+def message_from_syslog(line: str) -> str | None:
+    """Mensaje de una línea de auth.log solo si la emitió un proceso sshd real."""
+    m = _SYSLOG.search(line.rstrip("\n"))
+    if not m:
+        return None
+    try:
+        if os.readlink(f"/proc/{m.group(2)}/exe") not in SSHD_EXES:
+            return None
+    except OSError:
+        return None          # el proceso ya no existe: no se puede verificar el origen
+    return m.group(3)
+
+
 def extract_attacker_ip(line: str) -> str | None:
+    line = line.rstrip("\n")
     for pat in AUTH_PATTERNS:
         m = pat.search(line)
         if m:
@@ -94,8 +114,19 @@ def _is_public(ip: str) -> bool:
 
 
 def _proc_net_connections() -> list[tuple[str, int, str]]:
-    """Fallback sin psutil en Linux: lee /proc/net/tcp{,6}. Devuelve (ip_remota, puerto_local, estado)."""
+    """Fallback sin psutil en Linux: lee /proc/net/tcp{,6}. Devuelve (ip_remota, puerto_local, estado)
+    SOLO de conexiones entrantes (puerto local en escucha, o handshake entrante SYN_RECV): las
+    conexiones salientes (descargas, navegador) nunca cuentan como escaneo."""
     states = {"01": "ESTABLISHED", "03": "SYN_RECV"}
+    listening = set()
+    for fname in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            for line in Path(fname).read_text().splitlines()[1:]:
+                parts = line.split()
+                if parts[3] == "0A":
+                    listening.add(int(parts[1].split(":")[1], 16))
+        except OSError:
+            continue
     out = []
     for fname, v6 in (("/proc/net/tcp", False), ("/proc/net/tcp6", True)):
         try:
@@ -116,7 +147,8 @@ def _proc_net_connections() -> list[tuple[str, int, str]]:
                 ip = str(addr.ipv4_mapped or addr)
             else:
                 ip = str(ipaddress.IPv4Address(raw[::-1]))
-            out.append((ip, lport, states[st]))
+            if states[st] == "SYN_RECV" or lport in listening:
+                out.append((ip, lport, states[st]))
     return out
 
 
@@ -173,7 +205,9 @@ class NetGuard:
             while not self._stop.is_set():
                 line = fh.readline()
                 if line:
-                    self.process_log_line(line)
+                    msg = message_from_syslog(line)
+                    if msg:
+                        self.process_log_line(msg)
                     continue
                 time.sleep(0.5)
                 try:  # rotación de logs
@@ -184,7 +218,9 @@ class NetGuard:
 
     def _follow_journald(self) -> None:
         proc = subprocess.Popen(
-            ["journalctl", "-f", "-n", "0", "-o", "cat", "_COMM=sshd", "+", "_COMM=sshd-session"],
+            # _UID=0 lo pone el kernel/journald: un usuario no puede falsificarlo con «logger»
+            ["journalctl", "-f", "-n", "0", "-o", "cat", "_UID=0", "_COMM=sshd", "+",
+             "_UID=0", "_COMM=sshd-session"],
             stdout=subprocess.PIPE, text=True, errors="replace")
         assert proc.stdout
         for line in proc.stdout:
@@ -245,10 +281,10 @@ class NetGuard:
             targets.append(self._follow_windows_events)
         else:
             logs = [p for p in LINUX_AUTH_LOGS if os.access(p, os.R_OK)]
-            if logs:
-                targets.extend(lambda p=p: self._follow_file(p) for p in logs)
-            elif shutil.which("journalctl"):
+            if shutil.which("journalctl"):          # preferido: campos de confianza (_UID)
                 targets.append(self._follow_journald)
+            elif logs:
+                targets.extend(lambda p=p: self._follow_file(p) for p in logs)
             else:
                 log.warning("No se encontró log de autenticación legible")
         threads = [threading.Thread(target=t, daemon=True) for t in targets]

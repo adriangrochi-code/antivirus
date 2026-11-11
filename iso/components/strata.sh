@@ -5,18 +5,19 @@
 # Uso: strata.sh <chroot>
 set -euo pipefail
 CHROOT="$1"
-BASE="https://github.com/Niko1221/Strata/releases/latest/download"
+# Versión y SHA-256 FIJADOS en el repositorio (no se confía en el checksum del propio servidor).
+# Para actualizar: cambiar ambos valores tras verificar la nueva release.
+STRATA_VERSION="${STRATA_VERSION:-0.2.13}"
+STRATA_SHA256="${STRATA_SHA256:-5284e3c1f6270695c8cf8a60c97e686495d52995a9d5ff5dc4a94bbd33adeec9}"
+BASE="https://github.com/Niko1221/Strata/releases/download/v$STRATA_VERSION"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 log() { printf '\033[1;35m[strata]\033[0m %s\n' "$*"; }
 
-curl -fsSL --retry 3 -o "$WORK/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
-line="$(grep -E '  Strata-[0-9.]+-linux-x86_64\.AppImage$' "$WORK/SHA256SUMS.txt" | head -n1)"
-[[ -n "$line" ]] || { log "No hay AppImage de Linux en la última release"; exit 1; }
-file="${line##* }"
+file="Strata-$STRATA_VERSION-linux-x86_64.AppImage"
 log "Descargando $file"
 curl -fsSL --retry 3 -o "$WORK/$file" "$BASE/$file"
-(cd "$WORK" && echo "$line" | sha256sum -c -) || { log "Checksum incorrecto: descarga descartada"; exit 1; }
+echo "$STRATA_SHA256  $WORK/$file" | sha256sum -c - >/dev/null || { log "SHA-256 incorrecto: descarga descartada"; exit 1; }
 
 mkdir -p "$CHROOT/opt/strata" "$CHROOT/usr/bin" "$CHROOT/usr/share/applications"
 install -m 755 "$WORK/$file" "$CHROOT/opt/strata/Strata.AppImage"

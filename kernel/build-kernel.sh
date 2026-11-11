@@ -29,22 +29,25 @@ die() { printf '\033[1;31m[kernel] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 mkdir -p "$BUILD_DIR"
 
 # ---------------------------------------------------------------- fuente
-if [[ ! -d "$SRC" ]]; then
+# Firma OpenPGP obligatoria: el tarball debe estar firmado por Greg Kroah-Hartman o Linus Torvalds
+# (claves públicas fijadas en kernel/keys, huellas 647F…693E y ABAF…1886). Sin firma válida no se compila.
+KEYRING="$HERE/keys/kernel-release.gpg"
+STAMP="$SRC/.tisma-verificado"
+if [[ ! -f "$STAMP" ]]; then
+    command -v gpgv >/dev/null || die "Falta gpgv (paquete gpgv) para verificar la firma del kernel"
     if [[ ! -f "$TARBALL" ]]; then
         log "Descargando linux-$KERNEL_VERSION"
         curl -fL --retry 4 -o "$TARBALL.part" "$URL/linux-$KERNEL_VERSION.tar.xz"
         mv "$TARBALL.part" "$TARBALL"
     fi
-    log "Verificando suma SHA-256 publicada por kernel.org"
-    curl -fsSL --retry 4 -o "$BUILD_DIR/sha256sums.asc" "$URL/sha256sums.asc"
-    if command -v gpg >/dev/null && [[ "${VERIFY_GPG:-0}" == 1 ]]; then
-        gpg --verify "$BUILD_DIR/sha256sums.asc" || die "Firma GPG inválida"
-    fi
-    expected="$(awk -v f="linux-$KERNEL_VERSION.tar.xz" '$2==f {print $1}' "$BUILD_DIR/sha256sums.asc")"
-    [[ -n "$expected" ]] || die "No hay checksum publicado para linux-$KERNEL_VERSION"
-    echo "$expected  $TARBALL" | sha256sum -c - || die "Checksum incorrecto: tarball corrupto o manipulado"
+    curl -fsSL --retry 4 -o "$BUILD_DIR/linux-$KERNEL_VERSION.tar.sign" "$URL/linux-$KERNEL_VERSION.tar.sign"
+    log "Verificando la firma OpenPGP del kernel"
+    xz -dc "$TARBALL" | gpgv --keyring "$KEYRING" "$BUILD_DIR/linux-$KERNEL_VERSION.tar.sign" - \
+        || die "FIRMA INVÁLIDA: tarball manipulado o corrupto. No se compila."
+    rm -rf "$SRC"
     log "Extrayendo"
     tar -C "$BUILD_DIR" -xf "$TARBALL"
+    touch "$STAMP"
 fi
 
 cd "$SRC"

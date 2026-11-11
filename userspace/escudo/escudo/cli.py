@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import logging
 import signal
 import sys
@@ -39,7 +40,10 @@ def cmd_scan(cfg: Config, args) -> int:
               f"{report.errors} errores, {report.skipped} omitidos")
         if args.quarantine:
             for d in {d.path: d for d in report.detections if d.severity != "low"}.values():
-                print(f"  -> cuarentena {q.add(d.path, d.name)}: {d.path}")
+                try:
+                    print(f"  -> cuarentena {q.add(d.path, d.name, expected=d.ident)}: {d.path!r}")
+                except OSError as e:
+                    print(f"  !! no se aisló {d.path!r}: {e}")
     return 1 if total else 0
 
 
@@ -47,8 +51,16 @@ def cmd_protect(cfg: Config, args) -> int:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
-    rtp = RealTimeProtection(Scanner(cfg), Quarantine(cfg.quarantine_dir), cfg.auto_quarantine)
+    from . import behavior
+    guard = behavior.RansomwareGuard()
+    rtp = RealTimeProtection(Scanner(cfg), Quarantine(cfg.quarantine_dir), cfg.auto_quarantine, guard=guard)
     rtp.start(args.paths or cfg.watch_paths)
+    if os.access(behavior.AUDIT_LOG, os.R_OK):
+        threading.Thread(target=behavior.watch_audit, args=(stop,), daemon=True).start()
+        logging.getLogger("escudo").info("Vigilante de comportamiento activo (auditd)")
+    else:
+        logging.getLogger("escudo").warning("Sin acceso a auditd: el vigilante de comportamiento funciona "
+                                            "solo con el detector de ransomware")
     guard = None
     if not args.no_network:
         guard = NetGuard(cfg)

@@ -72,10 +72,8 @@ def install(p: prof.Profile) -> Path:
     src = next((d / f"{p.escritorio}.desktop" for d in (Path("/usr/share/applications"),)
                 if (d / f"{p.escritorio}.desktop").exists()), None)
     lines = src.read_text().splitlines() if src else ["[Desktop Entry]", "Type=Application", f"Name={p.nombre}"]
-    out, in_main = [], False
+    out = []
     for line in lines:
-        if line.startswith("["):
-            in_main = line.strip() == "[Desktop Entry]"
         if line.startswith(("Exec=", "TryExec=", "DBusActivatable=")):
             if line.startswith("Exec="):
                 rest = line[5:].split(" ", 1)

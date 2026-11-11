@@ -14,7 +14,8 @@ log = logging.getLogger("escudo.monitor")
 
 
 class RealTimeProtection:
-    def __init__(self, scanner: Scanner, quarantine: Quarantine, auto_quarantine: bool = True):
+    def __init__(self, scanner: Scanner, quarantine: Quarantine, auto_quarantine: bool = True, guard=None):
+        self.guard = guard            # RansomwareGuard: ve cada modificación antes del escaneo
         self.scanner = scanner
         self.quarantine = quarantine
         self.auto_quarantine = auto_quarantine
@@ -26,13 +27,13 @@ class RealTimeProtection:
         log.warning("AMENAZA DETECTADA: %s", d)
         if self.auto_quarantine and d.severity in ("high", "medium"):
             try:
-                qid = self.quarantine.add(d.path, d.name)
-                log.warning("Movido a cuarentena (%s): %s", qid, d.path)
+                qid = self.quarantine.add(d.path, d.name, expected=d.ident)
+                log.warning("Movido a cuarentena (%s): %r", qid, d.path)
             except OSError as e:
-                log.error("No se pudo poner en cuarentena %s: %s", d.path, e)
+                log.error("No se pudo poner en cuarentena %r: %s", d.path, e)
 
     def check(self, path: str) -> None:
-        if not os.path.isfile(path) or self.scanner._excluded(path):
+        if os.path.islink(path) or not os.path.isfile(path) or self.scanner._excluded(path):
             return
         try:
             dets = self.scanner.scan_file(path)
@@ -56,6 +57,11 @@ class RealTimeProtection:
                 for p in ready:
                     del self._pending[p]
             for p in ready:
+                if self.guard is not None:
+                    try:
+                        self.guard.file_changed(p)
+                    except Exception:  # noqa: BLE001 — el vigilante nunca debe parar el escáner
+                        log.exception("Error en el detector de ransomware")
                 self.check(p)
             self._stop.wait(0.5)
 

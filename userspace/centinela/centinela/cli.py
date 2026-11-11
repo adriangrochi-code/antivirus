@@ -115,6 +115,9 @@ def cmd_build_kernel(args) -> int:
             for f in os.listdir(os.path.join(args.build_dir, "kernel-debs"))
             if f.endswith(".deb") and "-dbg" not in f and "tailored" in f]
     if args.firmar_dkms:
+        print("AVISO DE SEGURIDAD: con la clave de firma en disco, cualquiera que obtenga root podrá firmar\n"
+              "módulos del kernel y anular la protección lockdown. Úsalo solo si necesitas drivers externos\n"
+              "(NVIDIA/CUDA). La clave queda en /var/lib/centinela/keys (solo root).")
         setup_dkms_signing(os.path.join(args.build_dir, f"linux-{os.environ.get('KERNEL_VERSION', '6.18.63')}"))
     if args.install and debs:
         subprocess.run(["dpkg", "-i", *debs], check=True)

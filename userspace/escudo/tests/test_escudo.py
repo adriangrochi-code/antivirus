@@ -38,7 +38,7 @@ def test_heuristics_double_extension_and_reverse_shell(tmp_path):
 def test_bruteforce_blocks_ip(tmp_path):
     c = cfg(tmp_path)
     g = NetGuard(c, Firewall(c))
-    line = "sshd[1]: Failed password for root from 203.0.113.7 port 2222 ssh2"
+    line = "Failed password for root from 203.0.113.7 port 2222 ssh2"
     assert extract_attacker_ip(line) == "203.0.113.7"
     for _ in range(c.bruteforce_threshold):
         g.process_log_line(line)
@@ -105,3 +105,93 @@ def test_yara_zip_slip_and_compile_gate(tmp_path, monkeypatch):
     eng.yara = None                       # sin la librería no se compila, pero se instala igual
     assert eng.update() == 2
     assert not (tmp_path / "escape.yar").exists() and (tmp_path / "data/yara/escape.yar").exists()
+
+
+def test_A4_symlink_swap_does_not_delete_victim(tmp_path):
+    """Ataque de la auditoría: tras el escaneo, la carpeta se cambia por un enlace a la víctima."""
+    c = cfg(tmp_path)
+    attacker = tmp_path / "atacante" / "a"
+    attacker.mkdir(parents=True)
+    victim = tmp_path / "victima" / ".ssh"
+    victim.mkdir(parents=True)
+    (victim / "authorized_keys").write_text("clave de la víctima")
+    f = attacker / "authorized_keys"
+    f.write_bytes(EICAR)
+    det = Scanner(c).scan_file(str(f))[0]
+    f.unlink()
+    attacker.rmdir()
+    attacker.symlink_to(victim)                      # el cambio malicioso
+    import pytest
+    with pytest.raises(OSError):
+        Quarantine(c.quarantine_dir).add(det.path, det.name, expected=det.ident)
+    assert (victim / "authorized_keys").read_text() == "clave de la víctima"
+
+
+def test_M1_restore_does_not_follow_symlinks(tmp_path):
+    c = cfg(tmp_path)
+    d = tmp_path / "dir"
+    d.mkdir()
+    f = d / "x.desktop"
+    f.write_bytes(EICAR)
+    q = Quarantine(c.quarantine_dir)
+    qid = q.add(str(f), "EICAR")
+    d.rmdir()
+    target = tmp_path / "autostart_victima"
+    target.mkdir()
+    d.symlink_to(target)
+    import pytest
+    with pytest.raises(OSError):
+        q.restore(qid)
+    assert not (target / "x.desktop").exists()
+
+
+def test_quarantine_quota(tmp_path):
+    c = cfg(tmp_path)
+    q = Quarantine(c.quarantine_dir, max_total=10)
+    f = tmp_path / "e.com"
+    f.write_bytes(EICAR)
+    import pytest
+    with pytest.raises(OSError):
+        q.add(str(f), "EICAR")
+    assert f.exists()
+
+
+def test_scan_does_not_follow_symlinks(tmp_path):
+    c = cfg(tmp_path)
+    real = tmp_path / "real.com"
+    real.write_bytes(EICAR)
+    link = tmp_path / "link.com"
+    link.symlink_to(real)
+    import pytest
+    with pytest.raises(OSError):
+        Scanner(c).scan_file(str(link))
+
+
+def test_M2_username_injection_blocks_the_real_ip():
+    inj = "Failed password for invalid user a from 192.168.1.1 port 1 ssh2 from 203.0.113.5 port 5555 ssh2"
+    assert extract_attacker_ip(inj) == "203.0.113.5"
+
+
+def test_M2_forged_syslog_line_ignored():
+    from escudo.netguard import message_from_syslog
+    # «logger -t sshd» desde un usuario: el PID no es un sshd real
+    assert message_from_syslog("Nov 11 host sshd[999999]: Failed password for x from 10.0.0.1 port 1 ssh2") is None
+
+
+def test_M3_outgoing_connections_ignored(monkeypatch, tmp_path):
+    from escudo import netguard
+    # puerto local 50000 (efímero, saliente) ESTABLISHED; puerto 22 en escucha
+    tcp = ("  sl  local_address rem_address   st\n"
+           "   0: 00000000:0016 00000000:0000 0A\n"
+           "   1: 0100007F:C350 0500A8C0:01BB 01\n"
+           "   2: 0100007F:0016 0700A8C0:D431 01\n")
+    real = netguard.Path
+
+    class FakePath(type(real())):
+        pass
+
+    def fake_read(self, *a, **k):
+        return tcp if str(self) == "/proc/net/tcp" else ""
+    monkeypatch.setattr(netguard.Path, "read_text", fake_read)
+    conns = netguard._proc_net_connections()
+    assert conns == [("192.168.0.7", 22, "ESTABLISHED")]

@@ -4,21 +4,21 @@
 # Uso: tisma-engine.sh <chroot> [versión|main]
 set -euo pipefail
 CHROOT="$1"
-REF="${2:-latest}"
+REF="${2:-0.12.0-beta.1}"
+# SHA-256 fijado del zip de la release (actualizar junto con la versión)
+TISMA_ENGINE_SHA256="${TISMA_ENGINE_SHA256:-e0ec94346cf4160fc8a5b68967dc131418e261c775a8f604a83fd56066dacd5f}"
 REPO_URL="https://github.com/adriangrochi-code/tisma_engine"
 DEST="$CHROOT/opt/tisma"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 log() { printf '\033[1;35m[tisma-engine]\033[0m %s\n' "$*"; }
 
-if [[ "$REF" == latest ]]; then
-    REF="$(curl -fsSL "https://raw.githubusercontent.com/adriangrochi-code/tisma_engine/main/VERSION" || echo main)"
-fi
 
 installed=0
 if [[ "$REF" != main ]]; then
     asset="tisma-engine-$REF-linux-x64.zip"
-    if curl -fsSL --retry 3 -o "$WORK/$asset" "$REPO_URL/releases/download/v$REF/$asset"; then
+    if curl -fsSL --retry 3 -o "$WORK/$asset" "$REPO_URL/releases/download/v$REF/$asset" &&
+       echo "$TISMA_ENGINE_SHA256  $WORK/$asset" | sha256sum -c - >/dev/null; then
         log "Usando la release v$REF"
         (cd "$WORK" && python3 -m zipfile -e "$asset" out)
         rm -rf "$DEST" && mkdir -p "$DEST"

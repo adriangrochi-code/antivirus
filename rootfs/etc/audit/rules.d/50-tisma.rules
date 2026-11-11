@@ -1,0 +1,23 @@
+## TISMA OS — reglas de auditd para el vigilante de comportamiento de Escudo
+## (las reglas por usuario: ~/.ssh, navegador, autostart… las añade /usr/lib/escudo/audit-usuarios)
+
+# Ejecución desde carpetas temporales
+-a always,exit -F arch=b64 -S execve,execveat -F dir=/tmp -k exec_tmp
+-a always,exit -F arch=b64 -S execve,execveat -F dir=/var/tmp -k exec_tmp
+-a always,exit -F arch=b64 -S execve,execveat -F dir=/dev/shm -k exec_tmp
+
+# Persistencia del sistema
+-w /etc/cron.d -p wa -k persistencia
+-w /etc/crontab -p wa -k persistencia
+-w /var/spool/cron -p wa -k persistencia
+-w /etc/systemd/system -p wa -k persistencia
+-w /etc/xdg/autostart -p wa -k persistencia
+-w /etc/profile.d -p wa -k persistencia
+-w /etc/sudoers -p wa -k persistencia
+-w /etc/sudoers.d -p wa -k persistencia
+-w /etc/ld.so.preload -p wa -k ldpreload
+
+# Inyección en otros procesos y módulos del kernel
+-a always,exit -F arch=b64 -S ptrace -F a0=0x10 -k ptrace
+-a always,exit -F arch=b64 -S ptrace -F a0=0x4206 -k ptrace
+-a always,exit -F arch=b64 -S init_module,finit_module -k modulos

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Escudo (notificaciones)
+Exec=escudo-notificador
+NoDisplay=true
+X-KDE-autostart-phase=2

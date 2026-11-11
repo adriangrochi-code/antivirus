@@ -1,8 +1,6 @@
 """Regresiones de la auditoría de seguridad: cada prueba reproduce un ataque concreto."""
 import http.client
-import os
 import shutil
-import subprocess
 import sys
 import threading
 from http.server import ThreadingHTTPServer
@@ -12,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tisma_code import docs, tools  # noqa: E402
-from tests.test_agent import call, run_session  # noqa: E402
+from tests.test_agent import call  # noqa: E402
 
 
 def test_cannot_open_home_or_root_as_project():

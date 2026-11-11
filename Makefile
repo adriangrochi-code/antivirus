@@ -22,10 +22,7 @@ check-latest:
 base-config: $(DEBCFG)/config
 $(DEBCFG)/config:
 	mkdir -p $(DEBCFG)
-	url=$$(curl -fsSL $(DEBIAN_MIRROR)/dists/$(DEBIAN_SUITE)/main/binary-amd64/Packages.xz | xz -dc | \
-	  awk '/^Package: linux-image-[0-9.]+-[0-9]+-amd64$$/{p=1} p&&/^Filename:/{print $$2; exit}') && \
-	curl -fsSL -o $(DEBCFG)/image.deb $(DEBIAN_MIRROR)/$$url && \
-	dpkg-deb --fsys-tarfile $(DEBCFG)/image.deb | tar -xO --wildcards './boot/config-*' > $@
+	python3 kernel/fetch-debian-config.py $(DEBIAN_MIRROR) $(DEBIAN_SUITE) $@
 
 kernel: check-latest base-config
 	KERNEL_PROFILE=generic BASE_CONFIG=$(DEBCFG)/config ./kernel/build-kernel.sh
@@ -46,6 +43,7 @@ test:
 	cd userspace/centinela && python3 -m pytest -q tests
 	cd userspace/escudo && python3 -m pytest -q tests
 	cd userspace/asistente && python3 -m pytest -q tests
+	cd userspace/sandbox && python3 -m pytest -q tests
 
 qemu-test:
 	./tests/qemu-boot-test.sh $(BUILD_DIR)/linux-$(KERNEL_VERSION)/arch/x86/boot/bzImage

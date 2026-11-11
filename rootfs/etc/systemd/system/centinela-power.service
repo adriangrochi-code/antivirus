@@ -3,9 +3,28 @@ Description=Centinela - aplicar perfil de potencia y ajustes al arrancar
 After=centinela-firstboot.service systemd-udevd.service
 
 [Service]
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d /etc/centinela /boot/grub
 Type=oneshot
 ExecStart=/usr/bin/centinela apply
 RemainAfterExit=yes
+
+# Sandbox: solo necesita /proc/sys, /sys y su estado
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
 
 [Install]
 WantedBy=multi-user.target

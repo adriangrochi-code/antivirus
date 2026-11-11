@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import stat
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -34,10 +35,12 @@ class Detection:
     path: str
     name: str
     severity: str
-    method: str  # hash | pattern | heuristic
+    method: str  # hash | pattern | heuristic | yara | ml
+    ident: tuple[int, int] | None = None   # (st_dev, st_ino) de lo que se escaneó
 
     def __str__(self) -> str:
-        return f"[{self.severity.upper()}] {self.path}: {self.name} ({self.method})"
+        # repr: una ruta con saltos de línea no puede inyectar líneas falsas en el registro
+        return f"[{self.severity.upper()}] {self.path!r}: {self.name} ({self.method})"
 
 
 @dataclass
@@ -81,18 +84,19 @@ class Scanner:
                     yield full
 
     def scan_file(self, path: str) -> list[Detection]:
-        try:
-            st = os.stat(path)
-        except OSError:
-            raise
-        if not os.path.isfile(path) or st.st_size > self.max_size:
+        # Nunca seguir enlaces: se escanea (y luego se aísla) exactamente este inodo
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > self.max_size:
+            os.close(fd)
             return []
+        ident = (st.st_dev, st.st_ino)
 
         sha = hashlib.sha256()
         found: dict[str, Detection] = {}
         head = b""
         tail = b""
-        with open(path, "rb") as fh:
+        with os.fdopen(fd, "rb") as fh:
             while True:
                 chunk = fh.read(CHUNK)
                 if not chunk:
@@ -115,6 +119,8 @@ class Scanner:
         if self.config.heuristics and not detections:
             detections.extend(self._heuristics(path, head))
         detections.extend(self._ml(path, st.st_size, bool(detections)))
+        for d in detections:
+            d.ident = ident
         return detections
 
     def _ml(self, path: str, size: int, corroborated: bool) -> list[Detection]:

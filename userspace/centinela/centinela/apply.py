@@ -16,8 +16,10 @@ ETC = os.environ.get("CENTINELA_ETC", "/etc")
 STATE_DIR = os.environ.get("CENTINELA_STATE", "/var/lib/centinela")
 
 # Únicas rutas de /proc y /sys en las que Centinela puede escribir.
+VM_KEYS = ["swappiness", "page-cluster", "watermark_boost_factor", "watermark_scale_factor",
+           "vfs_cache_pressure", "max_map_count", "compaction_proactiveness"]
 WRITABLE = [
-    "/proc/sys/vm/*",
+    *(f"/proc/sys/vm/{k.replace('-', '_')}" for k in VM_KEYS), "/proc/sys/vm/page-cluster",
     "/proc/sys/kernel/split_lock_mitigate",
     "/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor",
     "/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference",
@@ -39,8 +41,16 @@ class Actuator:
 
     @staticmethod
     def allowed(p: str) -> bool:
+        """Coincidencia por segmentos: «*» nunca cruza «/» (fnmatch sí lo haría)."""
         norm = os.path.normpath(p)
-        return ".." not in p.split("/") and any(fnmatch.fnmatch(norm, w) for w in WRITABLE)
+        if ".." in p.split("/"):
+            return False
+        segs = norm.split("/")
+        for w in WRITABLE:
+            ws = w.split("/")
+            if len(ws) == len(segs) and all(fnmatch.fnmatchcase(a, b) for a, b in zip(segs, ws)):
+                return True
+        return False
 
     def write(self, p: str, value: str) -> bool:
         if not self.allowed(p):

@@ -35,6 +35,26 @@ table inet centinela {
 RULE_PREFIX = "Escudo-Block-"
 
 
+def essential_ips() -> set[str]:
+    out = set()
+    try:
+        for line in Path("/proc/net/route").read_text().splitlines()[1:]:
+            f = line.split()
+            if len(f) > 2 and f[1] == "00000000" and f[2] != "00000000":
+                out.add(str(ipaddress.IPv4Address(bytes.fromhex(f[2])[::-1])))
+    except (OSError, ValueError):
+        pass
+    for conf in ("/etc/resolv.conf", "/run/systemd/resolve/resolv.conf"):
+        try:
+            for line in Path(conf).read_text().splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == "nameserver":
+                    out.add(str(ipaddress.ip_address(parts[1].split("%")[0])))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
 def normalize_ip(ip: str) -> str:
     return str(ipaddress.ip_address(ip.strip().strip("[]")))
 
@@ -49,6 +69,8 @@ class Firewall:
         if self.state_file.is_file():
             self.blocked = json.loads(self.state_file.read_text(encoding="utf-8"))
         self._whitelist = [ipaddress.ip_network(w, strict=False) for w in config.whitelist_ips]
+        # Nunca bloquear la puerta de enlace ni los DNS: un atacante podría dejarnos sin red
+        self._whitelist += [ipaddress.ip_network(ip) for ip in essential_ips()]
         self._chain_ready = False
 
     # ------------------------------------------------------------------ util

@@ -1,14 +1,17 @@
 [Unit]
-Description=Escudo - antivirus en tiempo real e IPS de red
-After=network-online.target nftables.service
-Wants=nftables.service
+Description=Escudo - antivirus, vigilante de comportamiento e IPS de red
+After=network-online.target nftables.service auditd.service
+Wants=nftables.service auditd.service
 
 [Service]
 Type=simple
+ExecStartPre=-/usr/lib/escudo/audit-usuarios
 ExecStart=/usr/bin/escudo protect /home /tmp /var/tmp
 Restart=on-failure
 RestartSec=5
 Environment=ESCUDO_HOME=/var/lib/escudo
+RuntimeDirectory=escudo
+RuntimeDirectoryMode=0755
 ProtectSystem=strict
 ReadWritePaths=/var/lib/escudo /home /tmp /var/tmp
 PrivateTmp=no
@@ -21,7 +24,8 @@ RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYSLOG
+# KILL: congelar ransomware · AUDIT_*: reglas y registro de auditd · NET_ADMIN: nftables
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 Nice=10
 IOSchedulingClass=idle
