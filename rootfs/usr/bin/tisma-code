@@ -1,5 +1,11 @@
 #!/usr/bin/python3 -I
+# tisma-code                     abre TISMA Code
+# tisma-code motor               qué motor y configuración usaría este equipo con cada modelo descargado
+# tisma-code motor --optimizar M mide las configuraciones del modelo M y guarda la más rápida
 import sys
 sys.path.insert(0, "/usr/lib/centinela/python")
+if sys.argv[1:2] == ["motor"]:
+    from tisma_code.motor import cli
+    sys.exit(cli(sys.argv[2:]))
 from tisma_code.server import main
 sys.exit(main())

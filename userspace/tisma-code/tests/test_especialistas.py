@@ -181,20 +181,14 @@ def test_download_rejects_wrong_sha(tmp_path, monkeypatch):
     assert not (tmp_path / "a__b" / "m.gguf").exists()
 
 
-def test_threads_measurement_and_choice(tmp_path, monkeypatch):
+def test_threads_choice(tmp_path, monkeypatch):
     from tisma_code import models
     sysf, med = tmp_path / "hilos-sistema.json", tmp_path / "hilos.json"
     sysf.write_text(json.dumps({"ia_generacion": 2, "ia_lote": 4}))
     monkeypatch.setattr(models, "HILOS_SISTEMA", sysf)
     monkeypatch.setattr(models, "HILOS_MEDIDOS", med)
     assert models.threads_for("x.gguf") == (2, 4)                    # topología de centinela
-    # A275 simulada: generar va mejor con 2 hilos (ancho de banda), el prompt con 4 (cálculo).
-    speeds = {(2, 4): (5.1, 38.0), (4, 2): (4.6, 21.0)}
-    r = models.measure_threads("/m/x.gguf", {}, bench=lambda t, tb: speeds[(t, tb)])
-    assert r["t"] == 2 and r["tb"] == 4 and r["medido"]
-    assert models.threads_for("x.gguf") == (2, 4)
-    speeds = {(2, 4): (4.0, 30.0), (4, 2): (4.4, 35.0)}               # si los datos dicen otra cosa, mandan
-    r = models.measure_threads("/m/y.gguf", {}, bench=lambda t, tb: speeds[(t, tb)])
+    med.write_text(json.dumps({"y.gguf": {"t": 4, "tb": 2}}))          # medición antigua por modelo
     assert models.threads_for("y.gguf") == (4, 2)
 
 

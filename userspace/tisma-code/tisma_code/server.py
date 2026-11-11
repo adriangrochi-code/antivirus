@@ -48,6 +48,66 @@ class App:
         own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
         return functools.partial(chat_completion, api_key=self.server.api_key if own else "local")
 
+    def motor_brief(self) -> dict:
+        """Qué motor sirve ahora a TISMA Code y con qué configuración."""
+        ep = self.config["endpoint"]
+        own = self.server.proc and self.server.proc.poll() is None and ep.endswith(f":{self.server.port}/v1")
+        if own:
+            c = self.server.config or {}
+            return {"nombre": "llama.cpp", "modelo": self.server.model, "detalle": c.get("motivo", ""),
+                    "medido": bool(c.get("medido")), "gen": c.get("gen"), "contexto": self.server.ctx}
+        if ep == DEFAULT_ENDPOINT:
+            return {"nombre": "Strata", "modelo": self.config.get("model", ""), "detalle": "", "medido": False}
+        return {"nombre": "externo", "modelo": self.config.get("model", ""), "detalle": ep, "medido": False}
+
+    def auto_motor(self) -> None:
+        """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado."""
+        from . import motor
+        if models.endpoint_models(self.config["endpoint"]):
+            return
+        strata_alive = bool(models.endpoint_models(DEFAULT_ENDPOINT))
+        eng = motor.choose_engine(self.hw, strata_alive)
+        if eng["motor"] == "strata":
+            self.config["endpoint"] = DEFAULT_ENDPOINT
+            self.push({"type": "info", "message": eng["motivo"]})
+            return
+        rec = motor.choose_model(models.local_models(), self.hw)
+        if not rec:
+            self.push({"type": "info", "message": f"{eng['motivo']}. Descarga un modelo (＋ Añadir modelo) y el motor "
+                       "TISMA lo configurará para este equipo."})
+            return
+        try:
+            ep = self.server.start(rec["path"], self.hw)
+        except (OSError, RuntimeError, ValueError) as e:
+            self.push({"type": "error", "message": f"No se pudo arrancar llama.cpp: {e}"})
+            return
+        self.config.update({"endpoint": ep, "model": Path(rec["path"]).name})
+        self.save_config()
+        c = self.server.config or {}
+        self.push({"type": "info", "message": f"Motor TISMA: llama.cpp con {Path(rec['path']).name} — "
+                   f"{c.get('motivo', '')}" + ("" if c.get("medido") else
+                                                ". Pulsa «⚙ optimizar» para medir la configuración más rápida.")})
+
+    def optimize(self, path: str) -> None:
+        from . import motor
+        self.push({"type": "info", "message": "Optimizando el motor para este modelo (unos minutos: se prueban "
+                   "varias configuraciones)…"})
+        try:
+            rec = motor.optimize(path, self.hw, on_step=lambda m: self.push({"type": "info", "message": "· " + m}))
+        except (OSError, ValueError, RuntimeError) as e:
+            self.push({"type": "error", "message": f"No se pudo optimizar: {e}"})
+            return
+        if not rec.get("gen"):
+            self.push({"type": "error", "message": "Ninguna configuración arrancó: revisa que el modelo no esté dañado"})
+            return
+        if self.server.proc and self.server.model == Path(path).name:
+            self.config["endpoint"] = self.server.start(path, self.hw)
+            if self.session:
+                self.session.endpoint = self.config["endpoint"]
+                self.session.context_tokens = self.context(self.server.ctx)
+        self.push({"type": "info", "message": f"Mejor configuración: {rec['nombre']} — {rec['gen']} tokens/s generando, "
+                   f"{rec['prompt']:.0f} tokens/s leyendo, contexto {rec['ctx'] // 1024}k ({rec['motivo']})."})
+
     def context(self, wanted: int) -> int:
         """La ventana que de verdad tiene el motor (si la publica); nunca más que esa."""
         own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
@@ -189,7 +249,12 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/models/local":
                 return self._send(200, {"downloaded": models.local_models(),
                                         "endpoint": models.endpoint_models(APP.config["endpoint"]),
-                                        "strata": models.strata_status(APP.hw)})
+                                        "strata": models.strata_status(APP.hw), "motor": APP.motor_brief()})
+            if url.path == "/api/motor":
+                from . import motor
+                return self._send(200, {"actual": APP.motor_brief(),
+                                        "eleccion": motor.choose_engine(APP.hw, bool(models.endpoint_models(DEFAULT_ENDPOINT))),
+                                        "recomendado": motor.choose_model(models.local_models(), APP.hw)})
         except (OSError, ValueError) as e:
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})
@@ -251,23 +316,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"key": key, "gguf": gguf})
             if url.path == "/api/models/download":
                 return self._send(200, {"key": APP.downloads.start(b["id"], b["file"])})
-            if url.path == "/api/models/hilos":
+            if url.path in ("/api/motor/optimizar", "/api/models/hilos"):
                 path = str(Path(b["path"]).resolve())
                 if models.MODELS_DIR.resolve() not in Path(path).parents:
                     return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
-
-                def job():
-                    APP.push({"type": "info", "message": "Midiendo hilos para este modelo (1-2 minutos)…"})
-                    try:
-                        r = models.measure_threads(path, APP.hw)
-                        if APP.server.proc and APP.server.model == Path(path).name:
-                            ep = APP.server.start(path, APP.hw)          # reinicia con los hilos medidos
-                            APP.config["endpoint"] = ep
-                        APP.push({"type": "info", "message": f"Hilos: {r['t']} al generar, {r['tb']} con el prompt. "
-                                  + (f"Medido: {r['datos']}" if r.get("medido") else "Sin alternativa que medir.")})
-                    except Exception as e:  # noqa: BLE001
-                        APP.push({"type": "error", "message": f"No se pudieron medir los hilos: {e}"})
-                threading.Thread(target=job, daemon=True).start()
+                threading.Thread(target=APP.optimize, args=(path,), daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/models/serve":
                 ep = APP.server.start(b["path"], APP.hw)
@@ -290,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args(argv)
     APP = App()
+    threading.Thread(target=APP.auto_motor, daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.token}"
     print(f"TISMA Code en {url}", flush=True)

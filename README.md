@@ -70,8 +70,19 @@ está conectado. El instalador usa btrfs con subvolúmenes `@`, `@home`, `@snaps
 
 ## TISMA Code
 
-Interfaz tipo chat: eliges **carpeta/repo** y **modelo** y conversas. Funciona con Strata
-(`127.0.0.1:8080`) o con modelos GGUF descargados desde la propia app y servidos con llama.cpp.
+Interfaz tipo chat: eliges **carpeta/repo** y **modelo** y conversas.
+
+- **Motor TISMA** (`tisma_code/motor.py`): la misma IA en cualquier equipo. Usa Strata (`127.0.0.1:8080`) si
+  el equipo puede con él (GPU dedicada y ~32 GB entre RAM y VRAM); si no, llama.cpp con el modelo descargado
+  más capaz que vaya a velocidad usable. Lee la cabecera GGUF (capas, expertos, caché KV) y planifica: todo en
+  la GPU si cabe, expertos MoE en RAM y atención en la GPU (`--n-cpu-moe`), capas repartidas o CPU, y el
+  mayor contexto que cabe. «⚙ optimizar» (o `tisma-code motor --optimizar modelo.gguf`) mide dispositivo,
+  reparto de expertos, hilos y modelo borrador, y guarda la más rápida para ese equipo.
+- **Contexto para modelos pequeños**: cuaderno de trabajo persistente, salidas largas fuera del contexto,
+  reinicio limpio al 60 % con un resumen por tramos y exploración en un contexto aparte (`explorar`).
+- **Ingeniería** (`ingenieria`): OpenSCAD, malla, gmsh, OpenFOAM, ngspice, KiCad, Verilog/Yosys, Octave,
+  FreeCAD, Blender y pandoc con recetas fijas en la jaula, plantillas que funcionan y comprobación de los
+  números frente a la estimación previa (`esperado`).
 
 - Cada escritura y cada comando pide permiso, con su diff. Los comandos se ejecutan en bubblewrap: solo ven
   el proyecto y no tienen red.

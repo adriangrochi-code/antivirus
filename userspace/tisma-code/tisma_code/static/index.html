@@ -327,7 +327,7 @@ async function openModels() {
     (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
      `<div class="it" style="cursor:default;color:var(--faint)">${m.strata && !m.strata.ok ? esc(m.strata.motivo) : "Motor apagado: abre Strata o usa un modelo descargado"}</div>`) +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
-      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir cuántos hilos de CPU van mejor con este modelo">⚙ hilos</small></div>`).join("") : "") +
+      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small></div>`).join("") : "") +
     `<hr><div class="it" id="addModel">＋ Añadir modelo…</div>`;
   $("#modelPop").querySelectorAll("[data-m]").forEach(el => el.onclick = () => setModel(state.config.endpoint, el.dataset.m));
   $("#modelPop").querySelectorAll("[data-serve]").forEach(el => el.onclick = async () => {
@@ -338,7 +338,7 @@ async function openModels() {
   $("#addModel").onclick = () => { closePops(); openModal(); };
   $("#modelPop").querySelectorAll("[data-hilos]").forEach(el => el.onclick = async ev => {
     ev.stopPropagation(); closePops();
-    try { await api("/api/models/hilos", {path: el.dataset.hilos}); } catch (e) { put(esc(e.message), "err"); }
+    try { await api("/api/motor/optimizar", {path: el.dataset.hilos}); } catch (e) { put(esc(e.message), "err"); }
   });
   $("#dirPop").classList.remove("on");
   $("#modelPop").classList.add("on");
@@ -438,7 +438,9 @@ async function refreshEngine() {
   try {
     const m = await api("/api/models/local");
     $("#dot").classList.toggle("ok", m.endpoint.length > 0);
-    $("#engine").textContent = m.endpoint.length ? "motor activo" : "motor apagado";
+    const mo = m.motor || {};
+    $("#engine").textContent = m.endpoint.length ? `${mo.nombre || "motor"}${mo.gen ? " · " + mo.gen + " tok/s" : ""}` : "motor apagado";
+    $("#engine").title = [mo.modelo, mo.detalle, mo.contexto ? `contexto ${Math.round(mo.contexto / 1024)}k` : ""].filter(Boolean).join(" · ");
     if (!state.config.model && m.endpoint.length) await setModel(state.config.endpoint, m.endpoint[0]);
   } catch (e) {}
 }

@@ -238,7 +238,7 @@ def strata_status(hw: dict) -> dict:
     no llegan, TISMA Code usa llama.cpp con modelos GGUF pequeños (mismo arnés y herramientas)."""
     total = hw.get("ram_mb", 0) + hw.get("vram_mb", 0)
     if not hw.get("gpus"):
-        return {"ok": False, "motivo": "Strata necesita una GPU dedicada (este equipo solo tiene gráfica integrada): "
+        return {"ok": False, "motivo": "Strata necesita una GPU dedicada y este equipo no tiene: "
                 "se usará llama.cpp con un modelo descargado"}
     if total < 32000:
         return {"ok": False, "motivo": f"Strata necesita ~32 GB entre RAM y VRAM (hay {total // 1024} GB): "
@@ -300,57 +300,7 @@ def threads_for(model_file: str) -> tuple[int, int] | None:
     return None
 
 
-BENCH_PROMPT = ("Explica paso a paso cómo funciona un intercambiador de calor de placas, qué variables "
-                "determinan su eficiencia y cómo se dimensiona para un caudal dado. ") * 6
-
-
-def _bench_once(path: str, hw: dict, t: int, tb: int) -> tuple[float, float]:
-    """Arranca el modelo con t/tb hilos y devuelve (tokens/s generando, tokens/s procesando el prompt)."""
-    srv = LocalServer()
-    try:
-        ep = srv.start(path, hw, ctx=4096, threads=(t, tb))
-        base = ep.rsplit("/v1", 1)[0]
-        hdr = {"Authorization": f"Bearer {srv.api_key}", "Content-Type": "application/json"}
-        import time as _t
-        for _ in range(240):                                    # carga del modelo
-            try:
-                with urllib.request.urlopen(urllib.request.Request(base + "/health", headers=hdr), timeout=2) as r:
-                    if r.status == 200:
-                        break
-            except (urllib.error.URLError, OSError):
-                pass
-            _t.sleep(0.5)
-        body = json.dumps({"prompt": BENCH_PROMPT, "n_predict": 48, "cache_prompt": False,
-                           "temperature": 0}).encode()
-        with urllib.request.urlopen(urllib.request.Request(base + "/completion", data=body, headers=hdr),
-                                    timeout=600) as r:
-            tm = json.load(r).get("timings") or {}
-        return float(tm.get("predicted_per_second") or 0), float(tm.get("prompt_per_second") or 0)
-    finally:
-        srv.stop()
-
-
-def measure_threads(path: str, hw: dict, bench=None) -> dict:
-    """Mide qué número de hilos va mejor para este modelo en este equipo (dos ejecuciones cortas) y lo guarda.
-    Candidatos: un hilo por unidad de ejecución (núcleo físico o módulo CMT) o todos los núcleos lógicos."""
-    bench = bench or (lambda t, tb: _bench_once(path, hw, t, tb))
-    sysd = _read_json(HILOS_SISTEMA)
-    logical = int(sysd.get("ia_lote") or os.cpu_count() or 1)
-    units = int(sysd.get("ia_generacion") or max(1, logical // 2))
-    if units == logical:
-        res = {"t": units, "tb": logical, "medido": False}
-    else:
-        g1, p1 = bench(units, logical)          # generación con «units», prompt con «logical»
-        g2, p2 = bench(logical, units)          # y al revés
-        res = {"t": units if g1 >= g2 else logical, "tb": logical if p1 >= p2 else units, "medido": True,
-               "datos": {f"generacion_{units}": round(g1, 2), f"generacion_{logical}": round(g2, 2),
-                         f"prompt_{logical}": round(p1, 2), f"prompt_{units}": round(p2, 2)}}
-    allm = _read_json(HILOS_MEDIDOS)
-    allm[Path(path).name] = res
-    HILOS_MEDIDOS.parent.mkdir(parents=True, exist_ok=True)
-    HILOS_MEDIDOS.write_text(json.dumps(allm, indent=2))
-    return res
-
+# La medición (hilos, dispositivo, reparto de expertos, borrador) está en motor.optimize.
 
 # Caché KV (el «contexto» del modelo) en 8 bits en vez de 16: la mitad de memoria para la misma conversación,
 # con pérdida de calidad inapreciable. La V comprimida exige Flash Attention («auto» lo activa si el backend
@@ -367,20 +317,32 @@ class LocalServer:
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
         self.ctx = 0
+        self.config: dict = {}
 
-    def start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None) -> str:
+    def start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None,
+              extra: list[str] | None = None) -> str:
+        """Sin `extra`, la configuración la decide el motor TISMA (lo medido para este equipo, o su plan)."""
         exe = shutil.which("llama-server")
         if not exe:
             raise RuntimeError("llama-server (llama.cpp) no está instalado")
         p = Path(path).resolve()
         if MODELS_DIR.resolve() not in p.parents or p.suffix != ".gguf":
             raise ValueError("Solo se pueden servir modelos descargados por TISMA Code")
+        for i, a in enumerate(extra or []):
+            if a == "-md":
+                d = Path(extra[i + 1]).resolve()
+                if MODELS_DIR.resolve() not in d.parents or d.suffix != ".gguf":
+                    raise ValueError("El modelo borrador debe ser uno descargado por TISMA Code")
         self.stop()
+        if extra is None:
+            from . import motor
+            cfg = motor.config_for(str(p), hw, ctx or 32768)
+            extra, ctx = cfg["args"], ctx or cfg["ctx"]
+            threads = threads or cfg["hilos"]
+            self.config = cfg
         # 32k con 16 GB o más (con la caché KV en q8_0, un modelo de 7-8 B ocupa ~1 GB de KV a 32k)
         ctx = ctx or (32768 if hw.get("ram_mb", 0) >= 15000 else 16384)
         self.ctx = ctx
-        f = fit(p.stat().st_size, hw)
-        ngl = "999" if f["where"] == "gpu" else "20" if f["where"] == "mixto" else "0"
         if not self.port:
             import socket
             with socket.socket() as sk:
@@ -389,9 +351,9 @@ class LocalServer:
         th = threads or threads_for(str(p))
         thr = ["-t", str(th[0]), "-tb", str(th[1])] if th else []
         base = [exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja",
+                "--api-key", self.api_key, "-c", str(ctx), "--jinja",
                 # reutiliza trozos de la caché KV aunque el prefijo cambie (p. ej. tras un reinicio de contexto)
-                "--cache-reuse", "256", *thr]
+                "--cache-reuse", "256", *thr, *(extra or [])]
         self.kv_quant = True
         self.proc = self._spawn(base + KV_QUANT)
         self.model = p.name
