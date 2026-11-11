@@ -11,7 +11,7 @@ export KERNEL_VERSION BUILD_DIR
 LATEST := $(shell ./kernel/latest-lts.sh $(basename $(KERNEL_VERSION)) 2>/dev/null)
 DEBCFG := $(BUILD_DIR)/debian-config
 
-.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes
+.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes iso-minima iso-test
 
 check-paquetes:
 	python3 iso/check-packages.py $(DEBIAN_MIRROR) $(DEBIAN_SUITE)
@@ -49,6 +49,13 @@ test:
 	cd userspace/sandbox && python3 -m pytest -q tests
 	cd userspace/rendimiento && python3 -m pytest -q tests
 	cd userspace/copias && python3 -m pytest -q tests
+
+# ISO mínima (sin escritorio) y su prueba de arranque en QEMU: valida construcción, servicios y protecciones
+iso-minima:
+	sudo env BUILD_DIR=$(BUILD_DIR) TISMA_ISO_MINIMA=1 ISO_NAME=tisma-minima.iso ./iso/build-iso.sh
+
+iso-test:
+	./tests/qemu-iso-test.sh $(BUILD_DIR)/tisma-minima.iso
 
 qemu-test:
 	./tests/qemu-boot-test.sh $(BUILD_DIR)/linux-$(KERNEL_VERSION)/arch/x86/boot/bzImage
