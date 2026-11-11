@@ -161,6 +161,7 @@ if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
 "$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
 "$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
 "$HERE/components/llama-cpp.sh" "$CHROOT" || log "AVISO: no se pudo compilar llama.cpp (TISMA Code usará Strata)"
+"$HERE/components/scx.sh" "$CHROOT" || log "AVISO: sin planificadores sched_ext (se usa el del kernel)"
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
@@ -177,7 +178,7 @@ rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/pyt
 rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
-in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda 2>/dev/null || true
+in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
 # Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
 if in_chroot sh -c 'command -v flatpak' >/dev/null; then
@@ -185,6 +186,8 @@ if in_chroot sh -c 'command -v flatpak' >/dev/null; then
         || log "AVISO: no se pudo añadir Flathub"
 fi
 in_chroot systemctl disable systemd-timesyncd 2>/dev/null || true
+# Nada del arranque espera a que haya red (los servicios que la usan reintentan solos): segundos menos al encender
+in_chroot systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 # Esenciales: si alguno no existe se avisa (antes un fallo aquí cortaba la build entera)
 for u in nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer centinela-power \
          centinela-adaptd escudo; do

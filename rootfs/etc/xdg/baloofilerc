@@ -4,3 +4,5 @@ Indexing-Enabled=true
 
 [General]
 only basic indexing=true
+# Carpetas enormes que no aportan a la búsqueda (modelos de IA, juegos, cachés, contenedores)
+exclude folders[$e]=$HOME/.cache/,$HOME/.local/share/Steam/,$HOME/.steam/,$HOME/.local/share/tisma-code/models/,$HOME/.local/share/waydroid/,$HOME/.var/app/,$HOME/.wine/

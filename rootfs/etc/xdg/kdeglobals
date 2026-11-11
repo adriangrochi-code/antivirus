@@ -3,6 +3,8 @@ ColorScheme=CentinelaAero
 AccentColor=145,69,230
 
 [KDE]
+# Animaciones a la mitad de duración: el escritorio responde antes (y en GPU integradas gasta menos)
+AnimationDurationFactor=0.5
 LookAndFeelPackage=org.centinela.desktop
 SingleClick=false
 

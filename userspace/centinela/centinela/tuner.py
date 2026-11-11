@@ -300,8 +300,8 @@ def _sched_ext(plan: Plan, hw: dict) -> None:
     asym = bool(c.get("hybrid")) or len(c.get("l3_domains", [])) > 1 or c.get("freq_classes", 1) > 1
     if plan.use_case in ("juegos", "escritorio") or (plan.use_case == "portatil" and asym):
         plan.sched_ext = "scx_lavd"
-        plan.why("sched_ext scx_lavd: planificador consciente de latencia que prioriza "
-                 "las tareas interactivas (juegos, audio, escritorio).")
+        plan.why("sched_ext scx_lavd (si está instalado; si no, se mantiene el planificador del kernel): "
+                 "prioriza las tareas interactivas (juegos, audio, escritorio) según su latencia.")
     elif plan.use_case == "servidor" and asym:
         plan.sched_ext = "scx_bpfland"
 

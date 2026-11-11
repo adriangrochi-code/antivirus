@@ -1,0 +1,13 @@
+#!/bin/sh
+# Arranca el planificador sched_ext que eligió centinela (plan.json → sched_ext), si está instalado.
+# Si el planificador se detiene o falla, el kernel vuelve solo a su planificador normal (EEVDF): no hay riesgo.
+plan=/etc/centinela/plan.json
+[ -r "$plan" ] || exit 0
+sched=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("sched_ext") or "")' "$plan" 2>/dev/null)
+case "$sched" in
+    scx_lavd|scx_bpfland) ;;
+    *) exit 0 ;;
+esac
+[ -x "/usr/local/bin/$sched" ] || exit 0
+[ -e /sys/kernel/sched_ext ] || exit 0          # kernel sin CONFIG_SCHED_CLASS_EXT
+exec "/usr/local/bin/$sched"

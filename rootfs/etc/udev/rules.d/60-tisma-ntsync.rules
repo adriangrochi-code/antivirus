@@ -1,0 +1,2 @@
+# Wine/Proton usan /dev/ntsync (sincronización de Windows en el kernel: menos CPU y tirones en juegos)
+KERNEL=="ntsync", MODE="0644"

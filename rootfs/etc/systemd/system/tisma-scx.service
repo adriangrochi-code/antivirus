@@ -1,0 +1,15 @@
+[Unit]
+Description=TISMA - planificador de CPU sched_ext elegido por centinela (latencia de escritorio y juegos)
+After=centinela-power.service
+ConditionPathExists=/sys/kernel/sched_ext
+
+[Service]
+ExecStart=/usr/lib/tisma/scx-iniciar
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=tisma-fase2.target
