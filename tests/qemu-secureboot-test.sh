@@ -27,6 +27,7 @@ from PIL import Image
 Image.open(sys.argv[1]).save(sys.argv[2])
 EOF
 LOG="$(tr -d '\r' < "$W/serie.log" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')"
+printf '%s\n' "$LOG" > "${CAPTURA%.*}-serie.log"
 fallo=0
 check() { if grep -qaE "$2" <<<"$LOG"; then echo "  ok   $1"; else echo "  FALLO $1"; fallo=1; fi; }
 echo "Arranque con Secure Boot de $ISO:"
