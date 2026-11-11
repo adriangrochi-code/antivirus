@@ -115,7 +115,7 @@ def test_external_backup(tmp_path):
     msg = core.copiar_externo(runner=fake, cfg=cfg, keyfile=key)
     assert "hecha" in msg
     backup = [c for c in fake.calls if c[0][:2] == ["restic", "backup"]][0]
-    assert "/home" in backup[0] and "/home/*/.cache" in backup[0]
+    assert "/home" in backup[0] and "/home/*/.cache" in backup[0] and str(dest) in backup[0]
     assert backup[1]["RESTIC_PASSWORD_FILE"] == str(key) and "RESTIC_PASSWORD" not in backup[1]
     (dest / "config").unlink()                  # disco desconectado
     assert "no está conectado" in core.copiar_externo(runner=fake, cfg=cfg, keyfile=key)
@@ -159,3 +159,37 @@ def test_self_healing_dup(monkeypatch):
     assert any(c[0][:3] == ["btrfs", "balance", "start"] and "-dconvert=dup,soft" in c[0] for c in f.calls)
     with pytest.raises(core.CopiasError, match="espacio"):
         core.autorreparacion(True, runner=F(used=80 << 30, free=50 << 30))
+
+
+def test_restore_into_user_folder_runs_as_that_user(tmp_path, monkeypatch):
+    """La escritura en carpetas de usuario se hace con su identidad (nobody en la prueba)."""
+    import shutil
+    if os.geteuid() != 0 or not shutil.which("setpriv"):
+        pytest.skip("necesita root y setpriv")
+    fake = Fake()
+    real = lambda argv, env=None, check=True: subprocess.run(argv, check=True, capture_output=True, text=True)  # noqa: E731
+
+    def runner(argv, env=None, check=True):
+        return real(argv) if argv[0] in ("bash", "setpriv") else fake(argv, env, check)
+    snapdir = tmp_path / "snaps"
+    snapdir.mkdir()
+    monkeypatch.setattr(core, "_now", lambda: dt.datetime(2026, 11, 11, 12, 0, 0))
+    name = core.crear("manual", runner=fake, snapdir=snapdir)
+    import tempfile
+    base = Path(tempfile.mkdtemp(prefix="tisma-copias-", dir="/tmp"))   # pytest-of-root es 0700: nobody no entra
+    base.chmod(0o755)
+    user_dir = base / "home_nobody"
+    user_dir.mkdir()
+    os.chown(user_dir, 65534, 65534)
+    doc = user_dir / "doc.txt"
+    old = snapdir / name / str(doc).lstrip("/")
+    old.parent.mkdir(parents=True)
+    old.write_text("bueno")
+    doc.write_text("malo")
+    os.chown(doc, 65534, 65534)
+    core.restaurar_archivo(name, str(doc), runner=runner, snapdir=snapdir)
+    assert doc.read_text() == "bueno" and doc.stat().st_uid == 65534
+    assert (user_dir / "doc.txt.antes-20261111-120000").read_text() == "malo"
+    with pytest.raises(core.CopiasError, match="ruta completa"):
+        core.restaurar_archivo(name, "doc.txt", runner=runner, snapdir=snapdir)
+    shutil.rmtree(base)

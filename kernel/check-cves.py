@@ -63,7 +63,7 @@ ARCH_SKIP = ("loongarch", "arm64", "arm:", "riscv", "powerpc", "s390", "mips", "
 
 
 def vtuple(s: str) -> tuple[int, int, int]:
-    nums = [int(x) for x in re.findall(r"\d+", s)[:3]]
+    nums = [int(x) for x in re.findall(r"\d+", s.split("-")[0])[:3]]   # «6.18-rc3» → (6, 18, 0)
     return tuple(nums + [0] * (3 - len(nums)))  # type: ignore[return-value]
 
 

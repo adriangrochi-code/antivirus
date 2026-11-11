@@ -6,7 +6,7 @@
 #   centinela-apps estado    muestra qué está instalado
 set -euo pipefail
 
-need_root() { [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"; }
+need_root() { [[ $EUID -eq 0 ]] || exec sudo GAPPS="${GAPPS:-0}" "$0" "$@"; }   # sudo borra el entorno
 
 flatpak_ready() {
     flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo

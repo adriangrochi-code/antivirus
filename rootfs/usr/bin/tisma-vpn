@@ -39,7 +39,11 @@ NFT
 cmd="${1:-estado}"
 case "$cmd" in
 importar)
-    need_root "$@"
+    # pkexec cambia la carpeta actual a /root: la ruta del archivo se hace absoluta antes
+    if [[ $EUID -ne 0 ]]; then
+        abs="$(realpath -e -- "${2:?archivo .conf}")" || die "no existe ${2:-}"
+        exec pkexec "$0" importar "$abs" ${3:+"$3"}
+    fi
     file="${2:?archivo .conf}"; [[ -f "$file" ]] || die "no existe $file"
     name="${3:-$(basename "$file" .conf | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_\n-' '-' | cut -c1-15)}"
     valid_name "$name"

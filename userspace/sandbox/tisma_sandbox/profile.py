@@ -14,6 +14,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import sys
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,18 @@ DEVICES = {"gpu": ["/dev/dri", "/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-mo
 
 class ProfileError(ValueError):
     pass
+
+
+def forbidden_hit(exp: str) -> str | None:
+    """La ruta prohibida que concedería `exp`: la misma, una de dentro o una que la CONTIENE (dar ~/.config
+    entera daría también ~/.config/autostart)."""
+    for f in FORBIDDEN:
+        fx = os.path.normpath(os.path.expanduser(f))
+        if exp == fx:
+            return f
+        if f != "~" and (exp.startswith(fx + os.sep) or fx.startswith(exp.rstrip(os.sep) + os.sep)):
+            return f
+    return None
 
 
 @dataclass
@@ -72,11 +85,9 @@ class Profile:
         for p in self.rw + self.ro:
             if not p.startswith(("~/", "/media/", "/mnt/", "/run/media/")) or ".." in Path(p).parts:
                 raise ProfileError(f"Ruta no permitida en el perfil: {p}")
-            exp = os.path.normpath(os.path.expanduser(p))
-            for f in FORBIDDEN:
-                fx = os.path.normpath(os.path.expanduser(f))
-                if exp == fx or (f != "~" and exp.startswith(fx + os.sep)):
-                    raise ProfileError(f"{p}: por seguridad ningún perfil puede acceder a {f}")
+            bad = forbidden_hit(os.path.normpath(os.path.expanduser(p)))
+            if bad:
+                raise ProfileError(f"{p}: por seguridad ningún perfil puede acceder a {bad}")
         for name in self.dbus_talk + self.dbus_own:
             if not re.match(r"^[A-Za-z0-9_.*-]+$", name) or name in ("*", "org.*", "org.freedesktop.*"):
                 raise ProfileError(f"Nombre D-Bus demasiado amplio o inválido: {name}")
@@ -139,14 +150,27 @@ def bwrap_args(p: Profile, *, uid: int, runtime_dir: str, app_home: Path, dbus_s
     if dbus_socket:
         a += ["--ro-bind", dbus_socket, f"{runtime_dir}/bus",
               "--setenv", "DBUS_SESSION_BUS_ADDRESS", f"unix:path={runtime_dir}/bus"]
+    def real_src(src: str) -> str | None:
+        """Ruta real (enlaces resueltos) revalidada: una app con escritura en ~/Descargas podría convertir
+        ~/Descargas/Windows en un enlace a ~/.config y otra app lo montaría con escritura."""
+        real = os.path.realpath(src)
+        if forbidden_hit(real) or (src.startswith(home + os.sep) and not real.startswith(home + os.sep)):
+            print(f"tisma-sandbox: se omite {src} (apunta a {real}, que no se puede conceder)", file=sys.stderr)
+            return None
+        return real
+
     for path in p.ro:
         src = os.path.expanduser(path)
-        a += ["--ro-bind-try", src, src]
+        real = real_src(src)
+        if real:
+            a += ["--ro-bind-try", real, src]
     for path in p.rw:
         src = os.path.expanduser(path)
-        if src.startswith(home + os.sep):
+        if src.startswith(home + os.sep) and not os.path.lexists(src):
             os.makedirs(src, exist_ok=True)
-        a += ["--bind-try", src, src]
+        real = real_src(src)
+        if real:
+            a += ["--bind-try", real, src]
     for k, v in p.env.items():
         a += ["--setenv", k, v]
     a += ["--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "GPG_AGENT_INFO", "--unsetenv", "LD_PRELOAD"]

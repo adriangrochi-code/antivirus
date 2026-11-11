@@ -64,3 +64,19 @@ def test_real_isolation(tmp_path, monkeypatch):
     finally:
         secret.unlink()
         (Path.home() / "Documentos/sb.txt").unlink(missing_ok=True)
+
+
+def test_parent_of_forbidden_and_symlinked_paths_rejected(tmp_path, monkeypatch):
+    base = {"nombre": "x", "exec": "/usr/bin/true"}
+    for parent in (["~/.config"], ["~/.local"], ["~/.local/share"]):
+        with pytest.raises(prof.ProfileError):
+            prof.Profile.from_dict({**base, "rw": parent})
+    home = tmp_path / "home"
+    (home / ".config").mkdir(parents=True)
+    (home / "Descargas").mkdir()
+    os.symlink(home / ".config", home / "Descargas" / "Windows")
+    monkeypatch.setenv("HOME", str(home))
+    p = prof.Profile.from_dict({**base, "rw": ["~/Descargas/Windows", "~/Descargas"]})
+    args = prof.bwrap_args(p, uid=1000, runtime_dir="/run/user/1000", app_home=tmp_path, dbus_socket=None)
+    assert str(home / ".config") not in args                      # el enlace a ~/.config no se monta
+    assert str(home / "Descargas") in args

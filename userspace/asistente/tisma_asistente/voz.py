@@ -46,8 +46,9 @@ def synthesize(text: str) -> Path | None:
         r = subprocess.run(["piper", "--model", str(piper_voice()), "--output_file", str(tmp)],
                            input=text, text=True, capture_output=True, timeout=120)
     else:
-        r = subprocess.run(["espeak-ng", "-v", "es", "-s", "160", "-w", str(tmp), text],
-                           capture_output=True, timeout=60)
+        # El texto por la entrada estándar: uno que empiece por «-» no se toma como opción
+        r = subprocess.run(["espeak-ng", "-v", "es", "-s", "160", "-w", str(tmp), "--stdin"],
+                           input=text, text=True, capture_output=True, timeout=60)
     if r.returncode != 0 or not tmp.exists():
         return None
     tmp.rename(out)

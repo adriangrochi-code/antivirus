@@ -36,9 +36,13 @@ PROFILES = {"silencioso", "equilibrado", "rendimiento"}
 def load() -> dict:
     try:
         return json.loads(CONFIG.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
         CONFIG.write_text(json.dumps(DEFAULT, indent=2, ensure_ascii=False), encoding="utf-8")
+        return dict(DEFAULT)
+    except (OSError, ValueError) as e:
+        # Un error de sintaxis del usuario NO borra su rutina: se avisa y se usa la predeterminada esta vez
+        print(f"tisma-asistente: {CONFIG} tiene un error ({e}); se usa la rutina predeterminada sin modificarlo")
         return dict(DEFAULT)
 
 
@@ -96,7 +100,10 @@ def run_action(a: dict, dry_run: bool = False) -> str:
 
 def run(dry_run: bool = False) -> list[str]:
     cfg = load()
-    text = cfg.get("saludo", "").format(saludo=greeting(), estado=system_status())
+    try:
+        text = cfg.get("saludo", "").format(saludo=greeting(), estado=system_status())
+    except (KeyError, IndexError, ValueError) as e:      # llaves desconocidas en el saludo del usuario
+        text = f"{greeting()}. (Revisa el saludo de tu rutina: {e})"
     done = []
     if text:
         done.append(f"decir: {text}")

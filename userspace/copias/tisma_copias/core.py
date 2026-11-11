@@ -154,16 +154,34 @@ def _snap_path(nombre: str, ruta: str, snapdir: Path) -> tuple[Path, Path]:
 
 def restaurar_archivo(nombre: str, ruta: str, runner=run, snapdir: Path = SNAPDIR) -> str:
     """Devuelve un archivo o carpeta a como estaba en la instantánea. Lo actual se conserva al lado como
-    «<nombre>.antes-<fecha>» (nunca se pierde nada)."""
+    «<nombre>.antes-<fecha>» (nunca se pierde nada).
+
+    Seguridad: si la carpeta de destino es de un usuario, la escritura se hace CON LA IDENTIDAD de ese usuario
+    (root solo lee la instantánea, que es de solo lectura, y le pasa los datos con tar). Así un usuario que cambie
+    el destino por un enlace a /etc/passwd en mitad de la restauración solo puede escribir donde ya podía."""
+    if not os.path.isabs(ruta):
+        raise CopiasError("indica la ruta completa (con pkexec la carpeta actual es /root)")
     src, dest = _snap_path(nombre, ruta, snapdir)
     if os.path.realpath(dest.parent) != str(dest.parent):
         raise CopiasError("la carpeta de destino pasa por un enlace simbólico: indica la ruta real")
     if not src.exists() and not src.is_symlink():
         raise CopiasError(f"{ruta} no existe en la instantánea {nombre}")
-    if dest.exists() or dest.is_symlink():
-        keep = dest.with_name(f"{dest.name}.antes-{_now():%Y%m%d-%H%M%S}")
-        os.rename(dest, keep)
-    runner(["cp", "-a", "--reflink=auto", "--", str(src), str(dest)])
+    st = os.stat(dest.parent)
+    keep = dest.with_name(f"{dest.name}.antes-{_now():%Y%m%d-%H%M%S}")
+    exists = dest.exists() or dest.is_symlink()
+    if st.st_uid == 0 and not st.st_mode & 0o022:
+        # Carpeta de root que nadie más puede modificar: no hay carrera posible
+        if exists:
+            os.rename(dest, keep)
+        runner(["cp", "-a", "--reflink=auto", "--", str(src), str(dest)])
+        return str(dest)
+    if st.st_uid == 0:
+        raise CopiasError("la carpeta de destino de root es escribible por otros: restaura en otra ubicación")
+    as_user = ["setpriv", f"--reuid={st.st_uid}", f"--regid={st.st_gid}", "--clear-groups", "--"]
+    if exists:
+        runner(as_user + ["mv", "-T", "--", str(dest), str(keep)])
+    runner(["bash", "-o", "pipefail", "-c", 'tar -C "$1" -cf - -- "$2" | "${@:4}" tar -C "$3" -xpf -',
+            "restaurar", str(src.parent), src.name, str(dest.parent), *as_user])
     return str(dest)
 
 
@@ -245,7 +263,11 @@ def configurar_externo(destino: str, runner=run, cfg: Path = CONFIG, keyfile: Pa
         raise CopiasError("indica la ruta absoluta del destino (p. ej. /media/usuario/DISCO/tisma)")
     dest = Path(destino)
     dest.mkdir(parents=True, exist_ok=True, mode=0o700)
-    same = os.stat(dest).st_dev == os.stat("/").st_dev
+    # Mismo dispositivo de bloque (no st_dev: cada subvolumen btrfs tiene uno distinto aunque sea el mismo disco)
+    try:
+        same = montaje(str(dest), runner).source == montaje("/", runner).source
+    except CopiasError:
+        same = os.stat(dest).st_dev == os.stat("/").st_dev
     if keyfile.exists():
         clave = keyfile.read_text().strip()
     else:
@@ -270,6 +292,7 @@ def copiar_externo(runner=run, cfg: Path = CONFIG, keyfile: Path = KEYFILE) -> s
     args = ["restic", "backup", "--exclude-caches", "--tag", "tisma", *c.get("rutas", ["/home", "/etc"])]
     for e in c.get("excluir", EXCLUIR):
         args += ["--exclude", e]
+    args += ["--exclude", c["destino"]]         # si el destino está dentro de /home, no copiarlo dentro de sí mismo
     runner(args, env=env)
     runner(["restic", "forget", "--tag", "tisma", "--keep-daily", "7", "--keep-weekly", "4",
             "--keep-monthly", "6", "--prune"], env=env)
@@ -293,6 +316,10 @@ def restaurar_externo(snapshot_id: str, destino: str, runner=run, cfg: Path = CO
     if target.exists() and any(target.iterdir()):
         raise CopiasError("el destino de la restauración debe estar vacío")
     c = config(cfg)
+    if not c.get("destino"):
+        raise CopiasError("la copia externa no está configurada")
+    if not target.is_absolute():
+        raise CopiasError("indica la ruta completa del destino de la restauración")
     runner(["restic", "restore", snapshot_id, "--target", str(target)], env=_restic_env(c["destino"], keyfile))
     return str(target)
 
