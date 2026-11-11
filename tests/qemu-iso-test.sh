@@ -26,7 +26,8 @@ check "lockdown activo" "Kernel is locked down"
 check "LSM landlock/yama/apparmor/bpf" "LSM: initializing lsm=.*landlock.*yama.*apparmor.*bpf"
 for u in nftables.service dnscrypt-proxy.service chrony.service usbguard.service systemd-oomd.service \
          auditd.service tisma-bloqueo-sesion.service dev-zram0.swap; do
-    check "$u" "(Started|Finished|Activated swap) $u"
+    # systemd recorta los nombres largos en la consola («tisma-bloqueo-sesion.servi…»): basta el principio
+    check "$u" "(Started|Finished|Activated swap) ${u:0:24}"
 done
 if grep -qa "\[FAILED\]" <<<"$LOG"; then echo "  FALLO hay servicios fallidos:"; grep -a "\[FAILED\]" <<<"$LOG"; fallo=1
 else echo "  ok   ningún servicio fallido"; fi
