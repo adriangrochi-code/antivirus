@@ -28,7 +28,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import detonar
+from . import detonar, fan
 from .behavior import Alert, emit
 
 log = logging.getLogger("escudo.primera_ejecucion")
@@ -82,6 +82,7 @@ class Gate:
         self._stop = threading.Event()
         self.fd = -1
         self._marked: set[str] = set()
+        self._devs: set[int] = set()          # dispositivos de las carpetas vigiladas (filtro rápido)
 
     # ------------------------------------------------------------ fanotify
     def start(self) -> list[threading.Thread]:
@@ -89,7 +90,8 @@ class Gate:
         self._libc = libc
         self.fd = libc.fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT, O_RDONLY | O_LARGEFILE | os.O_CLOEXEC)
         if self.fd < 0:
-            raise OSError(ctypes.get_errno(), "fanotify_init (¿kernel sin CONFIG_FANOTIFY_ACCESS_PERMISSIONS?)")
+            raise OSError(ctypes.get_errno(), "fanotify_init (¿falta CAP_SYS_ADMIN en el servicio o el kernel no "
+                                              "tiene CONFIG_FANOTIFY_ACCESS_PERMISSIONS?)")
         DET_DIR.mkdir(parents=True, exist_ok=True)
         os.chmod(DET_DIR, 0o711)
         self.mark_mounts()
@@ -101,12 +103,14 @@ class Gate:
         return threads
 
     def mark_mounts(self) -> None:
-        """Solo puntos de montaje propios (/home en btrfs es un subvolumen aparte, /tmp es tmpfs): marcar el
-        montaje de / haría pasar por Escudo cada ejecución de /usr."""
+        """Marca el SISTEMA DE ARCHIVOS de /home, /tmp, /var/tmp y las memorias USB (ver fan.py: una marca por
+        montaje no ve nada desde el espacio de montajes propio del servicio). Si /home comparte disco con /
+        (subvolúmenes de btrfs), la marca ve todas las ejecuciones: las de otros subvolúmenes se permiten al
+        instante con un fstat, sin leer su ruta (on_exec)."""
         if self.fixed_mounts is not None:
             wanted = list(self.fixed_mounts)
         else:
-            wanted = [p for p in ("/home", "/tmp", "/var/tmp") if os.path.ismount(p)]
+            wanted = [p for p in ("/home", "/tmp", "/var/tmp") if os.path.isdir(p)]
         try:
             for line in open("/proc/self/mountinfo"):
                 mp = line.split()[4].replace("\\040", " ")
@@ -114,15 +118,13 @@ class Gate:
                     wanted.append(mp)
         except OSError:
             pass
+        wanted += fan.submounts(wanted)
         for mp in wanted:
             if mp in self._marked:
                 continue
-            r = self._libc.fanotify_mark(self.fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-                                         ctypes.c_uint64(FAN_OPEN_EXEC_PERM), AT_FDCWD, mp.encode())
-            if r == 0:
+            if fan.mark(self._libc, self.fd, mp, FAN_OPEN_EXEC_PERM):
                 self._marked.add(mp)
-            else:
-                log.warning("No se pudo vigilar %s (errno %d)", mp, ctypes.get_errno())
+        self._devs = fan.devices(sorted(self._marked))
 
     def _watch_mounts(self) -> None:
         """Memorias USB que se conectan después. El kernel avisa (POLLPRI en /proc/self/mountinfo) cuando cambia
@@ -149,6 +151,12 @@ class Gate:
             try:
                 buf = os.read(self.fd, 4096)
             except InterruptedError:
+                continue
+            except OSError as e:
+                if e.errno == 9 or self._stop.is_set():          # EBADF: cerrado al parar
+                    return
+                log.warning("Error leyendo eventos de fanotify (%s): se sigue", e)
+                time.sleep(0.2)
                 continue
             off = 0
             while off + META.size <= len(buf):
@@ -181,7 +189,12 @@ class Gate:
         return self._hash_cache[key]
 
     def on_exec(self, efd: int, pid: int) -> int:
-        path = os.readlink(f"/proc/self/fd/{efd}")
+        st = os.fstat(efd)
+        if st.st_dev not in self._devs:
+            return FAN_ALLOW                     # /usr y demás subvolúmenes: microsegundos, sin leer la ruta
+        path = fan.fd_path(efd, st)
+        if not fan.inside(path, sorted(self._marked)):
+            return FAN_ALLOW
         external = is_external(path, efd)
         if not external:
             return FAN_ALLOW

@@ -33,6 +33,9 @@ def inotify(path: str):
         if libc.inotify_add_watch(fd, path.encode(), IN_MODIFY | IN_MOVED_TO | IN_CREATE) < 0:
             os.close(fd)
             return None
+        # También la carpeta padre: si Escudo recrea la suya, el aviso llega al momento (la vigilancia anterior
+        # se queda en la carpeta vieja)
+        libc.inotify_add_watch(fd, os.path.dirname(path.rstrip("/")).encode() or b"/", IN_CREATE | IN_MOVED_TO)
         return fd
     except (OSError, AttributeError):
         return None
@@ -49,20 +52,37 @@ def notify(line: str) -> None:
                     TITLE.get(a.get("kind"), "Escudo"), body], check=False)
 
 
+def ident(path: str):
+    try:
+        st = os.stat(path)
+        return (st.st_dev, st.st_ino)
+    except OSError:
+        return None
+
+
 def main():
     if not shutil.which("notify-send"):
         return
     while not os.path.isdir(DIR):
         time.sleep(30)                                  # Escudo aún no ha arrancado
-    fd = inotify(DIR)
-    pos = os.path.getsize(PATH) if os.path.exists(PATH) else 0   # solo lo nuevo desde que se abre la sesión
+    fd, dir_id = inotify(DIR), ident(DIR)
+    file_id = ident(PATH)
+    pos = os.path.getsize(PATH) if file_id else 0       # solo lo nuevo desde que se abre la sesión
     while True:
+        # Carpeta recreada (reinicio de Escudo): la vigilancia anterior ya no avisa → se vuelve a crear
+        if ident(DIR) != dir_id and os.path.isdir(DIR):
+            if fd is not None:
+                os.close(fd)
+            fd, dir_id = inotify(DIR), ident(DIR)
+        cur = ident(PATH)
+        if cur != file_id:
+            file_id, pos = cur, 0                       # archivo nuevo: desde el principio
         try:
             size = os.path.getsize(PATH)
         except OSError:
             size = 0
         if size < pos:
-            pos = 0                                     # archivo recreado (reinicio de Escudo)
+            pos = 0                                     # truncado
         if size > pos:
             with open(PATH, "rb") as fh:
                 fh.seek(pos)
@@ -73,8 +93,9 @@ def main():
                     pos += len(raw)
         if fd is None:
             time.sleep(2)
+            fd = inotify(DIR) if os.path.isdir(DIR) else None
             continue
-        select.select([fd], [], [], 600)
+        select.select([fd], [], [], 30)
         try:
             while os.read(fd, 4096):                    # vaciar los eventos acumulados
                 pass

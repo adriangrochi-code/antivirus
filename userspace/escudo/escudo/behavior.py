@@ -151,6 +151,8 @@ def follow(path: str, stop: threading.Event, timeout: float = 30.0):
             w.wait(timeout)
             try:
                 if os.stat(path).st_ino != ino:           # rotado: el nuevo archivo, desde el principio
+                    for rest in fh:                       # sin perder lo último escrito en el viejo
+                        yield rest
                     fh.close()
                     fh = open(path, encoding="utf-8", errors="replace")
                     ino = os.fstat(fh.fileno()).st_ino

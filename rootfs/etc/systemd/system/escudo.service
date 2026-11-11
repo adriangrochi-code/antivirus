@@ -16,6 +16,8 @@ RestartSec=5
 Environment=ESCUDO_HOME=/var/lib/escudo
 RuntimeDirectory=escudo
 RuntimeDirectoryMode=0755
+# Se conserva entre reinicios: los notificadores de las sesiones vigilan esta carpeta con inotify
+RuntimeDirectoryPreserve=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/escudo /home /tmp /var/tmp
 PrivateTmp=no
@@ -29,7 +31,9 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 # KILL: congelar ransomware · AUDIT_*: reglas y registro de auditd · NET_ADMIN: nftables
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
+# SYS_ADMIN: fanotify (puerta de primera ejecución y análisis en tiempo real); sin ella fanotify_init da EPERM
+# y ambas quedaban apagadas en el sistema instalado
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 Nice=10
 IOSchedulingClass=idle

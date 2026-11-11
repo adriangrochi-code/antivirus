@@ -262,12 +262,15 @@ def test_fanotify_watcher_on_real_mount(tmp_path):
         _os.rename(mnt / "Unconfirmed 1.crdownload", mnt / "programa.exe")
         (mnt / ".cache").mkdir()
         (mnt / ".cache/c.bin").write_bytes(b"z")
-        for _ in range(40):
-            if len(seen) >= 2:
+        (mnt / "a/temporal.bin").write_bytes(b"w")             # escribe, cierra y renombra enseguida (evasión)
+        _os.rename(mnt / "a/temporal.bin", mnt / "a/final.bin")
+        (mnt / "malo (deleted)").write_bytes(b"v")             # nombre trampa: no debe recortarse
+        for _ in range(50):
+            if len(seen) >= 4:
                 break
             _t.sleep(0.1)
         _t.sleep(0.3)
-        assert sorted(seen) == ["a/b/c/hondo.bin", "programa.exe"]
+        assert sorted(seen) == ["a/b/c/hondo.bin", "a/final.bin", "malo (deleted)", "programa.exe"]
     finally:
         rtp.stop()
         _sp.run(["umount", str(mnt)])

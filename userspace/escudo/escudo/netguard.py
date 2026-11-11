@@ -118,7 +118,16 @@ def _is_public(ip: str) -> bool:
     return a.is_global
 
 
-LOOPBACK = {"0100007F", "00000000000000000000000001000000"}
+def _is_loopback_hex(h: str) -> bool:
+    """Dirección local de /proc/net/tcp{,6} en hex: 127.0.0.0/8 (systemd-resolved escucha en 127.0.0.53/54),
+    ::1 y ::ffff:127.x.x.x. Antes solo 127.0.0.1 y ::1: resolved contaba como «abierto al exterior»."""
+    if len(h) == 8:
+        return h[6:8] == "7F"                        # little-endian: el primer octeto va al final
+    if len(h) == 32:
+        if h == "00000000000000000000000001000000":
+            return True
+        return h[:16] == "0" * 16 and h[16:24] == "FFFF0000" and h[30:32] == "7F"
+    return False
 
 
 def _read_proc_net() -> list[tuple[list[str], bool]]:
@@ -134,7 +143,7 @@ def _read_proc_net() -> list[tuple[list[str], bool]]:
 def external_listeners(rows: list[tuple[list[str], bool]] | None = None) -> bool:
     """¿Hay algún puerto TCP en escucha fuera de loopback? Si no, nadie puede conectarse desde fuera."""
     for parts, _ in (rows if rows is not None else _read_proc_net()):
-        if len(parts) > 3 and parts[3] == "0A" and parts[1].split(":")[0] not in LOOPBACK:
+        if len(parts) > 3 and parts[3] == "0A" and not _is_loopback_hex(parts[1].split(":")[0]):
             return True
     return False
 
@@ -230,6 +239,10 @@ class NetGuard:
                     watch.wait(30)
                     try:
                         if os.stat(path).st_ino != inode:
+                            for rest in fh:              # lo último del registro viejo antes de reabrir
+                                msg = message_from_syslog(rest)
+                                if msg:
+                                    self.process_log_line(msg)
                             break                    # rotado: reabrir
                     except FileNotFoundError:
                         pass

@@ -2,96 +2,103 @@
 
 from __future__ import annotations
 
-import ctypes
-import ctypes.util
+import errno
 import logging
 import os
-import struct
 import threading
 import time
 
+from . import fan
 from .quarantine import Quarantine
 from .scanner import Detection, Scanner
 
 log = logging.getLogger("escudo.monitor")
 
 FAN_CLOEXEC, FAN_CLASS_NOTIF = 0x1, 0x0
-FAN_MARK_ADD, FAN_MARK_MOUNT = 0x1, 0x10
 FAN_CLOSE_WRITE = 0x8
 O_LARGEFILE = 0o100000
-AT_FDCWD = -100
-META = struct.Struct("<IBBHQii")          # fanotify_event_metadata
 # Descargas del navegador y guardados atómicos: se escriben con un nombre temporal y luego se renombran
 TEMP_SUFFIX = (".crdownload", ".part", ".download", ".partial", ".tmp")
 
 
 class FanotifyWatcher:
-    """Archivos cerrados tras escribirse en uno o más puntos de montaje, con UNA marca por montaje.
+    """Archivos cerrados tras escribirse bajo unas carpetas, sin una vigilancia por carpeta.
 
     inotify (watchdog) necesita una vigilancia por CADA carpeta: con un /home grande (node_modules, cachés,
     proyectos) son decenas de miles, cada una retiene su inodo en la memoria del kernel, y al arrancar hay que
-    recorrer todo el árbol. fanotify sobre el montaje cuesta lo mismo tenga /home cien carpetas o un millón.
+    recorrer todo el árbol. fanotify marca el sistema de archivos entero (ver fan.py: también ve lo escrito desde
+    sandboxes y otros espacios de montaje) y cada evento se filtra por dispositivo y ruta.
     """
 
-    def __init__(self, on_path):
-        self.on_path = on_path
+    def __init__(self, on_event):
+        self.on_event = on_event                       # (ruta, inodo)
         self.fd = -1
         self.covered: list[str] = []
+        self.devs: set[int] = set()
         self._stop = threading.Event()
+        self._overflow_log = 0.0
 
     def start(self, paths: list[str]) -> list[str]:
-        """Vigila las rutas que son puntos de montaje; devuelve cuáles (el resto queda para inotify)."""
-        mounts = [p.rstrip("/") or "/" for p in paths if p != "/" and os.path.ismount(p)]
-        if not mounts:
-            return []
+        """Vigila las rutas que puede; devuelve cuáles (el resto queda para inotify)."""
         try:
-            libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-            self.fd = libc.fanotify_init(FAN_CLOEXEC | FAN_CLASS_NOTIF, os.O_RDONLY | O_LARGEFILE | os.O_CLOEXEC)
-        except (OSError, AttributeError):
+            lib = fan.libc()
+            self.fd = lib.fanotify_init(FAN_CLOEXEC | FAN_CLASS_NOTIF, os.O_RDONLY | O_LARGEFILE | os.O_CLOEXEC)
+        except (OSError, AttributeError) as e:
+            log.warning("fanotify no disponible (%s): se usará inotify", e)
             return []
         if self.fd < 0:
+            import ctypes
+            log.warning("fanotify_init falló (errno %d; ¿falta CAP_SYS_ADMIN en el servicio?): se usará inotify",
+                        ctypes.get_errno())
             return []
-        for mp in mounts:
-            if libc.fanotify_mark(self.fd, FAN_MARK_ADD | FAN_MARK_MOUNT, ctypes.c_uint64(FAN_CLOSE_WRITE),
-                                  AT_FDCWD, mp.encode()) == 0:
-                self.covered.append(mp)
-            else:
-                log.warning("fanotify no pudo vigilar %s (errno %d): se usará inotify", mp, ctypes.get_errno())
+        roots = [p.rstrip("/") or "/" for p in paths if p != "/"]
+        for r in roots + fan.submounts(roots):
+            if fan.mark(lib, self.fd, r, FAN_CLOSE_WRITE) and r in roots:
+                self.covered.append(r)
         if not self.covered:
             os.close(self.fd)
             self.fd = -1
             return []
+        self.devs = fan.devices(self.covered + fan.submounts(self.covered))
         threading.Thread(target=self._events, daemon=True, name="fanotify-escritura").start()
         return list(self.covered)
-
-    def _inside(self, path: str) -> bool:
-        return any(path == m or path.startswith(m + "/") for m in self.covered)
 
     def _events(self) -> None:
         while not self._stop.is_set():
             try:
-                buf = os.read(self.fd, 8192)
+                buf = os.read(self.fd, 16384)
             except InterruptedError:
                 continue
-            except OSError:
-                return
+            except OSError as e:
+                if e.errno == errno.EBADF or self._stop.is_set():
+                    return
+                # Sin FAN_REPORT_FD_ERROR, un fallo al abrir el archivo del evento (EMFILE, EPERM de un LSM…)
+                # llega aquí: antes terminaba el hilo y la protección quedaba apagada sin avisar
+                log.warning("Error leyendo eventos de fanotify (%s): se sigue", e)
+                time.sleep(0.2)
+                continue
             off = 0
-            while off + META.size <= len(buf):
-                ev_len, _v, _r, _m, _mask, efd, _pid = META.unpack_from(buf, off)
-                off += ev_len or META.size
+            while off + fan.META.size <= len(buf):
+                ev_len, _v, _r, _m, mask, efd, _pid = fan.META.unpack_from(buf, off)
+                off += ev_len or fan.META.size
+                if mask & fan.FAN_Q_OVERFLOW:
+                    if time.monotonic() - self._overflow_log > 60:
+                        self._overflow_log = time.monotonic()
+                        log.warning("Cola de fanotify desbordada: algunas escrituras no se analizaron en tiempo real")
                 if efd < 0:
-                    continue                            # cola desbordada: no hay archivo
+                    continue
                 try:
-                    path = os.readlink(f"/proc/self/fd/{efd}")
+                    st = os.fstat(efd)
+                    if st.st_dev not in self.devs:
+                        continue                        # otro subvolumen/disco: descartado sin leer la ruta
+                    path = fan.fd_path(efd, st)
                 except OSError:
-                    path = ""
+                    continue
                 finally:
                     os.close(efd)
-                if path.endswith(" (deleted)"):
-                    path = path[:-10]
-                if path and self._inside(path):
+                if fan.inside(path, self.covered):
                     try:
-                        self.on_path(path)
+                        self.on_event(path, st.st_ino)
                     except Exception:  # noqa: BLE001 — un fallo nunca para la vigilancia
                         log.exception("Error encolando %s", path)
 
@@ -114,6 +121,7 @@ class RealTimeProtection:
         self._stop = threading.Event()
         self._wake = threading.Event()        # hay archivos pendientes de analizar
         self._pending: dict[str, float] = {}
+        self._inodes: dict[str, int] = {}     # ruta → inodo al cerrarse (para encontrarlo si se renombra)
         self._lock = threading.Lock()
 
     def on_detection(self, d: Detection) -> None:
@@ -125,9 +133,9 @@ class RealTimeProtection:
             except OSError as e:
                 log.error("No se pudo poner en cuarentena %r: %s", d.path, e)
 
-    def check(self, path: str) -> None:
-        if not os.path.lexists(path) and path.endswith(TEMP_SUFFIX):
-            self._check_renamed(path)
+    def check(self, path: str, ino: int | None = None) -> None:
+        if not os.path.lexists(path):
+            self._check_renamed(path, ino)
             return
         if os.path.islink(path) or not os.path.isfile(path) or self.scanner._excluded(path):
             return
@@ -140,26 +148,36 @@ class RealTimeProtection:
             for d in dets[1:]:
                 log.warning("  + %s", d)
 
-    def _check_renamed(self, path: str) -> None:
-        """Una descarga terminada (X.crdownload → nombre final): fanotify avisó del temporal, que ya no existe;
-        se analizan los archivos de esa carpeta modificados en los últimos segundos."""
+    def _check_renamed(self, path: str, ino: int | None = None) -> None:
+        """El archivo ya no está con ese nombre: se cerró y se renombró (descargas X.crdownload → final, guardados
+        atómicos, o malware que escribe y renombra para esquivar el análisis). Se busca por su INODO en la misma
+        carpeta (un renombrado lo conserva); si no se sabe, los archivos de la carpeta modificados hace poco."""
         d = os.path.dirname(path)
         if self.scanner._excluded(d):
             return
-        now = time.time()
         try:
-            recent = sorted((e for e in os.scandir(d) if e.is_file(follow_symlinks=False)
-                             and now - e.stat().st_mtime < 15), key=lambda e: -e.stat().st_mtime)[:10]
+            entries = [e for e in os.scandir(d) if e.is_file(follow_symlinks=False)]
         except OSError:
             return
+        if ino is not None:
+            for e in entries:
+                if e.inode() == ino:
+                    self.check(e.path)
+                    return
+        if not path.endswith(TEMP_SUFFIX):
+            return
+        now = time.time()
+        recent = sorted((e for e in entries if now - e.stat().st_mtime < 15), key=lambda e: -e.stat().st_mtime)[:10]
         for e in recent:
             if not e.path.endswith(TEMP_SUFFIX):
                 self.check(e.path)
 
-    def _enqueue(self, path: str) -> None:
+    def _enqueue(self, path: str, ino: int | None = None) -> None:
         # Espera a que el archivo termine de escribirse (debounce).
         with self._lock:
             self._pending[path] = time.time()
+            if ino is not None:
+                self._inodes[path] = ino
         self._wake.set()
 
     def _worker(self) -> None:
@@ -173,15 +191,17 @@ class RealTimeProtection:
             now = time.time()
             with self._lock:
                 ready = [p for p, t in self._pending.items() if now - t > 1.0]
+                inodes = {}
                 for p in ready:
                     del self._pending[p]
+                    inodes[p] = self._inodes.pop(p, None)
             for p in ready:
                 if self.guard is not None:
                     try:
                         self.guard.file_changed(p)
                     except Exception:  # noqa: BLE001 — el vigilante nunca debe parar el escáner
                         log.exception("Error en el detector de ransomware")
-                self.check(p)
+                self.check(p, inodes.get(p))
             self._stop.wait(0.5)
 
     def start(self, paths: list[str]) -> None:
@@ -190,8 +210,8 @@ class RealTimeProtection:
         self._fan = FanotifyWatcher(self._enqueue) if os.geteuid() == 0 else None
         covered = self._fan.start(paths) if self._fan else []
         if covered:
-            log.info("Vigilando con fanotify (una marca por montaje): %s", ", ".join(covered))
-        paths = [p for p in paths if not any(p == c or p.startswith(c.rstrip("/") + "/") for c in covered)]
+            log.info("Vigilando con fanotify (marca por sistema de archivos): %s", ", ".join(covered))
+        paths = [p for p in paths if p not in covered]
         if not paths:
             return
         try:
