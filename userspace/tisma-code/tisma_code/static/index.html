@@ -100,6 +100,8 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .pop .it:hover { background: var(--ctl); }
 .pop .it small { margin-left: auto; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
 .pop .it.sel { color: var(--accent-2); }
+.pop .it small.hilos { margin-left: 6px; max-width: none; color: var(--blue-2); }
+.pop .it small.hilos:hover { color: var(--accent-2); }
 .pop .path { font-family: var(--mono); font-size: 12px; color: var(--blue-2); padding: 4px 8px; word-break: break-all; }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
 
@@ -325,7 +327,7 @@ async function openModels() {
     (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
      '<div class="it" style="cursor:default;color:var(--faint)">Motor apagado: abre Strata o usa un modelo descargado</div>') +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
-      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small></div>`).join("") : "") +
+      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir cuántos hilos de CPU van mejor con este modelo">⚙ hilos</small></div>`).join("") : "") +
     `<hr><div class="it" id="addModel">＋ Añadir modelo…</div>`;
   $("#modelPop").querySelectorAll("[data-m]").forEach(el => el.onclick = () => setModel(state.config.endpoint, el.dataset.m));
   $("#modelPop").querySelectorAll("[data-serve]").forEach(el => el.onclick = async () => {
@@ -334,6 +336,10 @@ async function openModels() {
     catch (e) { put(esc(e.message), "err"); }
   });
   $("#addModel").onclick = () => { closePops(); openModal(); };
+  $("#modelPop").querySelectorAll("[data-hilos]").forEach(el => el.onclick = async ev => {
+    ev.stopPropagation(); closePops();
+    try { await api("/api/models/hilos", {path: el.dataset.hilos}); } catch (e) { put(esc(e.message), "err"); }
+  });
   $("#dirPop").classList.remove("on");
   $("#modelPop").classList.add("on");
 }

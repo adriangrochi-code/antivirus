@@ -237,6 +237,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"key": key, "gguf": gguf})
             if url.path == "/api/models/download":
                 return self._send(200, {"key": APP.downloads.start(b["id"], b["file"])})
+            if url.path == "/api/models/hilos":
+                path = str(Path(b["path"]).resolve())
+                if models.MODELS_DIR.resolve() not in Path(path).parents:
+                    return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
+
+                def job():
+                    APP.push({"type": "info", "message": "Midiendo hilos para este modelo (1-2 minutos)…"})
+                    try:
+                        r = models.measure_threads(path, APP.hw)
+                        if APP.server.proc and APP.server.model == Path(path).name:
+                            ep = APP.server.start(path, APP.hw)          # reinicia con los hilos medidos
+                            APP.config["endpoint"] = ep
+                        APP.push({"type": "info", "message": f"Hilos: {r['t']} al generar, {r['tb']} con el prompt. "
+                                  + (f"Medido: {r['datos']}" if r.get("medido") else "Sin alternativa que medir.")})
+                    except Exception as e:  # noqa: BLE001
+                        APP.push({"type": "error", "message": f"No se pudieron medir los hilos: {e}"})
+                threading.Thread(target=job, daemon=True).start()
+                return self._send(200, {"ok": True})
             if url.path == "/api/models/serve":
                 ep = APP.server.start(b["path"], APP.hw)
                 APP.config.update({"endpoint": ep, "model": Path(b["path"]).name})

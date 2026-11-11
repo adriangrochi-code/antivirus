@@ -31,6 +31,23 @@ y se genera un kernel y una configuración a su medida. La seguridad va integrad
 
 Nunca se desactivan las mitigaciones de CPU (`mitigations=auto` siempre).
 
+Memoria e hilos:
+- **DAMON_RECLAIM** (≤16 GB o GPU integrada): la memoria sin uso desde hace 1-2 min pasa a zram en dosis
+  pequeñas (64 MiB y 10 ms de CPU por segundo como máximo), antes de que la falta de RAM provoque tirones.
+- **systemd-oomd**: si una app mantiene la presión de memoria alta, se cierra esa app y no se congela el equipo;
+  Escudo y el control térmico se protegen.
+- **Hilos para IA**: centinela detecta núcleos físicos, SMT y módulos CMT (AMD Excavator: cada pareja de núcleos
+  comparte FPU y L2) y fija los hilos de llama.cpp (un hilo por unidad al generar, todos con el prompt);
+  TISMA Code mide cada modelo («⚙ hilos») y se queda con lo que digan los datos.
+- Copias, precarga y comprobaciones corren en `tisma-segundo-plano.slice` (CPU/E/S con peso 20).
+
+## Copias de seguridad
+
+`tisma-copias`: instantáneas btrfs **de solo lectura** de / y /home (diarias y antes de cada actualización de
+apt), restauración de archivos sin perder la versión actual, `volver-atras` del sistema completo (al reiniciar)
+y copia externa cifrada con restic (`tisma-copias externo configurar /media/…`), que se omite si el disco no
+está conectado. El instalador usa btrfs con subvolúmenes `@`, `@home`, `@snapshots`, `@cache`, `@log`.
+
 ## Seguridad
 
 - Kernel: lockdown `integrity`, módulos firmados obligatorios, `init_on_alloc/free`, pila aleatoria, sin

@@ -7,6 +7,3 @@ Before=slices.target
 # El escritorio y las apps tienen prioridad: este trabajo solo usa lo que sobra.
 CPUWeight=20
 IOWeight=20
-# En CPU con módulos compartidos (AMD Excavator, p. ej. ThinkPad A275) el reparto lo afina centinela
-# con un drop-in (AllowedCPUs) para no competir con la app en primer plano por la misma FPU.
-ManagedOOMPreference=omit

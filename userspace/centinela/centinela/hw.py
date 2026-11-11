@@ -74,6 +74,11 @@ def cpu() -> dict:
         lvl, typ = sysfs.read(f"{idx}/level"), sysfs.read(f"{idx}/type")
         caches[f"L{lvl}{'d' if typ == 'Data' else 'i' if typ == 'Instruction' else ''}"] = sysfs.read(f"{idx}/size")
 
+    # Unidades de ejecución: CPUs que comparten núcleo (SMT) o, en AMD familia 15h (Bulldozer…Excavator),
+    # módulo CMT: dos núcleos enteros con FPU y L2 compartidas. Linux los presenta igual (thread_siblings).
+    units = sorted({sysfs.read(f"/sys/devices/system/cpu/cpu{c}/topology/thread_siblings_list") or str(c)
+                    for c in cpus}, key=lambda s: parse_cpulist(s)[:1])
+    cmt = info.get("vendor_id") == "AuthenticAMD" and info.get("cpu family") == "21"
     smt = sysfs.read("/sys/devices/system/cpu/smt/active")
     driver = sysfs.read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver")
     return {
@@ -83,7 +88,9 @@ def cpu() -> dict:
         "model_id": info.get("model"),
         "logical_cpus": len(cpus),
         "physical_cores": len({sysfs.read(f"/sys/devices/system/cpu/cpu{c}/topology/core_cpus_list") for c in cpus}),
-        "smt": smt == "1",
+        "smt": smt == "1" and not cmt,
+        "cmt": cmt,
+        "execution_units": [parse_cpulist(u) for u in units],
         "flags": sorted(f for f in INTERESTING_FLAGS if f in flags),
         "virtual_machine": "hypervisor" in flags,
         "hybrid": hybrid,

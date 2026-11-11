@@ -9,6 +9,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -242,6 +243,81 @@ def port_owner_is_me(port: int) -> bool:
     return False
 
 
+HILOS_SISTEMA = Path("/etc/centinela/hilos.json")       # lo escribe centinela según la topología de la CPU
+HILOS_MEDIDOS = MODELS_DIR.parent / "hilos.json"        # mediciones por modelo (usuario)
+
+
+def _read_json(p: Path) -> dict:
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def threads_for(model_file: str) -> tuple[int, int] | None:
+    """(hilos de generación, hilos de lote) para llama.cpp: la medición de ese modelo si existe; si no, lo que
+    centinela dedujo de la topología; si tampoco, None (llama.cpp decide)."""
+    m = _read_json(HILOS_MEDIDOS).get(Path(model_file).name)
+    if m:
+        return int(m["t"]), int(m["tb"])
+    sysd = _read_json(HILOS_SISTEMA)
+    if sysd.get("ia_generacion") and sysd.get("ia_lote"):
+        return int(sysd["ia_generacion"]), int(sysd["ia_lote"])
+    return None
+
+
+BENCH_PROMPT = ("Explica paso a paso cómo funciona un intercambiador de calor de placas, qué variables "
+                "determinan su eficiencia y cómo se dimensiona para un caudal dado. ") * 6
+
+
+def _bench_once(path: str, hw: dict, t: int, tb: int) -> tuple[float, float]:
+    """Arranca el modelo con t/tb hilos y devuelve (tokens/s generando, tokens/s procesando el prompt)."""
+    srv = LocalServer()
+    try:
+        ep = srv.start(path, hw, ctx=4096, threads=(t, tb))
+        base = ep.rsplit("/v1", 1)[0]
+        hdr = {"Authorization": f"Bearer {srv.api_key}", "Content-Type": "application/json"}
+        import time as _t
+        for _ in range(240):                                    # carga del modelo
+            try:
+                with urllib.request.urlopen(urllib.request.Request(base + "/health", headers=hdr), timeout=2) as r:
+                    if r.status == 200:
+                        break
+            except (urllib.error.URLError, OSError):
+                pass
+            _t.sleep(0.5)
+        body = json.dumps({"prompt": BENCH_PROMPT, "n_predict": 48, "cache_prompt": False,
+                           "temperature": 0}).encode()
+        with urllib.request.urlopen(urllib.request.Request(base + "/completion", data=body, headers=hdr),
+                                    timeout=600) as r:
+            tm = json.load(r).get("timings") or {}
+        return float(tm.get("predicted_per_second") or 0), float(tm.get("prompt_per_second") or 0)
+    finally:
+        srv.stop()
+
+
+def measure_threads(path: str, hw: dict, bench=None) -> dict:
+    """Mide qué número de hilos va mejor para este modelo en este equipo (dos ejecuciones cortas) y lo guarda.
+    Candidatos: un hilo por unidad de ejecución (núcleo físico o módulo CMT) o todos los núcleos lógicos."""
+    bench = bench or (lambda t, tb: _bench_once(path, hw, t, tb))
+    sysd = _read_json(HILOS_SISTEMA)
+    logical = int(sysd.get("ia_lote") or os.cpu_count() or 1)
+    units = int(sysd.get("ia_generacion") or max(1, logical // 2))
+    if units == logical:
+        res = {"t": units, "tb": logical, "medido": False}
+    else:
+        g1, p1 = bench(units, logical)          # generación con «units», prompt con «logical»
+        g2, p2 = bench(logical, units)          # y al revés
+        res = {"t": units if g1 >= g2 else logical, "tb": logical if p1 >= p2 else units, "medido": True,
+               "datos": {f"generacion_{units}": round(g1, 2), f"generacion_{logical}": round(g2, 2),
+                         f"prompt_{logical}": round(p1, 2), f"prompt_{units}": round(p2, 2)}}
+    allm = _read_json(HILOS_MEDIDOS)
+    allm[Path(path).name] = res
+    HILOS_MEDIDOS.parent.mkdir(parents=True, exist_ok=True)
+    HILOS_MEDIDOS.write_text(json.dumps(allm, indent=2))
+    return res
+
+
 class LocalServer:
     """Sirve un GGUF descargado con llama-server (llama.cpp): puerto aleatorio y clave aleatoria."""
 
@@ -251,7 +327,7 @@ class LocalServer:
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
 
-    def start(self, path: str, hw: dict, ctx: int = 16384) -> str:
+    def start(self, path: str, hw: dict, ctx: int = 16384, threads: tuple[int, int] | None = None) -> str:
         exe = shutil.which("llama-server")
         if not exe:
             raise RuntimeError("llama-server (llama.cpp) no está instalado")
@@ -266,8 +342,10 @@ class LocalServer:
             with socket.socket() as sk:
                 sk.bind(("127.0.0.1", 0))
                 self.port = sk.getsockname()[1]
+        th = threads or threads_for(str(p))
+        thr = ["-t", str(th[0]), "-tb", str(th[1])] if th else []
         self.proc = subprocess.Popen([exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                                      "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja"],
+                                      "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja", *thr],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.model = p.name
         return f"http://127.0.0.1:{self.port}/v1"

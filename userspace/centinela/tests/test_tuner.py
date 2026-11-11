@@ -109,3 +109,40 @@ def test_oc_clamped_and_whitelisted():
     from centinela.apply import Actuator, OC_MAX
     assert Actuator.allowed("/sys/class/drm/card0/device/pp_sclk_od")
     assert OC_MAX <= 15
+
+
+def test_a275_memory_reclaim_oomd_and_threads(tmp_path, monkeypatch):
+    hw = {**A275_HW, "cpu": {**A275_HW["cpu"], "cmt": True, "execution_units": [[0, 1], [2, 3]]}}
+    p = make_plan(hw, {}, "escritorio", "equilibrado")
+    assert p.damon["enabled"] == "Y" and p.damon["min_age"] == "120000000"
+    assert "damon_reclaim.enabled=Y" in p.cmdline and f"damon_reclaim.quota_sz={64 << 20}" in p.cmdline
+    assert p.oomd["DefaultMemoryPressureDurationSec"] == "20s"
+    assert p.threads["ia_generacion"] == 2 and p.threads["ia_lote"] == 4
+    assert any("CMT" in r for r in p.reasons)
+    big = make_plan(HW, {}, "juegos", "rendimiento")         # 32 GB y GPU dedicada: sin DAMON
+    assert not big.damon and big.oomd and big.threads["ia_generacion"] == 16
+
+    from centinela import apply, sysfs
+    from centinela.apply import render_files
+    files = render_files(p)
+    assert "DefaultMemoryPressureLimit=60%" in files["systemd/oomd.conf.d/60-centinela.conf"]
+    assert '"ia_generacion": 2' in files["centinela/hilos.json"]
+
+    # DAMON en marcha: se escriben los parámetros y se confirman con commit_inputs; parado: se activa.
+    base = tmp_path / "sys/module/damon_reclaim/parameters"
+    base.mkdir(parents=True)
+    for k, v in {"enabled": "Y", "min_age": "120000000", "quota_ms": "10", "quota_sz": "134217728",
+                 "quota_reset_interval_ms": "1000", "commit_inputs": "N"}.items():
+        (base / k).write_text(v)
+    monkeypatch.setattr(sysfs, "ROOT", str(tmp_path)) if hasattr(sysfs, "ROOT") else None
+    monkeypatch.setattr(sysfs, "path", lambda p: str(tmp_path) + p)
+    monkeypatch.setattr(sysfs, "read", lambda p, d=None: (open(str(tmp_path) + p).read().strip()
+                                                         if Path(str(tmp_path) + p).exists() else d))
+    act = Actuator()
+    apply.apply_damon(p, act)
+    assert (base / "quota_sz").read_text() == str(64 << 20) and (base / "commit_inputs").read_text() == "Y"
+    (base / "enabled").write_text("N")
+    (base / "commit_inputs").write_text("N")
+    act = Actuator()
+    apply.apply_damon(p, act)
+    assert (base / "enabled").read_text() == "Y" and (base / "commit_inputs").read_text() == "N"

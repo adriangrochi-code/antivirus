@@ -34,6 +34,7 @@ WRITABLE = [
     "/sys/devices/system/cpu/cpufreq/boost",
     "/sys/class/drm/card*/device/pp_sclk_od",
     "/sys/class/drm/card*/device/pp_od_clk_voltage",
+    "/sys/module/damon_reclaim/parameters/*",
 ]
 OC_MAX = 15               # % máximo de overclock de la GPU integrada que centinela acepta
 
@@ -111,6 +112,12 @@ def render_files(plan: Plan) -> dict[str, str]:
     files["centinela/hardware.config"] = "\n".join(plan.kernel_fragment) + "\n"
     files["centinela/builtin-modules.txt"] = "\n".join(plan.builtin_modules) + "\n"
     files["centinela/plan.json"] = json.dumps(plan.to_dict(), indent=2, ensure_ascii=False)
+    if plan.oomd:
+        files["systemd/oomd.conf.d/60-centinela.conf"] = HEADER + "[OOM]\n" + "".join(
+            f"{k}={v}\n" for k, v in plan.oomd.items())
+    if plan.threads:
+        # Lectura pública: TISMA Code (usuario) toma de aquí los hilos de llama.cpp.
+        files["centinela/hilos.json"] = json.dumps(plan.threads, indent=2)
     return files
 
 
@@ -162,7 +169,25 @@ def apply_runtime(plan: Plan, act: Actuator) -> None:
         act.write("/sys/module/zswap/parameters/compressor", plan.zswap["compressor"])
         act.write("/sys/module/zswap/parameters/max_pool_percent", str(plan.zswap["max_pool_percent"]))
         act.write("/sys/module/zswap/parameters/enabled", "Y")
+    apply_damon(plan, act)
     apply_power(plan, act)
+
+
+def apply_damon(plan: Plan, act: Actuator) -> None:
+    """Los parámetros se escriben con DAMON parado o se confirman con commit_inputs (la documentación del kernel
+    prohíbe escribir otros parámetros mientras commit_inputs sigue en Y)."""
+    base = "/sys/module/damon_reclaim/parameters"
+    if not plan.damon or sysfs.read(f"{base}/enabled") is None:
+        return
+    running = sysfs.read(f"{base}/enabled") == "Y"
+    for k, v in plan.damon.items():
+        if k != "enabled":
+            act.write(f"{base}/{k}", v)
+    if running:
+        if act.changes and any(p.startswith(base) for p, _ in act.changes):
+            act.write(f"{base}/commit_inputs", "Y")
+    else:
+        act.write(f"{base}/enabled", plan.damon.get("enabled", "Y"))
 
 
 def apply_power(plan: Plan, act: Actuator) -> None:

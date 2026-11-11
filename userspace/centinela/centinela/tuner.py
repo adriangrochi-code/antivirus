@@ -37,6 +37,9 @@ class Plan:
     cpu: dict = field(default_factory=dict)
     power: dict = field(default_factory=dict)
     sched_ext: str | None = None
+    damon: dict = field(default_factory=dict)
+    oomd: dict = field(default_factory=dict)
+    threads: dict = field(default_factory=dict)
     initramfs_compress: str = "zstd"
     desktop_light: bool = False
     gpu_oc_percent: int = 0
@@ -158,6 +161,42 @@ def _memory(plan: Plan, hw: dict, bench: dict) -> None:
         plan.sysctl["vm.max_map_count"] = "2147483642"  # juegos con Proton lo necesitan
     if plan.use_case == "juegos":
         plan.sysctl["vm.max_map_count"] = "2147483642"
+
+
+def _reclaim(plan: Plan, hw: dict) -> None:
+    """DAMON_RECLAIM: expulsa (a zram/zswap) la memoria que nadie toca desde hace un rato, en pequeñas dosis y
+    solo con presión ligera; deja RAM libre para la GPU integrada, la IA y la caché de disco sin esperar a que
+    el kernel tenga que liberar de golpe (que es cuando aparecen los tirones).
+    systemd-oomd: si la presión de memoria se mantiene, cierra la app que la causa antes de que el sistema
+    se quede congelado intercambiando páginas."""
+    ram = hw["memory"].get("total_mb", 0)
+    shared = any(g.get("integrated") for g in hw.get("gpus", [])) and not any(
+        not g.get("integrated") for g in hw.get("gpus", []))
+    if ram <= 16384 or shared:
+        min_age_s = 60 if ram <= 8192 else 120
+        plan.damon = {"enabled": "Y", "min_age": str(min_age_s * 1_000_000), "quota_ms": "10",
+                      "quota_sz": str(64 << 20), "quota_reset_interval_ms": "1000"}
+        plan.cmdline += [f"damon_reclaim.{k}={v}" for k, v in plan.damon.items()]
+        plan.why(f"DAMON_RECLAIM: páginas sin uso desde hace {min_age_s} s pasan a memoria comprimida, como mucho "
+                 "64 MiB y 10 ms de CPU por segundo, y solo cuando la memoria libre baja del 50 %.")
+    plan.oomd = {"SwapUsedLimit": "90%", "DefaultMemoryPressureLimit": "60%",
+                 "DefaultMemoryPressureDurationSec": "10s" if ram <= 8192 else "20s"}
+    plan.why(f"systemd-oomd: si una app mantiene la presión de memoria por encima del 60 % durante "
+             f"{plan.oomd['DefaultMemoryPressureDurationSec']}, se cierra esa app (no el escritorio).")
+
+
+def _threads(plan: Plan, hw: dict) -> None:
+    """Hilos para IA local (llama.cpp). Generar texto está limitado por el ancho de banda de memoria: un hilo
+    por unidad de ejecución basta y más hilos solo compiten por la FPU/caché. Procesar el prompt es cálculo
+    puro: ahí sí ayudan todos los núcleos. TISMA Code mide después cada modelo y corrige si los datos dicen otra cosa."""
+    c = hw["cpu"]
+    logical = c.get("logical_cpus") or 1
+    units = len(c.get("execution_units") or []) or c.get("physical_cores") or logical
+    plan.threads = {"ia_generacion": max(1, units), "ia_lote": logical, "unidades": c.get("execution_units") or []}
+    if c.get("cmt"):
+        plan.why(f"CPU con módulos CMT ({units} módulos, {logical} núcleos; cada pareja comparte FPU y L2): "
+                 f"IA con {units} hilos al generar y {logical} al procesar el prompt; el planificador ya reparte "
+                 "un hilo por módulo antes de doblar.")
 
 
 # ---------------------------------------------------------------- almacenamiento
@@ -351,6 +390,8 @@ def make_plan(hw: dict, bench: dict | None = None, use_case: str = "escritorio",
     plan = Plan(use_case=use_case, power_profile=power_profile, cmdline=list(SECURITY_CMDLINE))
     _kernel(plan, hw)
     _memory(plan, hw, bench)
+    _reclaim(plan, hw)
+    _threads(plan, hw)
     _storage(plan, hw, bench)
     _cpu_power(plan, hw)
     _sched_ext(plan, hw)
