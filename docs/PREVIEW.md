@@ -8,6 +8,11 @@ ni para equipos con datos importantes sin copia.**
 - **Escritorio**: KDE Plasma 6 con el aspecto TISMA (claro u oscuro, color de acento, iconos Papirus, Inter),
   pantalla de arranque con logo, instalador con la marca TISMA y la **Bienvenida** del primer inicio (aspecto,
   apps a mano según tu uso, IA local y estado de la protección).
+- **Kernel al día en seguridad**: el kernel TISMA sigue la rama ESTABLE más reciente (7.3), no la LTS: en
+  noviembre de 2026 la LTS 6.18 tenía 153 CVE conocidas corregidas solo en ramas nuevas; la 7.3.4, ninguna. Sin
+  protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
+  escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
+  Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
 - **Seguridad**: Escudo (antivirus con firmas, YARA y comportamiento; IPS de red; puerta de primera ejecución
   que analiza en una máquina virtual lo descargado antes de dejarlo ejecutar), cortafuegos nftables, DNS
   cifrado sin rastreadores, USB desconocidos bloqueados con la sesión bloqueada, AppArmor, kernel endurecido
