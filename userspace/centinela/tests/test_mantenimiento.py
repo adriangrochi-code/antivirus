@@ -74,3 +74,10 @@ def test_power_supply_reading(tmp_path, monkeypatch):
     assert mt.energia() == (False, 41)
     (ps / "AC/online").write_text("1\n")
     assert mt.energia() == (True, 41)
+
+
+def test_security_jobs_are_never_skipped_even_with_low_battery():
+    r = Reloj()
+    rc = mt.esperar(max_s=12 * 3600, abs_s=24 * 3600, paso=60, libre_f=lambda: (False, "a batería"),
+                    energia_f=lambda: (False, 5), now=r.now, sleep=r.sleep, log=lambda *_: None, seguridad=True)
+    assert rc == 0 and r.t <= mt.ESPERA_SEGURIDAD + 120              # 6 h como mucho, y se ejecuta

@@ -7,8 +7,9 @@ SALTARSE (como hace ConditionACPower, que en una tarea mensual la deja un mes si
 * «Libre»: enchufado (o sin batería), carga baja durante dos comprobaciones seguidas y la IA local sin generar
   (Modo IA).
 * Límite: tras ESPERA_MAX se ejecuta igual (siempre con prioridad mínima de CPU y disco), salvo con la batería
-  baja; tras ESPERA_ABS se desiste hasta la próxima vez. Así un portátil que nunca se enchufa no se queda sin
-  análisis de seguridad.
+  baja; tras ESPERA_ABS se desiste hasta la próxima vez.
+* Tareas de SEGURIDAD (--seguridad: rootkits, auditoría, firmware, actualizaciones de apps): esperan como mucho
+  ESPERA_SEGURIDAD y NUNCA se saltan, ni con la batería baja. La seguridad va antes que la batería.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from . import modo_ia, sysfs
 
 ESPERA_MAX = 12 * 3600        # s: pasado esto, se ejecuta aunque no esté libre (si la batería lo permite)
 ESPERA_ABS = 24 * 3600        # s: pasado esto, se desiste (la próxima ejecución del temporizador lo intentará)
+ESPERA_SEGURIDAD = 6 * 3600   # s: tareas de seguridad: pasado esto se ejecutan sí o sí
 BATERIA_MIN = 30              # % por debajo del cual, a batería, nunca se fuerza
 PASO = 60                     # s entre comprobaciones
 
@@ -57,8 +59,10 @@ def libre(energia_f=energia, carga_f=carga_baja, ia_f=modo_ia.activo) -> tuple[b
 
 def esperar(max_s: float = ESPERA_MAX, abs_s: float = ESPERA_ABS, paso: float = PASO,
             libre_f=libre, energia_f=energia, now=time.monotonic, sleep=time.sleep,
-            log: Callable[[str], None] = print) -> int:
-    """0 = adelante (libre, o se esperó demasiado y hay batería); 1 = desistir esta vez."""
+            log: Callable[[str], None] = print, seguridad: bool = False) -> int:
+    """0 = adelante (libre, o se esperó demasiado y hay batería); 1 = desistir esta vez (nunca con seguridad)."""
+    if seguridad:
+        max_s = min(max_s, ESPERA_SEGURIDAD)
     t0 = now()
     seguidas = 0
     ultimo = ""
@@ -70,7 +74,7 @@ def esperar(max_s: float = ESPERA_MAX, abs_s: float = ESPERA_ABS, paso: float = 
         espera = now() - t0
         if espera >= max_s:
             enchufado, pct = energia_f()
-            if enchufado or pct is None or pct >= BATERIA_MIN:
+            if seguridad or enchufado or pct is None or pct >= BATERIA_MIN:
                 log(f"Llevaba {espera / 3600:.0f} h esperando ({motivo}): se ejecuta igual, con prioridad mínima")
                 return 0
             if espera >= abs_s:

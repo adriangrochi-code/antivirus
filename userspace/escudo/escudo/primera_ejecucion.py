@@ -95,8 +95,10 @@ class Gate:
         DET_DIR.mkdir(parents=True, exist_ok=True)
         os.chmod(DET_DIR, 0o711)
         self.mark_mounts()
+        self._desp = fan.Despertador()
         threads = [threading.Thread(target=t, daemon=True, name=n) for t, n in
                    ((self._events, "fanotify"), (self._worker, "detonar"), (self._watch_mounts, "montajes"))]
+        self._lectores = [threads[0], threads[2]]       # los que usan self.fd (el de análisis no)
         for t in threads:
             t.start()
         log.info("Puerta de primera ejecución activa en: %s", ", ".join(sorted(self._marked)))
@@ -136,18 +138,23 @@ class Gate:
             poller.register(fh, select.POLLPRI | select.POLLERR)
         except (OSError, ValueError):
             fh = poller = None
+        if poller is not None:
+            poller.register(self._desp.r, select.POLLIN)
         while not self._stop.is_set():
             if poller is None:
                 if self._stop.wait(5):
                     return
             else:
-                poller.poll(600_000)
+                if any(f == self._desp.r for f, _ in poller.poll(600_000)):
+                    return
                 fh.seek(0)
                 fh.read()                              # leer «confirma» el cambio para el próximo aviso
             self.mark_mounts()
 
     def _events(self) -> None:
         while not self._stop.is_set():
+            if not fan.esperar(self.fd, self._desp):
+                return
             try:
                 buf = os.read(self.fd, 4096)
             except InterruptedError:
@@ -266,8 +273,7 @@ class Gate:
 
     def stop(self) -> None:
         self._stop.set()
-        if self.fd >= 0:
-            os.close(self.fd)
+        self.fd = fan.parar_hilos(getattr(self, "_lectores", []), self.fd, getattr(self, "_desp", None), log)
 
 
 def permitir(path: str) -> str:

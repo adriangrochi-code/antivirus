@@ -381,7 +381,7 @@ def cmd_comparar(args) -> int:
 def cmd_esperar_libre(args) -> int:
     from . import mantenimiento as mt
     return mt.esperar(max_s=args.max_horas * 3600, abs_s=max(args.max_horas * 2, 24) * 3600,
-                      log=lambda m: print(m, flush=True))
+                      log=lambda m: print(m, flush=True), seguridad=args.seguridad)
 
 
 def cmd_adaptd(args) -> int:
@@ -472,6 +472,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("esperar-libre", help="espera a que el equipo esté enchufado y sin uso (mantenimiento)")
     s.add_argument("--max-horas", type=float, default=12, help="pasado esto se ejecuta igual (si hay batería)")
+    s.add_argument("--seguridad", action="store_true",
+                   help="tarea de seguridad: espera como mucho 6 h y nunca se salta, ni con la batería baja")
     s.set_defaults(func=cmd_esperar_libre)
 
     s = sub.add_parser("power")

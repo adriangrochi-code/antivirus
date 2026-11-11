@@ -60,11 +60,15 @@ class FanotifyWatcher:
             self.fd = -1
             return []
         self.devs = fan.devices(self.covered + fan.submounts(self.covered))
-        threading.Thread(target=self._events, daemon=True, name="fanotify-escritura").start()
+        self._desp = fan.Despertador()
+        self._hilo = threading.Thread(target=self._events, daemon=True, name="fanotify-escritura")
+        self._hilo.start()
         return list(self.covered)
 
     def _events(self) -> None:
         while not self._stop.is_set():
+            if not fan.esperar(self.fd, self._desp):
+                return
             try:
                 buf = os.read(self.fd, 16384)
             except InterruptedError:
@@ -104,12 +108,8 @@ class FanotifyWatcher:
 
     def stop(self) -> None:
         self._stop.set()
-        if self.fd >= 0:
-            try:
-                os.close(self.fd)
-            except OSError:
-                pass
-            self.fd = -1
+        hilo = getattr(self, "_hilo", None)
+        self.fd = fan.parar_hilos([hilo] if hilo else [], self.fd, getattr(self, "_desp", None), log)
 
 
 class RealTimeProtection:

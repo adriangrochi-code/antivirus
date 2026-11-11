@@ -16,6 +16,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import select
 import struct
 
 log = logging.getLogger("escudo.fan")
@@ -80,3 +81,64 @@ def fd_path(efd: int, st: os.stat_result | None = None) -> str:
         if st.st_nlink == 0:
             path = path[:-10]
     return path
+
+
+# ---------------------------------------------------------------- parada segura de los hilos lectores
+class Despertador:
+    """Tubería para despertar a un hilo bloqueado esperando eventos. Así stop() puede esperar a que el hilo
+    termine ANTES de cerrar el descriptor de fanotify: cerrarlo con el hilo dentro de read() o write() podía
+    hacer que el número del descriptor se reutilizara para otro archivo y el hilo leyera (y cerrara
+    descriptores sacados de) o escribiera la respuesta en ese otro archivo."""
+
+    def __init__(self):
+        self.r, self.w = os.pipe2(os.O_CLOEXEC | os.O_NONBLOCK)
+
+    def despertar(self) -> None:
+        try:
+            os.write(self.w, b"x")
+        except OSError:
+            pass
+
+    def cerrar(self) -> None:
+        for fd in (self.r, self.w):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def esperar(fd: int, despertador: Despertador, eventos: int = select.POLLIN, timeout_ms: int = -1) -> bool:
+    """True si hay algo en «fd» (o pasó el tiempo); False si se pidió parar."""
+    p = select.poll()
+    p.register(fd, eventos)
+    p.register(despertador.r, select.POLLIN)
+    while True:
+        try:
+            listos = p.poll(timeout_ms)
+        except InterruptedError:
+            continue
+        return not any(f == despertador.r for f, _ in listos)
+
+
+def parar_hilos(hilos: list, fd: int, despertador: Despertador | None, log: logging.Logger,
+                espera: float = 5.0) -> int:
+    """Despierta y espera a los hilos; solo entonces cierra el descriptor. Devuelve -1 (el nuevo valor de fd)."""
+    if despertador:
+        despertador.despertar()
+    vivos = []
+    for h in hilos:
+        h.join(espera)
+        if h.is_alive():
+            vivos.append(h.name)
+    if vivos:
+        # Mejor no cerrar que arriesgar escribir en otro archivo: el proceso está terminando y el kernel lo cierra
+        log.warning("Hilos de fanotify sin terminar (%s): el descriptor se deja abierto", ", ".join(vivos))
+        return -1
+    if fd >= 0:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    if despertador:
+        despertador.cerrar()
+    return -1

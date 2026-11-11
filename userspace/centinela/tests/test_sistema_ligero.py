@@ -16,10 +16,14 @@ def ini(path: Path) -> configparser.RawConfigParser:
     return c
 
 
+SEGURIDAD = {"chkrootkit", "lynis", "tisma-drivers", "tisma-flatpak-actualizar"}
+
+
 def test_heavy_jobs_wait_for_a_free_machine_with_lowest_priority():
     for u in PESADAS:
         s = ini(SD / f"{u}.service.d/60-tisma-equipo-libre.conf")["Service"]
-        assert s["ExecStartPre"] == "/usr/bin/centinela esperar-libre", u
+        esperado = "/usr/bin/centinela esperar-libre" + (" --seguridad" if u in SEGURIDAD else "")
+        assert s["ExecStartPre"] == esperado, u                    # la seguridad nunca se salta
         assert s["TimeoutStartSec"] == "infinity" and s["IOSchedulingClass"] == "idle" and s["CPUWeight"] == "idle"
     # esperar en vez de saltar: una condición de batería saltaría el scrub un mes entero
     assert "ConditionACPower" not in (SD / "tisma-scrub.service").read_text()
@@ -36,3 +40,14 @@ def test_analysis_vm_powers_off_when_done():
     c = ini(SD / "tisma-detonar.service")
     assert c["Unit"]["SuccessAction"] == "poweroff-force" and c["Unit"]["FailureAction"] == "poweroff-force"
     assert "SuccessAction" not in c["Service"]
+
+
+def test_escudo_protects_before_any_login():
+    c = ini(SD / "escudo.service")
+    u, sv = c["Unit"], c["Service"]
+    assert "display-manager.service" in u["Before"] and "systemd-user-sessions.service" in u["Before"]
+    assert "network-online.target" not in u.get("After", "")          # sin red no bloquea el inicio de sesión
+    assert sv["Type"] == "notify" and c["Install"]["WantedBy"] == "multi-user.target"
+    assert "Requires" not in u                                        # si fallara, no deja el equipo inusable
+    fase2 = (SD / "tisma-fase2.target.d/servicios.conf").read_text()
+    assert "escudo.service" not in fase2.split("[Unit]", 1)[1]

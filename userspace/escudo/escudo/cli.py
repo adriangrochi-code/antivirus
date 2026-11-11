@@ -48,6 +48,24 @@ def cmd_scan(cfg: Config, args) -> int:
     return 1 if total else 0
 
 
+def sd_notify(estado: str) -> bool:
+    """Avisa a systemd (Type=notify). La pantalla de inicio de sesión espera a READY=1: así ninguna sesión, ni sus
+    programas de inicio automático, arranca antes de que la protección esté puesta."""
+    import socket
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return False
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as s:
+            s.connect(addr)
+            s.sendall(estado.encode())
+        return True
+    except OSError:
+        return False
+
+
 def cmd_protect(cfg: Config, args) -> int:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -75,7 +93,11 @@ def cmd_protect(cfg: Config, args) -> int:
     if not args.no_network:
         guard = NetGuard(cfg)
         guard.start()
+    activas = ["antivirus en tiempo real"] + (["puerta de primera ejecución"] if gate else []) + \
+        (["IPS de red"] if guard else [])
+    sd_notify("READY=1\nSTATUS=Protección activa: " + ", ".join(activas))
     stop.wait()
+    sd_notify("STOPPING=1")
     rtp.stop()
     if gate:
         gate.stop()

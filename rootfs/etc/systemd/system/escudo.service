@@ -1,6 +1,12 @@
 [Unit]
 Description=Escudo - antivirus, vigilante de comportamiento e IPS de red
-After=network-online.target nftables.service auditd.service
+# La seguridad no se retrasa: la pantalla de inicio de sesión (y cualquier otro inicio de sesión) espera a que
+# Escudo esté protegiendo (READY=1, ~0,2 s). Antes arrancaba en la fase 2, con el escritorio ya visible: los
+# programas de inicio automático de la sesión se ejecutaban antes de que existiera la puerta de primera
+# ejecución. Sin red no espera a la red: protege igual (y el IPS vigila las conexiones cuando lleguen).
+# Si Escudo fallara, no bloquea el equipo (Wants, no Requires): se puede entrar igual y se reintenta solo.
+After=nftables.service auditd.service
+Before=display-manager.service systemd-user-sessions.service
 Wants=nftables.service auditd.service
 # Si se recarga el firewall, Escudo se reinicia y reinstala los bloqueos guardados
 PartOf=nftables.service
@@ -8,7 +14,9 @@ PartOf=nftables.service
 [Service]
 # Despertares agrupados con los de otros procesos: la CPU duerme más tiempo seguido
 TimerSlackNSec=50ms
-Type=simple
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=90
 ExecStartPre=-/usr/lib/escudo/audit-usuarios
 ExecStart=/usr/bin/escudo protect /home /tmp /var/tmp
 Restart=on-failure
@@ -36,7 +44,10 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SYSLOG CAP_KILL CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_SYS_PTRACE
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 Nice=10
-IOSchedulingClass=idle
+# best-effort (no «idle»): con E/S idle, durante el arranque o una copia grande el análisis podía quedarse
+# esperando indefinidamente
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
 
 [Install]
-WantedBy=tisma-fase2.target
+WantedBy=multi-user.target

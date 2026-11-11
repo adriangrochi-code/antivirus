@@ -325,7 +325,9 @@ in_chroot systemctl disable NetworkManager-wait-online.service 2>/dev/null || tr
 # Esenciales: si alguno no existe se avisa (antes un fallo aquí cortaba la build entera)
 for u in nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer centinela-power \
          centinela-adaptd escudo; do
-    in_chroot systemctl enable "$u" 2>/dev/null || log "AVISO: no se pudo habilitar $u"
+    # reenable: rehace los enlaces desde la unidad actual (Escudo pasó de la fase 2 a multi-user.target: con
+    # «enable» quedaba también el enlace viejo en una imagen reconstruida)
+    in_chroot systemctl reenable "$u" 2>/dev/null || log "AVISO: no se pudo habilitar $u"
 done
 # Arranque escalonado: lo no esencial sale de multi-user.target y lo lanza la fase 2
 # (dejarlo en ambos crearía un ciclo de orden con graphical.target)
