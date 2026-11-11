@@ -156,6 +156,7 @@ rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/pytho
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion 2>/dev/null || true
+in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer 2>/dev/null || true
 # Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
 in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
     || log "AVISO: no se pudo añadir Flathub"

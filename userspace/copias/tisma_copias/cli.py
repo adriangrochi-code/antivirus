@@ -33,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("volver-atras", help="arranca el sistema desde una instantánea (al reiniciar)")
     v.add_argument("nombre")
     v.add_argument("--si", action="store_true", help="confirmar")
+    ar = sub.add_parser("autorreparacion", help="dos copias de cada dato en el disco (repara bloques dañados)")
+    ar.add_argument("accion", choices=["activar", "desactivar"])
     e = sub.add_parser("externo", help="copia cifrada en un disco externo (restic)")
     esub = e.add_subparsers(dest="accion", required=True)
     ec = esub.add_parser("configurar")
@@ -80,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             old = core.volver_atras(a.nombre)
             print(f"Listo. Reinicia para usar {a.nombre}. El sistema actual queda guardado como {old}.")
+        elif a.cmd == "autorreparacion":
+            print(core.autorreparacion(a.accion == "activar"))
         elif a.cmd == "externo":
             if a.accion == "configurar":
                 clave, same = core.configurar_externo(a.destino)

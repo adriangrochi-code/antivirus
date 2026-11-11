@@ -138,3 +138,24 @@ def test_shipped_units_and_hook():
     assert os.access(ROOT / "rootfs/usr/bin/tisma-copias", os.X_OK)
     pol = (ROOT / "rootfs/usr/share/polkit-1/actions/org.tisma.copias.policy").read_text()
     assert "<allow_active>auth_admin</allow_active>" in pol and "/usr/bin/tisma-copias" in pol
+
+
+def test_self_healing_dup(monkeypatch):
+    usage = ("Overall:\n    Free (estimated):\t\t%d\t(min: 1)\n"
+             "Data,single: Size:107374182400, Used:%d (50%%)\n   /dev/mapper/luks-x\t1\n")
+
+    class F(Fake):
+        def __init__(self, used, free):
+            super().__init__()
+            self.u = usage % (free, used)
+
+        def __call__(self, argv, env=None, check=True):
+            if argv[:3] == ["btrfs", "filesystem", "usage"]:
+                self.calls.append((argv, env))
+                return subprocess.CompletedProcess(argv, 0, self.u, "")
+            return super().__call__(argv, env, check)
+    f = F(used=40 << 30, free=100 << 30)
+    assert "activada" in core.autorreparacion(True, runner=f)
+    assert any(c[0][:3] == ["btrfs", "balance", "start"] and "-dconvert=dup,soft" in c[0] for c in f.calls)
+    with pytest.raises(core.CopiasError, match="espacio"):
+        core.autorreparacion(True, runner=F(used=80 << 30, free=50 << 30))

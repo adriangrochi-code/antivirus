@@ -19,7 +19,7 @@ SECURITY_CMDLINE = [
     "init_on_alloc=1", "init_on_free=1", "page_alloc.shuffle=1",
     "randomize_kstack_offset=on", "slab_nomerge", "vsyscall=none",
     "debugfs=off", "iommu.strict=1", "iommu.passthrough=0",
-    "efi=disable_early_pci_dma", "mitigations=auto",
+    "efi=disable_early_pci_dma", "mitigations=auto", "panic=10",
 ]
 
 

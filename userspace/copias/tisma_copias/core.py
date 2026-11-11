@@ -188,6 +188,36 @@ def volver_atras(nombre: str, runner=run, snapdir: Path = SNAPDIR, topmnt: Path 
     return f"@antes-{stamp}"
 
 
+# ---------------------------------------------------------------- autorreparación (DUP)
+def perfil_datos(runner=run) -> tuple[str, int, int]:
+    """(perfil de datos, bytes de datos usados, bytes libres estimados) de la raíz btrfs."""
+    out = runner(["btrfs", "filesystem", "usage", "-b", "/"]).stdout
+    prof = re.search(r"^Data,(\w+):.*?Used:(\d+)", out, re.M | re.S)
+    free = re.search(r"Free \(estimated\):\s+(\d+)", out)
+    if not prof or not free:
+        raise CopiasError("no se pudo leer el uso de btrfs")
+    return prof.group(1).lower(), int(prof.group(2)), int(free.group(1))
+
+
+def autorreparacion(activar: bool, runner=run) -> str:
+    """Datos en DUP: dos copias de cada bloque en el mismo disco. Si un bloque se corrompe (sector dañado, error
+    de escritura), btrfs lo detecta por su checksum y lo repara solo con la otra copia. Cuesta el doble de espacio
+    para los datos y algo más de escritura. Los metadatos ya están en DUP por defecto. No sustituye a la copia
+    externa: si el disco entero falla, se pierden las dos copias."""
+    if montaje("/", runner).fstype != "btrfs":
+        raise CopiasError("la raíz no es btrfs")
+    prof, used, free = perfil_datos(runner)
+    target = "dup" if activar else "single"
+    if prof == target:
+        return f"Ya está en {target}."
+    if activar and free < used * 1.1:
+        raise CopiasError(f"no hay espacio: los datos ocupan {used >> 30} GiB y quedan {free >> 30} GiB libres "
+                          "(hace falta otro tanto)")
+    runner(["btrfs", "balance", "start", f"-dconvert={target}" + (",soft" if activar else ""), "/"])
+    return ("Autorreparación activada: cada dato tiene dos copias." if activar
+            else "Autorreparación desactivada: datos en una sola copia.")
+
+
 # ---------------------------------------------------------------- copia externa (restic)
 def config(path: Path = CONFIG) -> dict:
     try:

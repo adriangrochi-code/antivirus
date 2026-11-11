@@ -1,0 +1,245 @@
+#!/usr/bin/python3 -I
+"""TISMA: salud del hardware (RAM, disco) — detectar fallos ANTES de que causen cuelgues o pérdida de datos.
+
+Sin RAM ECC no se pueden corregir los errores de memoria por software, pero sí detectarlos y avisar:
+* semanal: contadores de errores de btrfs (checksums: el disco o la RAM devolvieron datos alterados),
+  SMART de cada disco (sectores reasignados, desgaste del SSD, fallo inminente), errores de máquina
+  registrados por rasdaemon (MCE: la CPU detecta y corrige errores en sus cachés; EDAC si la placa tiene ECC)
+  y cuelgues del kernel guardados por pstore en el arranque anterior.
+* mensual (scrub): btrfs lee TODO el disco y comprueba cada checksum; con copias DUP repara solo.
+Avisa en el escritorio (notificador de Escudo) solo cuando algo empeora respecto a la última comprobación.
+* sistema: servicios caídos y archivos de programas alterados o corruptos (dpkg --verify contra las sumas de
+  los paquetes firmados de Debian); «reparar» los reinstala desde los repositorios firmados.
+Uso: salud-hardware [semanal | scrub | estado | reparar]
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+STATE = os.environ.get("TISMA_SALUD_STATE", "/var/lib/tisma/salud.json")
+ALERTS = os.environ.get("ESCUDO_ALERTS", "/run/escudo/alertas.jsonl")
+PSTORE = "/var/lib/systemd/pstore"
+
+
+def sh(argv: list[str]) -> tuple[int, str]:
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=7200)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
+def alert(kind: str, severity: str, detail: str, action: str, path: str = ALERTS) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"t": time.time(), "kind": kind, "severity": severity, "detail": detail,
+                            "action": action}, ensure_ascii=False) + "\n")
+
+
+def load_state() -> dict:
+    try:
+        return json.load(open(STATE))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(st: dict) -> None:
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f)
+    os.replace(tmp, STATE)
+
+
+def btrfs_errors(run=sh) -> dict[str, int]:
+    rc, out = run(["btrfs", "device", "stats", "/"])
+    errs: dict[str, int] = {}
+    for m in re.finditer(r"^\[(\S+)\]\.(\w+_errs)\s+(\d+)", out, re.M):
+        errs[f"{m.group(1)}:{m.group(2)}"] = int(m.group(3))
+    return errs
+
+
+def smart_failing(run=sh) -> list[str]:
+    bad = []
+    _, scan = run(["smartctl", "--scan"])
+    for dev in re.findall(r"^(/dev/\S+)", scan, re.M):
+        _, out = run(["smartctl", "-H", "-j", dev])
+        try:
+            if json.loads(out).get("smart_status", {}).get("passed") is False:
+                bad.append(dev)
+        except ValueError:
+            continue
+    return bad
+
+
+RAS_HEADERS = {"Memory": r"Memory controller events summary:", "MCE": r"MCE records summary:",
+               "PCIe AER": r"PCIe AER (?:errors|events) summary:", "Disk": r"Disk errors summary:"}
+
+
+def ras_counts(run=sh) -> dict[str, int]:
+    """Resumen de rasdaemon. Cada sección «… summary:» lista líneas sangradas como «\t3 Corrected errors» o
+    «\tCorrected on DIMM …: 2»; sin errores imprime «No <tipo> errors.»."""
+    _, out = run(["ras-mc-ctl", "--summary"])
+    counts = {}
+    for kind, header in RAS_HEADERS.items():
+        sect = re.search(header + r"\n((?:[ \t]+.*(?:\n|$))*)", out)
+        total = 0
+        for line in (sect.group(1).splitlines() if sect else []):
+            m = re.match(r"\s*(\d+)\s", line) or re.search(r"(?:errors?|count)[:=]\s*(\d+)\s*$", line) \
+                or re.search(r":\s*(\d+)\s*$", line)
+            total += int(m.group(1)) if m else 1
+        counts[kind] = total
+    return counts
+
+
+def pstore_new(since: float, path: str = PSTORE) -> list[str]:
+    out = []
+    try:
+        for entry in os.scandir(path):
+            if entry.stat(follow_symlinks=False).st_mtime > since:
+                out.append(entry.name)
+    except OSError:
+        pass
+    return out
+
+
+def failed_units(run=sh) -> list[str]:
+    _, out = run(["systemctl", "--failed", "--plain", "--no-legend", "--no-pager"])
+    return [line.split()[0] for line in out.splitlines() if line.strip()]
+
+
+def altered_files(run=sh) -> list[str]:
+    """Archivos de paquetes cuyo contenido no coincide con el paquete (sin contar la configuración, «c»)."""
+    _, out = run(["dpkg", "--verify"])
+    files = []
+    for line in out.splitlines():
+        m = re.match(r"^(\S{9})\s+(c?)\s*(/\S.*)$", line)
+        if m and m.group(1)[2] == "5" and not m.group(2):
+            files.append(m.group(3))
+    return files
+
+
+def reparar(run=sh) -> str:
+    files = altered_files(run)
+    if not files:
+        return "No hay archivos de programas alterados."
+    pkgs = set()
+    for f in files:
+        _, out = run(["dpkg", "-S", f])
+        for line in out.splitlines():
+            pkgs.update(p.strip().split(":")[0] for p in line.split(":", 1)[0].split(","))
+    pkgs.discard("")
+    rc, _ = run(["apt-get", "install", "--reinstall", "-y", "-q", *sorted(pkgs)])
+    return (f"Reinstalados desde los repositorios firmados: {' '.join(sorted(pkgs))}" if rc == 0
+            else "No se pudieron reinstalar (¿sin conexión?): " + " ".join(sorted(pkgs)))
+
+
+GPU_ERR = re.compile(r"amdgpu.*(ring \S+ timeout|GPU reset|VM_L2_PROTECTION_FAULT|page fault)|"
+                     r"i915.*(GPU HANG|reset)|xe .*(hang|reset)|nouveau.*(fault|timeout)|NVRM: Xid", re.I)
+
+
+def gpu_errors(since: float, run=sh) -> list[str]:
+    """Cuelgues y fallos de la GPU/VRAM en el registro del kernel desde la última comprobación."""
+    _, out = run(["journalctl", "-k", "-q", "--no-pager", "-o", "cat", "--since", f"@{int(since)}"])
+    return [line for line in out.splitlines() if GPU_ERR.search(line)][:20]
+
+
+def semanal(run=sh) -> list[str]:
+    st, msgs = load_state(), []
+    errs = btrfs_errors(run)
+    prev = st.get("btrfs", {})
+    worse = {k: v for k, v in errs.items() if v > prev.get(k, 0)}
+    if worse:
+        corr = any("corruption" in k or "generation" in k for k in worse)
+        alert("disco", "high" if corr else "medium",
+              "btrfs detectó errores: " + ", ".join(f"{k.split(':')[1]}={v}" for k, v in worse.items()),
+              "Haz copia externa ya (tisma-copias externo copiar) y ejecuta «sudo /usr/lib/tisma/salud-hardware scrub». "
+              "Errores de checksum sin errores de lectura suelen indicar RAM defectuosa: pasa memtest86+ (menú de arranque).")
+        msgs.append(f"btrfs: {worse}")
+    st["btrfs"] = errs
+    for dev in smart_failing(run):
+        if dev not in st.get("smart_avisado", []):
+            alert("disco", "critical", f"El disco {dev} informa de un fallo inminente (SMART).",
+                  "Copia tus datos YA y sustituye el disco.")
+            st.setdefault("smart_avisado", []).append(dev)
+            msgs.append(f"SMART: {dev}")
+    ras = ras_counts(run)
+    prev = st.get("ras", {})
+    for kind, n in ras.items():
+        if n > prev.get(kind, 0):
+            mem = kind in ("Memory", "MCE")
+            alert("hardware", "high" if mem else "medium", f"Errores de hardware registrados ({kind}): {n}.",
+                  "Pasa memtest86+ desde el menú de arranque y revisa temperaturas; si hay overclock, vuelve a fábrica."
+                  if mem else "Consulta «ras-mc-ctl --errors».")
+            msgs.append(f"RAS {kind}: {n}")
+    st["ras"] = ras
+    crashes = pstore_new(st.get("ultima", 0))
+    if crashes:
+        alert("hardware", "medium", f"El sistema se colgó (registro del kernel guardado: {', '.join(crashes[:3])}).",
+              f"El registro está en {PSTORE}; si se repite, pasa memtest86+ y revisa el overclock.")
+        msgs.append(f"pstore: {crashes}")
+    gerr = gpu_errors(st.get("ultima", time.time() - 7 * 86400), run)
+    if gerr:
+        alert("hardware", "high", f"La GPU tuvo {len(gerr)} error(es) (cuelgue o fallo de memoria de vídeo): {gerr[0][:120]}",
+              "Si hay overclock o undervolt de la GPU, vuelve a fábrica (TISMA Rendimiento) y repite la prueba de estabilidad.")
+        msgs.append(f"gpu: {len(gerr)}")
+    bad_units = failed_units(run)
+    new_units = sorted(set(bad_units) - set(st.get("unidades", [])))
+    if new_units:
+        alert("sistema", "medium", "Servicios que fallaron: " + ", ".join(new_units[:6]),
+              "Detalle: journalctl -u <servicio>. Reiniciar: systemctl restart <servicio>.")
+        msgs.append(f"unidades: {new_units}")
+    st["unidades"] = bad_units
+    altered = altered_files(run)
+    new_alt = sorted(set(altered) - set(st.get("alterados", [])))
+    if new_alt:
+        alert("sistema", "high", f"{len(altered)} archivo(s) de programas no coinciden con su paquete "
+              f"(corrupción del disco o manipulación): {', '.join(new_alt[:4])}",
+              "Repararlos: sudo /usr/lib/tisma/salud-hardware reparar (reinstala desde Debian, con firma).")
+        msgs.append(f"alterados: {new_alt[:10]}")
+    st["alterados"] = altered
+    st["ultima"] = time.time()
+    save_state(st)
+    return msgs
+
+
+def scrub(run=sh) -> str:
+    rc, _ = run(["findmnt", "-n", "-o", "FSTYPE", "/"])
+    _, fstype = rc, _.strip()
+    if fstype != "btrfs":
+        return "La raíz no es btrfs: no hay scrub."
+    run(["btrfs", "scrub", "start", "-B", "-d", "/"])
+    _, out = run(["btrfs", "scrub", "status", "-R", "/"])
+    num = lambda k: sum(int(n) for n in re.findall(rf"{k}:\s*(\d+)", out))  # noqa: E731
+    unc, cor = num("uncorrectable_errors"), num("corrected_errors")
+    csum = num("csum_errors")
+    if unc:
+        alert("disco", "critical", f"La revisión del disco encontró {unc} bloque(s) dañados que no se pudieron reparar.",
+              "Los archivos afectados están en el registro (journalctl -k | grep BTRFS). Restáuralos desde la copia externa.")
+    elif cor or csum:
+        alert("disco", "medium", f"La revisión del disco reparó {cor or csum} bloque(s) automáticamente.",
+              "Si se repite, el disco o la RAM pueden estar fallando: pasa memtest86+ y revisa SMART.")
+    return f"scrub: corregidos={cor} sin_reparar={unc} checksum={csum}"
+
+
+def main(argv: list[str]) -> int:
+    cmd = argv[0] if argv else "estado"
+    if cmd == "semanal":
+        print("\n".join(semanal()) or "Sin novedades.")
+    elif cmd == "reparar":
+        print(reparar())
+    elif cmd == "scrub":
+        print(scrub())
+    else:
+        print(json.dumps({"btrfs": btrfs_errors(), "smart_fallando": smart_failing(), "ras": ras_counts()}, indent=2))
+    return 0
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

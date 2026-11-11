@@ -1,0 +1,14 @@
+[Unit]
+Description=TISMA - salud del hardware y del sistema (scrub)
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/lib/tisma/salud-hardware scrub
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectHome=read-only
