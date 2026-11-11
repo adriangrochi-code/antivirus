@@ -21,7 +21,7 @@ from . import harness
 
 from .base import MAX_OUTPUT, ToolError, _clip  # noqa: F401 (reexportados)
 SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
-NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify", "jarvis", "ingenieria"}
+NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify", "jarvis", "ingenieria", "ingenieria_plantilla"}
 
 
 class Workspace:
@@ -285,9 +285,14 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
         if not isinstance(opts, dict):
             raise ToolError("opciones debe ser un objeto JSON")
         return ingenieria.run(ws, str(args["accion"]), str(args["archivo"]), str(args.get("salida") or ""), opts)
+    if name == "ingenieria_plantilla":
+        if not args.get("nombre"):
+            return "\n".join(f"- {k}: {v}" for k, v in ingenieria.plantillas().items())
+        return ingenieria.copy_template(ws, str(args["nombre"]), str(args.get("destino") or ""))
     if name == "ingenieria_guia":
         disp = ingenieria.available()
-        return ingenieria.GUIDE + "\n\nInstaladas: " + (", ".join(a for a, ok in sorted(disp.items()) if ok) or "ninguna")
+        return ingenieria.GUIDE + "\n\nPlantillas:\n" + "\n".join(f"- {k}: {v}" for k, v in ingenieria.plantillas().items()) + \
+            "\n\nInstaladas: " + (", ".join(a for a, ok in sorted(disp.items()) if ok) or "ninguna")
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         if not checks:
@@ -332,6 +337,9 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
     if name == "formatear":
         _, old, new = devtools.formatted(ws, args["path"])
         return ws._diff(args["path"], old, new)
+    if name == "ingenieria_plantilla":
+        return (f"Copiar la plantilla {args.get('nombre')} a {args.get('destino') or 'la raíz del proyecto'}"
+                if args.get("nombre") else "Listar plantillas")
     if name == "ingenieria":
         extra = " " + json.dumps(args["opciones"], ensure_ascii=False) if args.get("opciones") else ""
         return (f"{args.get('accion')}: {args.get('archivo')}{extra}\n(receta fija, aislada con bubblewrap: solo ve el "

@@ -1,0 +1,16 @@
+/*--------------------------------*- C++ -*----------------------------------*\\
+  Plantilla TISMA: cavidad con tapa móvil (icoFoam, flujo laminar 2D, Re = U*L/nu = 1*0.1/0.01 = 10)
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSchemes;
+}
+ddtSchemes      { default Euler; }
+gradSchemes     { default Gauss linear; grad(p) Gauss linear; }
+divSchemes      { default none; div(phi,U) Gauss linear; }
+laplacianSchemes { default Gauss linear orthogonal; }
+interpolationSchemes { default linear; }
+snGradSchemes   { default orthogonal; }

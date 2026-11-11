@@ -68,7 +68,7 @@ def test_summaries(ws):
     (ws.root / "c.cir").write_text("")
     ws.out = "Circuit: rc\nNo. of Data Rows : 10\ntau                 =  1.000000e-03 targ=  1.0e-03\nvmax = 4.99e+00\n"
     r = tools.execute(ws, "ingenieria", {"accion": "ngspice", "archivo": "c.cir"})
-    assert r.splitlines()[:2] == ["tau                 =  1.000000e-03 targ=  1.0e-03", "vmax = 4.99e+00"]
+    assert r.splitlines()[:2] == ["tau = 0.001", "vmax = 4.99"]
     (ws.root / "p.kicad_pcb").write_text("")
     ws.out = "[código de salida 5]\n" + json.dumps({"violations": [{"severity": "error", "description": "Clearance"}],
                                                    "unconnected_items": [{"severity": "error", "description": "GND"}]})
@@ -111,4 +111,74 @@ def test_yosys_file_is_not_inside_script(ws):
     (ws.root / "x;shell rm.v").write_text("")
     tools.execute(ws, "ingenieria", {"accion": "yosys", "archivo": "x;shell rm.v"})
     argv = shlex.split(ws.calls[0][0])
-    assert argv[:4] == ["yosys", "-q", "-p", "synth -auto-top; stat"] and argv[-1] == "x;shell rm.v"
+    assert argv[:4] == ["yosys", "-q", "-p", "synth -auto-top; tee -q -o /dev/stdout stat"] and argv[-1] == "x;shell rm.v"
+
+
+def test_check_reports_discrepancies():
+    r = ingenieria.check({"volumen_mm3": 7623.5, "estanca": True}, {"volumen_mm3": 7680, "estanca": True, "nodos": 5}, tol=0.005)
+    assert "2 DISCREPANCIA(S)" in r and "volumen_mm3: DISCREPANCIA" in r and "-0.74%" in r and "nodos: SIN MEDIR" in r
+    assert ingenieria.check({"fc": 159.155}, {"fc": 159.15}).startswith("COMPROBACIÓN: todo coincide")
+
+
+def test_template_copy_never_overwrites_or_escapes(tmp_path):
+    ws = tools.Workspace(str(tmp_path))
+    assert "openfoam/cavidad" in tools.execute(ws, "ingenieria_plantilla", {})
+    out = tools.execute(ws, "ingenieria_plantilla", {"nombre": "verilog/contador.v", "destino": "hdl/contador.v"})
+    assert (tmp_path / "hdl" / "contador_tb.v").is_file() and "hdl/contador.v" in out
+    with pytest.raises(tools.ToolError, match="no se sobrescribe"):
+        tools.execute(ws, "ingenieria_plantilla", {"nombre": "verilog/contador.v", "destino": "hdl/contador.v"})
+    for bad in ({"nombre": "../../etc/passwd"}, {"nombre": "octave/viga.m", "destino": "../fuera.m"}):
+        with pytest.raises(tools.ToolError):
+            tools.execute(ws, "ingenieria_plantilla", bad)
+    (tmp_path / "enlace").symlink_to(tmp_path.parent)
+    with pytest.raises(tools.ToolError):
+        tools.execute(ws, "ingenieria_plantilla", {"nombre": "octave/viga.m", "destino": "enlace/viga.m"})
+
+
+def test_stl_analyzer_without_trimesh(tmp_path):
+    import struct
+    import subprocess
+    # tetraedro unitario (estanco, volumen 1/6) en STL binario
+    v = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+    faces = [(0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)]
+    data = b"\0" * 80 + struct.pack("<I", 4) + b"".join(
+        struct.pack("<12fH", 0, 0, 0, *v[a], *v[b], *v[c], 0) for a, b, c in faces)
+    (tmp_path / "t.stl").write_bytes(data)
+    out = subprocess.run([sys.executable, "-c", ingenieria.MALLA_PY.replace("import trimesh", "raise ImportError"),
+                          str(tmp_path / "t.stl")], capture_output=True, text=True).stdout
+    d = json.loads(out)
+    assert d["estanca"] and abs(d["volumen_mm3"] - 1 / 6) < 1e-3 and d["triangulos"] == 4
+    (tmp_path / "abierta.stl").write_bytes(data[:84 - 4] + struct.pack("<I", 3) + data[84:84 + 150])
+    d = json.loads(subprocess.run([sys.executable, "-c", ingenieria.MALLA_PY.replace("import trimesh", "raise ImportError"),
+                                   str(tmp_path / "abierta.stl")], capture_output=True, text=True).stdout)
+    assert not d["estanca"] and d["volumen_mm3"] is None
+
+
+REAL = [("openscad", "openscad/soporte.scad", "soporte.scad", {"volumen_mm3": 7623.5, "tam_x": 60, "estanca": True}),
+        ("ngspice", "ngspice/filtro_rc.cir", "filtro_rc.cir", {"fc": 159.15, "v_tau": 0.632}),
+        ("verilog", "verilog/contador.v", "contador.v", {"pasa": True}),
+        ("yosys", "verilog/contador.v", "contador.v", {"celdas": 12}),
+        ("gmsh", "gmsh/placa_agujero.geo", "placa_agujero.geo", {}),
+        ("octave", "octave/viga.m", "viga.m", {"flecha_max_mm": 1.157, "sigma_max_MPa": 20.83}),
+        ("openfoam", "openfoam/cavidad", "cavidad", {"malla_ok": True, "termino": True, "tiempo_final": 0.5})]
+
+
+@pytest.mark.parametrize("accion,plantilla,archivo,esperado", REAL, ids=[r[0] for r in REAL])
+def test_templates_really_run(tmp_path, accion, plantilla, archivo, esperado):
+    """Ejecuta cada plantilla con el programa real (en la jaula) y comprueba los números calculados a mano."""
+    if not (shutil.which("bwrap") and shutil.which(ingenieria.BIN[accion])):
+        pytest.skip(f"{ingenieria.BIN[accion]} no instalado")
+    ws = tools.Workspace(str(tmp_path))
+    tools.execute(ws, "ingenieria_plantilla", {"nombre": plantilla})
+    opts = {"esperado": esperado} if esperado else {}
+    if accion == "verilog":
+        opts["tb"] = "contador_tb.v"
+    if accion == "gmsh":
+        opts["dimension"] = 2
+    r = tools.execute(ws, "ingenieria", {"accion": accion, "archivo": archivo, "opciones": opts})
+    if "No se pudo" in r or "bwrap:" in r:
+        pytest.skip(f"jaula no disponible: {r[:200]}")
+    if esperado:
+        assert r.startswith("COMPROBACIÓN: todo coincide"), r[:1500]
+    else:
+        assert "nodos" in r, r[:1500]

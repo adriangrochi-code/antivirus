@@ -1,0 +1,19 @@
+* Plantilla TISMA: filtro RC paso bajo (frecuencia de corte y respuesta al escalón con .meas).
+* Comprobación a mano:
+*   fc = 1/(2*pi*R*C) = 1/(2*pi*1k*1u) = 159.15 Hz ;  tau = R*C = 1 ms
+*   respuesta a un escalón de 1 V: v(out) = 0.632 V en t = tau
+* Los resultados salen como números con .meas (el arnés los resume).
+.param R=1k C=1u
+V1 in 0 DC 0 AC 1 PULSE(0 1 0 1n 1n 1 2)
+R1 in out {R}
+C1 out 0 {C}
+
+.control
+  ac dec 50 1 100k
+  meas ac fc WHEN vdb(out)=-3.0103
+  meas ac g1k FIND vdb(out) AT=1k
+  tran 10u 10m
+  meas tran v_tau FIND v(out) AT=1m
+  meas tran t_63 WHEN v(out)=0.632 RISE=1
+.endc
+.end
