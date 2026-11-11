@@ -55,7 +55,7 @@ Cómo trabajas:
 7. Sé conciso. Al terminar, resume qué cambiaste y cómo comprobarlo.
 
 Para usar una herramienta, usa la llamada de función del sistema. Si no puedes, escribe exactamente:
-<tool_call>{"name": "read_file", "arguments": {"path": "main.py"}}</tool_call>"""
+<tool_call>{"name": "read_file", "arguments": {"path": "main.py"}}</tool_call>""" + harness.RIGOR_PROMPT
 
 MAX_STEPS = 50
 
@@ -129,7 +129,8 @@ class Session:
         self.always_allow: set[str] = set()
         self.todos: list[dict] = []
         self._mapped = False
-        self.stats = {"lint_feedback": 0, "steps": 0, "prompt_tokens": 0, "completion_tokens": 0, "seconds": 0.0,
+        self._evidence: set[str] = set()
+        self.stats = {"rigor_checks": 0, "lint_feedback": 0, "steps": 0, "prompt_tokens": 0, "completion_tokens": 0, "seconds": 0.0,
                       "repaired_calls": 0, "fuzzy_edits": 0, "compactions": 0,
                       "verified_tasks": 0, "review_rounds": 0, "escalations": 0}
         self._loops = harness.LoopDetector()
@@ -249,7 +250,8 @@ class Session:
                 extra += f"\n\nMapa del repositorio (símbolos principales):\n{rmap}"
             except Exception:  # noqa: BLE001
                 pass
-        self.messages.append({"role": "user", "content": text + extra})
+        self.messages.append({"role": "user", "content": text + harness.hypothesis_note(text) + extra})
+        self._evidence = set()
         if experience:
             self.emit("info", message=f"Usando {len(used_ids)} recuerdo(s) de tareas parecidas")
         self.current = self.router.first()
@@ -257,11 +259,23 @@ class Session:
         t0, tokens0 = time.monotonic(), self.stats["completion_tokens"]
         verified, last_verify, self_reviewed = None, "", False
 
-        crit_rounds = 0
+        crit_rounds = rigor_rounds = 0
         while True:
             final = self._agent_loop()
             if self._cancel.is_set():
                 break
+            rigor = harness.rigor_check(final, self._evidence) if final else None
+            if not rigor and final:
+                bad = harness.grounding_check(final, self.ws)
+                if bad:
+                    rigor = ("Tu respuesta cita cosas que no se sostienen: " + "; ".join(bad[:6]) +
+                             ". Revisa los archivos (read_file, simbolo) y corrige la respuesta; no inventes referencias.")
+            if rigor and rigor_rounds < 2:
+                rigor_rounds += 1
+                self.stats["rigor_checks"] += 1
+                self.emit("info", message="Control de rigor: la respuesta no estaba respaldada por datos, se exige verificarla")
+                self.messages.append({"role": "user", "content": "[Control de rigor del arnés] " + rigor})
+                continue
             if not self._originals:
                 # Respuesta sin cambios de código: si trae cálculos, el crítico de Hope los revisa
                 if self.hope and "Resultado:" in final and crit_rounds < 2:
@@ -429,6 +443,9 @@ class Session:
         cid = call.get("id") or uuid.uuid4().hex[:12]
 
         def reply(result: str, ok: bool, args: dict | None = None) -> dict:
+            if ok:
+                self._evidence.add(name)
+                result = harness.untrusted_wrap(name, result)
             self.emit("tool", id=cid, tool=name, args=args or {}, result=tools._clip(result, 4000), ok=ok)
             return {"role": "tool", "tool_call_id": cid, "content": result}
 
