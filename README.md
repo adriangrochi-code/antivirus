@@ -8,7 +8,7 @@ y se genera un kernel y una configuración a su medida. La seguridad va integrad
 |---|---|
 | `kernel/` | Linux 7.3 (la rama estable más reciente: la LTS acumulaba CVE sin llevar) con fragmentos de configuración: seguridad (KSPP, lockdown, Landlock, AppArmor, BPF‑LSM, firmas obligatorias), superficie de ataque mínima, memoria comprimida (zram/zswap zstd, MGLRU, DAMON), telemetría (PSI, perf, BTF, `sched_ext`), compatibilidad (NTSYNC para Proton, binder para Waydroid) y comprobador de CVEs |
 | `userspace/centinela` | Mide el hardware (CPU, cachés, latencia entre núcleos, RAM, PCIe de GPUs, discos, límites de potencia RAPL/GPU), genera el plan a medida, compila el kernel para *ese* equipo y adapta el sistema en tiempo real (`adaptd`) |
-| `userspace/escudo` | Antivirus (firmas + heurística + cuarentena cifrada) e IPS de red (fuerza bruta SSH/RDP, escaneos) con bloqueo en nftables |
+| `userspace/escudo` | Antivirus (firmas, YARA, ML, comportamiento y puerta de primera ejecución; cuarentena comprimida, solo root) e IPS de red (fuerza bruta SSH/RDP, escaneos) con bloqueo en nftables |
 | `userspace/tisma-code` | Agente de programación con IA **100 % local** (estilo Claude Code) con arnés para modelos locales, documentos locales y herramientas de Hope |
 | `userspace/asistente` | TISMA Asistente: doble palmada → saludo con voz local → rutina de trabajo |
 | `rootfs/`, `branding/`, `iso/` | Capa del sistema endurecida, tema **TISMA Aero** (KDE Plasma 6, paleta de TISMA, estilo Windows 7 modernizado) y construcción de la ISO |

@@ -1,6 +1,6 @@
 """Reglas YARA de la comunidad (YARA-Forge, signature-base…) como capa de firmas avanzada.
 
-Las reglas viven en <data_dir>/yara/*.yar(a). ``escudo firmas yara-actualizar`` descarga el
+Las reglas viven en <data_dir>/yara/*.yar(a). ``escudo signatures yara-actualizar`` descarga el
 paquete «core» de YARA-Forge (reglas curadas y probadas contra falsos positivos). Antes de
 reemplazar las reglas vigentes se comprueba que compilan; si fallan, se conservan las anteriores.
 """

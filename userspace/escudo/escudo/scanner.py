@@ -125,7 +125,7 @@ class Scanner:
 
     def _ml(self, path: str, size: int, corroborated: bool) -> list[Detection]:
         """Modelo EMBER2024: solo ejecutables/APK/PDF. Solo no basta para la cuarentena."""
-        if not self.ml.libs_ok or size > 30 * 1024 * 1024:
+        if not self.ml.available() or size > 30 * 1024 * 1024:
             return []
         try:
             with open(path, "rb") as fh:

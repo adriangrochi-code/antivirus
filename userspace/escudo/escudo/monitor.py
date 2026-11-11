@@ -126,12 +126,20 @@ class RealTimeProtection:
 
     def on_detection(self, d: Detection) -> None:
         log.warning("AMENAZA DETECTADA: %s", d)
+        accion = "alerta"
         if self.auto_quarantine and d.severity in ("high", "medium"):
             try:
                 qid = self.quarantine.add(d.path, d.name, expected=d.ident)
                 log.warning("Movido a cuarentena (%s): %r", qid, d.path)
+                accion = "cuarentena"
             except OSError as e:
                 log.error("No se pudo poner en cuarentena %r: %s", d.path, e)
+        # Al notificador de la sesión (antes las detecciones en tiempo real solo quedaban en el registro)
+        try:
+            from .behavior import Alert, emit
+            emit(Alert("archivo", d.severity, f"{d.name}: {d.path}", action=accion))
+        except Exception:  # noqa: BLE001 — avisar nunca debe impedir la cuarentena
+            log.exception("No se pudo avisar de la detección")
 
     def check(self, path: str, ino: int | None = None) -> None:
         if not os.path.lexists(path):
@@ -144,9 +152,14 @@ class RealTimeProtection:
         except OSError:
             return
         if dets:
-            self.on_detection(dets[0])
-            for d in dets[1:]:
-                log.warning("  + %s", d)
+            # La más grave decide (antes la PRIMERA: una heurística «low» delante de una firma «high» evitaba
+            # la cuarentena)
+            orden = {"high": 3, "medium": 2, "low": 1}
+            peor = max(dets, key=lambda d: orden.get(d.severity, 0))
+            self.on_detection(peor)
+            for d in dets:
+                if d is not peor:
+                    log.warning("  + %s", d)
 
     def _check_renamed(self, path: str, ino: int | None = None) -> None:
         """El archivo ya no está con ese nombre: se cerró y se renombró (descargas X.crdownload → final, guardados

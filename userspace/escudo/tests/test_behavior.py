@@ -103,3 +103,21 @@ def test_ransomware_guard_ignores_fifos_and_symlinks(tmp_path):
     link = tmp_path / "enlace.pdf"
     link.symlink_to(target)
     assert g.file_changed(str(link)) is None
+
+
+def test_ransomware_appended_extension_and_stl(tmp_path):
+    cifrado = os.urandom(70000)
+    f = tmp_path / "informe.pdf.locked"
+    f.write_bytes(cifrado)
+    assert behavior.looks_encrypted(str(f), cifrado)                  # antes: extensión desconocida → ignorado
+    g = tmp_path / "foto.raw.xyz"
+    g.write_bytes(cifrado)
+    assert not behavior.looks_encrypted(str(g), cifrado)              # sin tipo conocido: no se opina
+    stl = tmp_path / "pieza.stl"
+    tri = 100                                                         # STL binario válido (datos aleatorios:
+    datos = b"\0" * 80 + tri.to_bytes(4, "little") + os.urandom(50 * tri)   # entropía alta, como uno real)
+    stl.write_bytes(datos)
+    assert not behavior.looks_encrypted(str(stl), datos)              # tamaño coherente: es un STL, no cifrado
+    malo = tmp_path / "pieza2.stl"
+    malo.write_bytes(cifrado)
+    assert behavior.looks_encrypted(str(malo), cifrado)               # antes: un .stl nunca podía marcarse

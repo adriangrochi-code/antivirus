@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3] / "rootfs"
 SD = ROOT / "etc/systemd/system"
 PESADAS = ["tisma-copias-externo", "tisma-drivers", "tisma-salud", "tisma-scrub", "chkrootkit", "lynis",
-           "e2scrub_all", "fstrim", "tisma-flatpak-actualizar"]
+           "e2scrub_all", "fstrim", "tisma-flatpak-actualizar", "escudo-actualizar"]
 
 
 def ini(path: Path) -> configparser.RawConfigParser:
@@ -16,7 +16,7 @@ def ini(path: Path) -> configparser.RawConfigParser:
     return c
 
 
-SEGURIDAD = {"chkrootkit", "lynis", "tisma-drivers", "tisma-flatpak-actualizar"}
+SEGURIDAD = {"chkrootkit", "lynis", "tisma-drivers", "tisma-flatpak-actualizar", "escudo-actualizar"}
 
 
 def test_heavy_jobs_wait_for_a_free_machine_with_lowest_priority():

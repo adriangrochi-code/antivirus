@@ -84,7 +84,7 @@ def cmd_protect(cfg: Config, args) -> int:
     if not args.no_detonar and sys.platform.startswith("linux"):
         from .primera_ejecucion import Gate
         try:
-            gate = Gate(quarantine=rtp.quarantine)
+            gate = Gate(quarantine=rtp.quarantine, scanner=rtp.scanner)
             gate.start()
         except OSError as e:
             logging.getLogger("escudo").warning("Puerta de primera ejecución desactivada: %s", e)
@@ -160,6 +160,11 @@ def cmd_firewall(cfg: Config, args) -> int:
 
 def cmd_signatures(cfg: Config, args) -> int:
     db = SignatureDB(cfg.signatures_file)
+    if args.action in ("import", "add-hash", "add-pattern") and not (args.source if args.action == "import"
+                                                                     else args.value):
+        print("Falta " + ("--source <archivo o URL>" if args.action == "import" else "el valor (hash o patrón)"),
+              file=sys.stderr)
+        return 2
     if args.action == "import":
         print(f"{db.import_hash_list(args.source)} hashes nuevos")
     elif args.action == "add-hash":

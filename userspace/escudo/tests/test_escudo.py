@@ -61,6 +61,7 @@ def test_ml_layer_is_low_alone_and_high_when_corroborated(tmp_path, monkeypatch)
     c = cfg(tmp_path)
     sc = Scanner(c)
     sc.ml.libs_ok = True
+    monkeypatch.setattr(sc.ml, "available", lambda: True)          # con modelos instalados
     monkeypatch.setattr(sc.ml, "score", lambda data: ("PE", 0.995))
     exe = tmp_path / "app.exe"
     exe.write_bytes(b"MZ" + b"\0" * 200)
@@ -71,6 +72,9 @@ def test_ml_layer_is_low_alone_and_high_when_corroborated(tmp_path, monkeypatch)
     dets = sc.scan_file(str(bad))
     assert any(d.method == "ml" and d.severity == "high" for d in dets)        # corroborado por heurística
     assert ml.file_kind(b"\x7fELF....") == "ELF" and ml.file_kind(b"%PDF-1.7") == "PDF"
+    monkeypatch.setattr(sc.ml, "available", lambda: False)         # sin modelos: ni siquiera lee el archivo
+    monkeypatch.setattr(sc.ml, "score", lambda data: (_ for _ in ()).throw(AssertionError("leyó sin modelos")))
+    assert not [d for d in sc.scan_file(str(exe)) if d.method == "ml"]
 
 
 def test_model_hash_mismatch_is_refused(tmp_path):

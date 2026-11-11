@@ -195,11 +195,30 @@ TEXT_EXT = {".txt", ".md", ".csv", ".py", ".c", ".h", ".cpp", ".js", ".ts", ".ht
             ".yml", ".tex", ".gcode", ".sh", ".xml", ".ini", ".toml", ".rs", ".go", ".java"}
 
 
+def _stl_binario(path: str, head: bytes) -> bool:
+    """STL binario válido: 80 bytes de cabecera, nº de triángulos y 50 bytes por triángulo. Antes bastaba con
+    que hubiera bytes en esa posición (siempre los hay), así que un .stl nunca podía marcarse como cifrado."""
+    if len(head) < 84:
+        return False
+    n = int.from_bytes(head[80:84], "little")
+    try:
+        return os.path.getsize(path) == 84 + 50 * n
+    except OSError:
+        return False
+
+
 def looks_encrypted(path: str, head: bytes) -> bool:
     """True si el contenido ya no corresponde a su tipo y parece cifrado."""
     if len(head) < 1024:
         return False
-    ext = os.path.splitext(path)[1].lower()
+    base, ext = os.path.splitext(path)
+    ext = ext.lower()
+    if ext not in TEXT_EXT and ext not in MAGIC:
+        # El ransomware suele AÑADIR su extensión: «informe.pdf.locked». Se juzga por la de antes (antes, una
+        # extensión desconocida se ignoraba y así se escapaba justo el caso más común)
+        interior = os.path.splitext(base)[1].lower()
+        if interior in TEXT_EXT or interior in MAGIC:
+            ext = interior
     if ext in TEXT_EXT:
         printable = sum(32 <= b < 127 or b in (9, 10, 13) for b in head[:4096]) / min(len(head), 4096)
         if printable > 0.85:
@@ -214,7 +233,7 @@ def looks_encrypted(path: str, head: bytes) -> bool:
         if ext == ".mp4":
             if b"ftyp" in head[:16]:
                 return False
-        elif any(s and head.startswith(s) for s in sig) or (ext == ".stl" and head[80:84]):
+        elif any(s and head.startswith(s) for s in sig) or (ext == ".stl" and _stl_binario(path, head)):
             return False
     else:
         return False                      # tipo desconocido: no opinamos

@@ -47,7 +47,7 @@ PERSISTENCE = re.compile(r"/(\.config/autostart/|\.config/systemd/user/|\.local/
 MINER_PORTS = {3333, 4444, 5555, 7777, 14444, 45700}
 WRITE_FLAGS = re.compile(r"O_WRONLY|O_RDWR|O_CREAT|O_TRUNC")
 STRACE_SET = ("execve,execveat,connect,open,openat,creat,rename,renameat,renameat2,unlink,unlinkat,ptrace,"
-              "kill,tgkill,memfd_create,mount,setuid,setgid")
+              "kill,tgkill,memfd_create,mount,setuid,setgid,setreuid,setresuid")
 
 
 @dataclass
@@ -116,7 +116,7 @@ def analizar_traza(traza: str, home: str = HOME_FALSO, muestra: str = "") -> Inf
                 inf.ejecuciones.append(target)
             if target in created:
                 high.append(f"descargó o creó un programa y lo ejecutó: {target.replace(home, '~')}")
-            if call == "execveat" and "AT_EMPTY_PATH" in args:
+            if call == "execveat" and "AT_EMPTY_PATH" in args or re.match(r"^/proc/(self|\d+)/fd/\d+$", target):
                 high.append("ejecutó código desde memoria (sin archivo: técnica para esquivar antivirus)")
             if os.path.basename(target) in ("sudo", "pkexec", "su", "doas"):
                 medium.append(f"intentó obtener privilegios de administrador ({os.path.basename(target)})")
@@ -137,6 +137,10 @@ def analizar_traza(traza: str, home: str = HOME_FALSO, muestra: str = "") -> Inf
             medium.append("intentó enviar señales a todos los procesos")
         elif call == "mount":
             medium.append("intentó montar sistemas de archivos")
+        # memfd_create por sí solo NO es sospechoso (Electron y Chromium lo usan para memoria compartida); lo que
+        # delata al malware «sin archivo» (VoidLink, 2026) es EJECUTAR desde ahí: /proc/self/fd/N o execveat
+        elif call in ("setuid", "setgid", "setreuid", "setresuid") and re.match(r"0\b", args):
+            medium.append("intentó convertirse en administrador (setuid/setgid a 0)")
     if len(docs_touched) >= 3:
         high.append(f"modificó, renombró o borró {len(docs_touched)} documentos (comportamiento de ransomware)")
     elif docs_touched:

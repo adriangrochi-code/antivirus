@@ -72,9 +72,11 @@ def decide(path: str, external: bool, sha: str | None, allowlist: dict) -> str:
 
 
 class Gate:
-    def __init__(self, quarantine=None, alert=emit, segundos: int = 45, mounts: list[str] | None = None):
+    def __init__(self, quarantine=None, alert=emit, segundos: int = 45, mounts: list[str] | None = None,
+                 scanner=None):
         self.fixed_mounts = mounts             # pruebas: vigilar solo estos montajes
         self.quarantine, self.alert, self.segundos = quarantine, alert, segundos
+        self.scanner = scanner                 # firmas, YARA y ML: antes de ejecutar nada en el aislamiento
         self.allow = detonar.cargar_permitidos()
         self._hash_cache: dict[tuple, str] = {}
         self._queued: set[str] = set()
@@ -248,7 +250,22 @@ class Gate:
                 return None                            # el archivo cambió mientras esperaba: se analizará al ejecutarlo
         except OSError:
             return None
-        inf = detonar.detonar(path, segundos=self.segundos, uid=uid, gid=gid, base_dir=DET_DIR)
+        # Primero los motores estáticos (instantáneos): antes la puerta nunca los consultaba y todo esperaba los
+        # 45 s del aislamiento, incluso un malware con firma conocida
+        estaticas = []
+        if self.scanner is not None:
+            try:
+                estaticas = [d for d in self.scanner.scan_file(path) if d.severity in ("high", "medium")]
+            except OSError:
+                estaticas = []
+        if any(d.severity == "high" for d in estaticas):
+            inf = detonar.Informe(veredicto="malicioso", motivos=[f"detectado: {d.name}" for d in estaticas][:3],
+                                  entorno="firmas", sha256=sha)
+        else:
+            inf = detonar.detonar(path, segundos=self.segundos, uid=uid, gid=gid, base_dir=DET_DIR)
+            if estaticas and inf.veredicto == "limpio":          # medio en firmas: nunca sale «limpio»
+                inf.veredicto = "sospechoso"
+                inf.motivos = [f"detectado: {d.name}" for d in estaticas][:3] + inf.motivos
         detonar.guardar_veredicto(inf, path)
         self.allow = detonar.cargar_permitidos()
         name = os.path.basename(path)

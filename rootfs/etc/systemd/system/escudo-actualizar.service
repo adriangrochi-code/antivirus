@@ -1,0 +1,21 @@
+# Escudo: reglas YARA (YARA-Forge «core», comunidad) y modelos de aprendizaje automático (EMBER2024, Apache-2.0,
+# revisión y SHA-256 fijados). Antes NADA los descargaba: YARA y el ML quedaban instalados pero vacíos.
+# Las reglas nuevas solo sustituyen a las anteriores si compilan. Después se reinicia Escudo para cargarlas
+# (la protección se interrumpe ~0,2 s).
+[Unit]
+Description=Escudo - actualizar reglas YARA y modelos de detección
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/escudo signatures yara-actualizar
+# Los modelos necesitan el motor ML (se compila aparte): sin él no es un error
+ExecStart=-/usr/bin/escudo signatures modelos-descargar
+ExecStartPost=-/usr/bin/systemctl try-restart escudo.service
+ProtectSystem=strict
+ReadWritePaths=/var/lib/escudo
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+Environment=ESCUDO_HOME=/var/lib/escudo

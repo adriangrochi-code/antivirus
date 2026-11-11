@@ -323,6 +323,8 @@ in_chroot systemctl enable centinela-comparar-reaplicar.service centinela-compar
 in_chroot systemctl enable tisma-flatpak-actualizar.timer 2>/dev/null || true
 # /home, /var y /boot sin setuid ni dispositivos
 in_chroot systemctl enable tisma-montajes-seguros.service 2>/dev/null || true
+# Escudo: reglas YARA y modelos de ML al día (antes nada los descargaba)
+in_chroot systemctl enable escudo-actualizar.timer 2>/dev/null || true
 chmod 755 "$CHROOT/etc/grub.d/05_tisma_graficos"
 # TRIM semanal de todos los SSD (incluido ext4, que ya no usa «discard» síncrono)
 in_chroot systemctl enable fstrim.timer 2>/dev/null || log "AVISO: sin fstrim.timer"

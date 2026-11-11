@@ -101,3 +101,39 @@ def test_sandbox_failure_never_yields_clean():
     assert detonar.se_ejecuto(ok, "/tmp/muestra/x.sh")
     assert not detonar.se_ejecuto(fallo, "/tmp/muestra/x.sh")        # bwrap sí, la muestra no
     assert not detonar.se_ejecuto('776 execve("/tmp/muestra/x.sh", [...]) = -1 EACCES\n', "/tmp/muestra/x.sh")
+
+
+def test_fileless_exec_and_root_attempts_are_flagged():
+    t = ('10 execve("/tmp/muestra/x", ["x"], 0x1) = 0\n'
+         '10 memfd_create("a", MFD_CLOEXEC) = 3\n'
+         '10 execve("/proc/self/fd/3", ["a"], 0x1) = 0\n'
+         '10 setuid(0) = -1 EPERM (Operation not permitted)\n')
+    inf = detonar.analizar_traza(t, muestra="/tmp/muestra/x")
+    assert inf.veredicto == "malicioso" and any("memoria" in m for m in inf.motivos)
+    assert any("administrador" in m for m in inf.motivos)
+    solo_memfd = '10 execve("/tmp/muestra/x", ["x"], 0x1) = 0\n10 memfd_create("shm", 0) = 3\n'
+    assert detonar.analizar_traza(solo_memfd, muestra="/tmp/muestra/x").veredicto == "limpio"   # Electron, etc.
+
+
+def test_gate_uses_static_engines_before_sandbox(tmp_path, monkeypatch):
+    from escudo.scanner import Detection
+    monkeypatch.setattr(detonar, "ALLOWLIST", tmp_path / "permitidos.json")
+    f = tmp_path / "prog"
+    f.write_text("x")
+    sha = detonar.sha256_file(str(f))
+    usado = []
+    monkeypatch.setattr(detonar, "detonar", lambda *a, **k: usado.append(1) or detonar.Informe(sha256=sha))
+
+    class Sc:
+        def __init__(self, sev):
+            self.sev = sev
+
+        def scan_file(self, p):
+            return [Detection(p, "YARA.Linux_Trojan_X", self.sev, "yara")]
+    alerts = []
+    g = pe.Gate(alert=alerts.append, scanner=Sc("high"))
+    inf = g.analyze(str(f), sha, 1000, 1000)
+    assert inf.veredicto == "malicioso" and not usado and inf.entorno == "firmas"   # sin esperar al aislamiento
+    g2 = pe.Gate(alert=alerts.append, scanner=Sc("medium"))
+    inf2 = g2.analyze(str(f), sha, 1000, 1000)
+    assert usado and inf2.veredicto == "sospechoso"                  # aislamiento «limpio» + firma media
