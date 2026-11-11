@@ -30,7 +30,15 @@ tasks.writeConfig("showToolTips", "true");
 tasks.writeConfig("highlightWindows", "true");
 
 panel.addWidget("org.kde.plasma.marginsseparator");
-panel.addWidget("org.kde.plasma.systemtray");
+var tray = panel.addWidget("org.kde.plasma.systemtray");
+// TISMA Rendimiento como icono de la bandeja (no un panel fijo que tape el escritorio)
+try {
+    var trayCont = desktopById(tray.readConfig("SystrayContainmentId"));
+    trayCont.currentConfigGroup = ["General"];
+    var extra = trayCont.readConfig("extraItems") || [];
+    if (extra.indexOf("org.tisma.rendimiento") < 0) { extra.push("org.tisma.rendimiento"); }
+    trayCont.writeConfig("extraItems", extra);
+} catch (e) {}
 var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
 clock.writeConfig("showDate", "true");

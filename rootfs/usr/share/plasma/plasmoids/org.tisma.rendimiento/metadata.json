@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "TISMA OS" }],
+        "Category": "System Information",
+        "Description": "Estado del equipo (CPU, temperatura, memoria, gráfica, perfil) y acceso a TISMA Rendimiento",
+        "EnabledByDefault": true,
+        "Icon": "tisma",
+        "Id": "org.tisma.rendimiento",
+        "License": "GPL-2.0-or-later",
+        "Name": "TISMA Rendimiento",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationArea": "true",
+    "X-Plasma-NotificationAreaCategory": "Hardware"
+}

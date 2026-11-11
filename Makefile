@@ -44,6 +44,7 @@ test:
 	cd userspace/escudo && python3 -m pytest -q tests
 	cd userspace/asistente && python3 -m pytest -q tests
 	cd userspace/sandbox && python3 -m pytest -q tests
+	cd userspace/rendimiento && python3 -m pytest -q tests
 
 qemu-test:
 	./tests/qemu-boot-test.sh $(BUILD_DIR)/linux-$(KERNEL_VERSION)/arch/x86/boot/bzImage

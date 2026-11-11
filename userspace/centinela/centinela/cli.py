@@ -156,6 +156,36 @@ def cmd_setup(args) -> int:
     return cmd_apply(args)
 
 
+def cmd_status(args) -> int:
+    from . import status
+    print(json.dumps(status.snapshot(), ensure_ascii=False))
+    return 0
+
+
+def cmd_oc(args) -> int:
+    """Overclock de la GPU integrada y Turbo de CPU (root; la app lo invoca con pkexec)."""
+    from . import sysfs as _s
+    act = ap.Actuator(dry_run=args.dry_run)
+    if args.gpu is not None:
+        pct = int(args.gpu)
+        if not 0 <= pct <= ap.OC_MAX:
+            raise ValueError(f"El overclock de GPU debe estar entre 0 y {ap.OC_MAX} %")
+        cards = [c for c in _s.ls("/sys/class/drm/card[0-9]") if _s.read(f"{c}/device/pp_sclk_od") is not None]
+        if not cards:
+            raise ValueError("La GPU no expone overdrive: arranca con amdgpu.ppfeaturemask=0xffffffff "
+                             "(perfil rendimiento de centinela) y reinicia")
+        for c in cards:
+            act.write(f"{c}/device/pp_sclk_od", str(pct))
+        prefs = ap.load_state("prefs.json") or {}
+        prefs["gpu_oc"] = pct
+        ap.save_state("prefs.json", prefs)
+    if args.turbo is not None:
+        act.write("/sys/devices/system/cpu/cpufreq/boost", "1" if args.turbo == "si" else "0")
+    for p_, v in act.changes:
+        print(f"{p_} = {v}")
+    return 0
+
+
 def cmd_boot(args) -> int:
     from . import boot
     r = boot.analyze()
@@ -216,6 +246,15 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "adaptd":
             s.add_argument("--interval", type=float, default=3.0)
             s.add_argument("--no-game-boost", action="store_true")
+
+    s = sub.add_parser("estado", help="métricas en vivo en JSON (sin privilegios)")
+    s.set_defaults(func=cmd_status)
+
+    s = sub.add_parser("oc", help="overclock de la GPU integrada (0-15 %) y Turbo de CPU")
+    s.add_argument("--gpu", type=int, help="porcentaje sobre la frecuencia de fábrica")
+    s.add_argument("--turbo", choices=["si", "no"])
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(func=cmd_oc)
 
     s = sub.add_parser("arranque", help="analiza qué retrasa el arranque y cómo mejorarlo")
     s.add_argument("--json", action="store_true")

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TISMA Rendimiento
+GenericName=Rendimiento y overclock
+Comment=Estado del equipo, perfiles de potencia, overclock y ancho de banda de memoria
+Exec=tisma-rendimiento
+Icon=tisma
+Categories=System;Monitor;Settings;
+Keywords=rendimiento;overclock;temperatura;cpu;gpu;memoria;potencia;
