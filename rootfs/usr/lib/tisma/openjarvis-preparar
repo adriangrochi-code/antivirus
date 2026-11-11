@@ -1,0 +1,10 @@
+#!/bin/sh
+# Primera vez: configuración endurecida de TISMA y clave aleatoria (0600) para la API local.
+set -eu
+umask 077
+mkdir -p "$HOME/.openjarvis" "$HOME/.config/tisma-code" "$HOME/TISMA/Documentos"
+[ -f "$HOME/.openjarvis/config.toml" ] || cp /usr/share/tisma/openjarvis/config.toml "$HOME/.openjarvis/config.toml"
+if [ ! -s "$HOME/.config/tisma-code/openjarvis.env" ]; then
+    printf 'OPENJARVIS_API_KEY=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" \
+        > "$HOME/.config/tisma-code/openjarvis.env"
+fi

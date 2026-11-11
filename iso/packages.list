@@ -50,3 +50,5 @@ chromium chromium-l10n chromium-sandbox dnscrypt-proxy wireguard-tools network-m
 # --- Sandbox por app y herramientas del arnés de TISMA Code ---
 xdg-dbus-proxy ripgrep universal-ctags cppcheck shfmt clang-format clang-tidy shellcheck ruff mypy bandit
 python3-yara yara python3-lightgbm python3-pefile libnotify-bin gpgv
+# --- REA (análisis estático) y OpenJarvis ---
+binutils rizin tshark binwalk python3-venv cargo rustc libportaudio2

@@ -1,0 +1,38 @@
+# OpenJarvis en TISMA OS — configuración endurecida
+[engine]
+default = "llamacpp"
+
+[engine.llamacpp]
+host = "http://127.0.0.1:8080"          # Strata
+
+[agent]
+default_agent = "orchestrator"
+max_turns = 8
+# Sin shell, sin escritura de archivos, sin http arbitrario, sin agentes que lancen otros agentes
+tools = "web_search,pdf_extract,calculator,think,memory_search,memory_store,memory_retrieve,knowledge_search"
+context_from_memory = true
+
+[security]
+enabled = true
+mode = "redact"                          # secretos y datos personales se tachan antes de salir
+secret_scanner = true
+pii_scanner = true
+enforce_tool_confirmation = true
+ssrf_protection = true                   # sin peticiones a la red local ni a 127.0.0.1
+rate_limit_enabled = true
+local_tool_bypass = false
+allowed_dirs = ["~/TISMA/Documentos"]
+
+[analytics]
+enabled = false
+choice_recorded = true
+
+[server]
+host = "127.0.0.1"
+port = 8000
+
+[speech]
+backend = "faster-whisper"
+language = "es"
+tts_backend = "kokoro"
+voice_id = "ef_dora"                     # voz femenina en español (para «Hope», más adelante)

@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenJarvis - asistente local (investigación y memoria) para TISMA Code
+After=default.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/lib/tisma/openjarvis-preparar
+EnvironmentFile=%h/.config/tisma-code/openjarvis.env
+Environment=OPENJARVIS_HOME=%h/.openjarvis LLAMACPP_HOST=http://127.0.0.1:8080
+ExecStart=/opt/openjarvis/.venv/bin/jarvis serve --host 127.0.0.1 --port 8000 -e llamacpp
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=%h/.openjarvis
+ReadOnlyPaths=%h/TISMA/Documentos
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.mozilla -%h/.config/chromium
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

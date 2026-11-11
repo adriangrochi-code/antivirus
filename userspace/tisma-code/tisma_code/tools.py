@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import fnmatch
+import json
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ from . import harness
 
 from .base import MAX_OUTPUT, ToolError, _clip  # noqa: F401 (reexportados)
 SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
-NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify"}
+NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify", "jarvis"}
 
 
 class Workspace:
@@ -234,9 +235,11 @@ HOPE_SCHEMAS = [
 
 from . import devtools  # noqa: E402  (importa Workspace/ToolError ya definidos arriba)
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
+from .jarvis import SCHEMAS as JARVIS_SCHEMAS  # noqa: E402
+from .rea import SCHEMAS as REA_SCHEMAS  # noqa: E402
 
 TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA]
-                + HOPE_SCHEMAS + DOC_SCHEMAS)
+                + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + JARVIS_SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -287,6 +290,10 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
         return ws.preview_write(args["path"], args["content"])
     if name == "edit_file":
         return ws.preview_edit(args["path"], args["old"], args["new"])
+    if name == "jarvis":
+        return f"OpenJarvis investigará (puede buscar en Internet):\n{args.get('pregunta', '')}"
+    if name == "rea":
+        return f"REA: {args.get('herramienta')} {json.dumps(args.get('argumentos') or {}, ensure_ascii=False)}"
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         return ("Ejecutará el código de pruebas del proyecto (aislado, sin red):\n" +
