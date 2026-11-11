@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -146,3 +147,23 @@ def test_a275_memory_reclaim_oomd_and_threads(tmp_path, monkeypatch):
     act = Actuator()
     apply.apply_damon(p, act)
     assert (base / "enabled").read_text() == "Y" and (base / "commit_inputs").read_text() == "N"
+
+
+def test_boot_drivers_follow_luks_to_disk(tmp_path, monkeypatch):
+    from centinela import hw, sysfs
+    r = tmp_path
+    (r / "proc").mkdir()
+    (r / "proc/mounts").write_text("/dev/dm-0 / btrfs rw,noatime,subvol=/@ 0 0\n")
+    (r / "sys/block/dm-0/slaves/nvme0n1p2").mkdir(parents=True)
+    (r / "sys/block/dm-0/dm").mkdir()
+    (r / "sys/block/dm-0/dm/uuid").write_text("CRYPT-LUKS2-abc-luks-abc\n")
+    (r / "sys/block/nvme0n1/nvme0n1p2").mkdir(parents=True)
+    dev = r / "sys/devices/pci0000:00/0000:00:01.0/nvme/nvme0"
+    dev.mkdir(parents=True)
+    (r / "sys/bus/pci/drivers/nvme").mkdir(parents=True)
+    os.symlink("../../../bus/pci/drivers/nvme", r / "sys/devices/pci0000:00/0000:00:01.0/driver")
+    os.symlink("../../devices/pci0000:00/0000:00:01.0/nvme/nvme0", r / "sys/block/nvme0n1/device")
+    monkeypatch.setattr(sysfs, "ROOT", str(r))
+    b = hw.boot_drivers()
+    assert b["root_fs"] == "btrfs"
+    assert b["drivers"][:2] == ["dm_mod", "dm_crypt"] and "nvme" in b["drivers"]

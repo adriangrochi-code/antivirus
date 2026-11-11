@@ -237,20 +237,35 @@ def boot_drivers() -> dict:
             root_dev, fstype = parts[0], parts[2]
     drivers: list[str] = []
     if root_dev and root_dev.startswith("/dev/"):
-        name = os.path.basename(os.path.realpath(root_dev))
-        # partición -> disco padre
-        disk = next((os.path.basename(os.path.dirname(p)) for p in sysfs.ls(f"/sys/block/*/{name}")), name)
-        devpath = sysfs.path(f"/sys/block/{disk}/device")
-        p = os.path.realpath(devpath)
-        root = sysfs.path("/")
-        while p.startswith(os.path.join(root, "sys/devices")) and p != root:
-            link = os.path.join(p, "driver")
-            if os.path.islink(link):
-                d = os.path.basename(os.readlink(link))
-                if d not in drivers:
-                    drivers.append(d)
-            p = os.path.dirname(p)
+        _disk_drivers(os.path.basename(os.path.realpath(root_dev)), drivers, depth=0)
     return {"root_device": root_dev, "root_fs": fstype, "drivers": drivers}
+
+
+def _disk_drivers(name: str, drivers: list[str], depth: int) -> None:
+    """Drivers de un dispositivo de bloque. Sigue dm-crypt/LVM/RAID (dm-*, md*) hasta los discos reales."""
+    if depth > 4:
+        return
+    slaves = [os.path.basename(p) for p in sysfs.ls(f"/sys/block/{name}/slaves/*")]
+    if slaves:
+        uuid = sysfs.read(f"/sys/block/{name}/dm/uuid") or ""
+        for mod in (["dm_mod", "dm_crypt"] if uuid.startswith("CRYPT-") else ["dm_mod"] if name.startswith("dm-")
+                    else ["md_mod"] if name.startswith("md") else []):
+            if mod not in drivers:
+                drivers.append(mod)
+        for sl in slaves:
+            _disk_drivers(sl, drivers, depth + 1)
+        return
+    # partición -> disco padre
+    disk = next((os.path.basename(os.path.dirname(p)) for p in sysfs.ls(f"/sys/block/*/{name}")), name)
+    p = os.path.realpath(sysfs.path(f"/sys/block/{disk}/device"))
+    root = sysfs.path("/")
+    while p.startswith(os.path.join(root, "sys/devices")) and p != root:
+        link = os.path.join(p, "driver")
+        if os.path.islink(link):
+            d = os.path.basename(os.readlink(link))
+            if d not in drivers:
+                drivers.append(d)
+        p = os.path.dirname(p)
 
 
 def memory_modules() -> list[dict]:
