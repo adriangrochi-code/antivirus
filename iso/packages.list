@@ -15,6 +15,8 @@ unattended-upgrades fwupd
 systemd-zram-generator python3 cpupower-gui
 # --- Memoria y copias de seguridad ---
 systemd-oomd btrfs-progs restic
+# --- Hora autenticada (NTS) ---
+chrony
 # --- Escritorio KDE Plasma 6 ---
 kde-plasma-desktop sddm sddm-theme-breeze plasma-nm plasma-pa plasma-systemmonitor
 konsole dolphin ark kate okular gwenview spectacle kcalc
@@ -51,6 +53,7 @@ espeak-ng piper python3-sounddevice pipewire-bin
 chromium chromium-l10n chromium-sandbox dnscrypt-proxy wireguard-tools network-manager-openvpn
 # --- Sandbox por app y herramientas del arnés de TISMA Code ---
 xdg-dbus-proxy ripgrep universal-ctags cppcheck shfmt clang-format clang-tidy shellcheck ruff mypy bandit
+build-essential gdb git
 python3-yara yara python3-lightgbm python3-pefile libnotify-bin gpgv
 # --- REA (análisis estático) y OpenJarvis ---
 binutils rizin tshark binwalk python3-venv cargo rustc libportaudio2

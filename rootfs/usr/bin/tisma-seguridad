@@ -9,6 +9,7 @@
 #   tisma-seguridad red         muestra puertos abiertos e IPs bloqueadas por Escudo
 #   tisma-seguridad suid        lista programas SUID/SGID (posibles escaladas de privilegios)
 #   tisma-seguridad todo        auditoría + rootkits + integridad + virus en /home
+#   tisma-seguridad estricto [on|off]  nivel GrapheneOS: ptrace solo root y lockdown «confidentiality»
 set -euo pipefail
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 LOGDIR=/var/log/tisma-seguridad
@@ -53,7 +54,10 @@ usb() {
     [[ "$ok" =~ ^[sS]$ ]] || exit 0
     usbguard generate-policy > /etc/usbguard/rules.conf
     chmod 600 /etc/usbguard/rules.conf
+    # Estricto: lo que no esté en la lista se bloquea siempre (no solo con la pantalla bloqueada)
+    sed -i 's/^ImplicitPolicyTarget=.*/ImplicitPolicyTarget=block/' /etc/usbguard/usbguard-daemon.conf
     systemctl enable --now usbguard
+    systemctl restart usbguard
     echo "Listo. Para autorizar un USB nuevo: usbguard list-devices / usbguard allow-device <id>"
 }
 suid() {
@@ -70,6 +74,32 @@ red() {
     nft list set inet centinela bloqueadas6 2>/dev/null || true
 }
 
+estricto() {
+    local modo="${1:-on}" sc=/etc/sysctl.d/90-tisma-estricto.conf gr=/etc/default/grub.d/90-tisma-estricto.cfg
+    if [[ "$modo" == off ]]; then
+        rm -f "$sc" "$gr"; update-grub >/dev/null 2>&1 || true
+        sysctl -q kernel.yama.ptrace_scope=1
+        echo "Modo estricto desactivado (el lockdown vuelve a «integrity» al reiniciar)."; return
+    fi
+    h "Modo estricto (como GrapheneOS)"
+    cat <<'TXT'
+- ptrace solo para el administrador: ningún programa puede leer la memoria de otro, ni siquiera de sus hijos.
+  Consecuencia: gdb, strace y los depuradores de los IDE solo funcionan con sudo.
+- lockdown «confidentiality»: además de impedir modificar el kernel, impide LEER sus secretos (kcore,
+  kprobes, perf y BPF sobre memoria del kernel). bpftrace y algunos perfiladores dejan de funcionar.
+TXT
+    read -r -p "¿Activar? [s/N] " ok
+    [[ "$ok" =~ ^[sS]$ ]] || return 0
+    echo "kernel.yama.ptrace_scope = 2" > "$sc"
+    sysctl -q kernel.yama.ptrace_scope=2
+    mkdir -p /etc/default/grub.d
+    echo 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT lockdown=confidentiality"' > "$gr"
+    update-grub >/dev/null 2>&1 || true
+    # El lockdown solo puede subir de nivel en caliente, nunca bajar
+    echo confidentiality > /sys/kernel/security/lockdown 2>/dev/null || true
+    echo "Activado. Estado: $(cat /sys/kernel/security/lockdown 2>/dev/null)"
+}
+
 case "${1:-}" in
     auditoria) auditoria ;;
     rootkits) rootkits ;;
@@ -79,5 +109,6 @@ case "${1:-}" in
     red) red ;;
     suid) suid ;;
     todo) auditoria; rootkits; integridad; virus /home ;;
-    *) sed -n '2,12p' "$0"; exit 2 ;;
+    estricto) estricto "${2:-on}" ;;
+    *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

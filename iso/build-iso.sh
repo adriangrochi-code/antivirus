@@ -138,6 +138,7 @@ fi
 "$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
 "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
 "$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
+"$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
@@ -151,6 +152,8 @@ rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/pyt
 rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
+in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion 2>/dev/null || true
+in_chroot systemctl disable systemd-timesyncd 2>/dev/null || true
 in_chroot systemctl enable nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer \
     centinela-power centinela-adaptd escudo
 # Arranque escalonado: lo no esencial sale de multi-user.target y lo lanza la fase 2

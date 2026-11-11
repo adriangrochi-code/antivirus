@@ -56,5 +56,6 @@
     "ddkjiahejlhfcafbddmgiahcphecmpfh"
   ],
   "ExtensionManifestV2Availability": 0,
-  "BrowserThemeColor": "#5A2B8F"
+  "BrowserThemeColor": "#5A2B8F",
+  "DefaultJavaScriptOptimizerSetting": 2
 }

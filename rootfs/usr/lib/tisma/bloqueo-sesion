@@ -1,0 +1,98 @@
+#!/usr/bin/python3 -I
+"""TISMA: protecciones mientras la sesión está bloqueada (inspiradas en GrapheneOS).
+
+* USB: con la pantalla bloqueada, todo USB que se conecte queda BLOQUEADO (USBGuard, InsertedDevicePolicy=block).
+  Al desbloquear vuelve a la política normal; lo conectado durante el bloqueo hay que reconectarlo. Así un
+  dispositivo malicioso (teclado falso, «BadUSB», extractores de datos) no sirve con el equipo desatendido.
+* Reinicio automático (opcional, /etc/tisma/reinicio-auto.conf, HORAS=0 = desactivado): si nadie desbloquea la
+  sesión en ese tiempo, el equipo se reinicia. Tras reiniciar, el disco cifrado (LUKS) vuelve a estar cerrado y
+  las claves salen de la RAM: un ladrón no puede extraerlas de un equipo que estaba bloqueado pero encendido.
+
+Lee el estado con loginctl (LockedHint lo publica el bloqueador de Plasma) cada 2 segundos.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import time
+
+CONF = "/etc/tisma/reinicio-auto.conf"
+POLL = 2.0
+
+
+def sh(argv: list[str]) -> str:
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def graphical_sessions(run=sh) -> list[dict]:
+    out = []
+    for line in run(["loginctl", "list-sessions", "--no-legend"]).splitlines():
+        sid = line.split()[0] if line.split() else ""
+        if not sid:
+            continue
+        props = dict(kv.split("=", 1) for kv in run(
+            ["loginctl", "show-session", sid, "-p", "Type", "-p", "Class", "-p", "LockedHint", "-p", "Active"]
+        ).splitlines() if "=" in kv)
+        if props.get("Class") == "user" and props.get("Type") in ("wayland", "x11"):
+            out.append(props)
+    return out
+
+
+def hours_conf(path: str = CONF) -> float:
+    try:
+        for line in open(path, encoding="utf-8"):
+            k, _, v = line.strip().partition("=")
+            if k == "HORAS":
+                return max(0.0, min(float(v), 72.0))
+    except (OSError, ValueError):
+        pass
+    return 0.0
+
+
+class Guard:
+    def __init__(self, run=sh, now=time.monotonic, hours=hours_conf):
+        self.run, self.now, self.hours = run, now, hours
+        self.locked = False
+        self.unlocked_since_boot = False      # AFU: ya se desbloqueó al menos una vez
+        self.last_unlocked = now()
+
+    def usb(self, block: bool) -> None:
+        if self.run(["systemctl", "is-active", "usbguard"]).strip() != "active":
+            return
+        self.run(["usbguard", "set-parameter", "InsertedDevicePolicy", "block" if block else "apply-policy"])
+
+    def step(self) -> str | None:
+        sess = graphical_sessions(self.run)
+        unlocked = any(s.get("LockedHint") == "no" and s.get("Active") == "yes" for s in sess)
+        locked = bool(sess) and not unlocked
+        if unlocked:
+            self.unlocked_since_boot = True
+            self.last_unlocked = self.now()
+        if locked != self.locked:
+            self.locked = locked
+            self.usb(locked)
+            return "bloqueada" if locked else "desbloqueada"
+        h = self.hours()
+        if h and self.unlocked_since_boot and not unlocked and self.now() - self.last_unlocked >= h * 3600:
+            if self.run(["pgrep", "-x", "dpkg"]).strip():
+                return None                    # nunca en mitad de una actualización
+            self.run(["systemctl", "reboot"])
+            return "reinicio"
+        return None
+
+
+def main() -> int:
+    g = Guard()
+    while True:
+        ev = g.step()
+        if ev:
+            print(f"tisma-bloqueo-sesion: {ev}", flush=True)
+        time.sleep(POLL)
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main())

@@ -1,0 +1,58 @@
+#!/usr/bin/python3 -I
+"""Optimizadores de JavaScript (V8) por sitio en TISMA Navegador.
+
+Por defecto están DESACTIVADOS (como el JIT en GrapheneOS o el modo de seguridad mejorada de Edge): gran parte
+de los fallos explotables de V8 están en sus compiladores optimizadores. Las webs funcionan igual, algo más
+lentas en cálculo intenso. Para una web pesada de confianza (CAD, ofimática online…) se permiten por sitio.
+
+Uso: tisma-navegador-optimizador [lista | permitir <dominio> | quitar <dominio>]   (permitir/quitar: como root)
+"""
+import json
+import os
+import re
+import sys
+
+F = "/etc/chromium/policies/managed/50-tisma-optimizador-js.json"
+DOM = re.compile(r"^(\[\*\.\])?([a-z0-9-]+\.)+[a-z]{2,63}$")
+
+
+def load() -> list:
+    try:
+        return json.load(open(F)).get("JavaScriptOptimizerAllowedForSites", [])
+    except (OSError, ValueError):
+        return []
+
+
+def save(sites: list) -> None:
+    tmp = F + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"JavaScriptOptimizerAllowedForSites": sorted(set(sites))}, f, indent=2)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, F)
+
+
+def main(argv: list) -> int:
+    if not argv or argv[0] == "lista":
+        print("\n".join(load()) or "Ningún sitio con optimizadores (todos protegidos).")
+        return 0
+    if len(argv) != 2 or argv[0] not in ("permitir", "quitar"):
+        print(__doc__)
+        return 2
+    if os.geteuid() != 0:
+        print("Necesita permisos de administrador: pkexec tisma-navegador-optimizador …", file=sys.stderr)
+        return 2
+    dom = argv[1].lower().removeprefix("https://").split("/")[0]
+    if not DOM.match(dom):
+        print(f"Dominio no válido: {dom}", file=sys.stderr)
+        return 2
+    pattern = f"https://{dom}"
+    sites = load()
+    sites = sites + [pattern] if argv[0] == "permitir" else [s for s in sites if s != pattern]
+    save(sites)
+    print(f"{'Permitidos' if argv[0] == 'permitir' else 'Quitados'} los optimizadores en {pattern}. "
+          "Recarga la página (no hace falta reiniciar el navegador).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

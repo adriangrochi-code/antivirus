@@ -1,0 +1,19 @@
+[Unit]
+Description=TISMA - USB bloqueado con la pantalla bloqueada y reinicio automático opcional
+After=systemd-logind.service usbguard.service
+
+[Service]
+ExecStart=/usr/lib/tisma/bloqueo-sesion
+Restart=always
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

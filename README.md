@@ -59,6 +59,9 @@ está conectado. El instalador usa btrfs con subvolúmenes `@`, `@home`, `@snaps
 - Userspace: sysctl endurecido, firewall nftables que bloquea todo lo entrante por defecto, módulos raros
   bloqueados, servicios con sandbox de systemd, actualizaciones de seguridad automáticas,
   `tisma-seguridad` (Lynis, rkhunter/chkrootkit, AIDE, ClamAV + Escudo, USBGuard).
+- Medidas tomadas de GrapheneOS (V8 sin optimizadores, USB bloqueado con la pantalla bloqueada, MAC por
+  conexión, hora NTS, hardened_malloc en demonios de red, reinicio automático y modo estricto opcionales):
+  ver [docs/GRAPHENEOS.md](docs/GRAPHENEOS.md).
 
 ## Programas de Windows y Android
 
