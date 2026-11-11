@@ -52,3 +52,4 @@ xdg-dbus-proxy ripgrep universal-ctags cppcheck shfmt clang-format clang-tidy sh
 python3-yara yara python3-lightgbm python3-pefile libnotify-bin gpgv
 # --- REA (análisis estático) y OpenJarvis ---
 binutils rizin tshark binwalk python3-venv cargo rustc libportaudio2
+glmark2-es2-wayland

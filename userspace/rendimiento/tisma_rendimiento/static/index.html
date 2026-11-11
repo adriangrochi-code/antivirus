@@ -79,6 +79,16 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     <div id="memWarn"></div>
   </section>
 
+  <section class="card w4" id="autoCard">
+    <h3>Optimización automática <small>overclock + undervolt con pruebas de estabilidad internas</small></h3>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn p" id="auto" style="padding:12px 20px;font-size:15px">⚡ Optimizar automáticamente</button>
+      <div class="seg" id="autoDur" style="width:auto;white-space:nowrap"><button data-s="20">Rápida · 6 min</button><button data-s="45" class="on">Completa · 14 min</button><button data-s="90">Exhaustiva · 28 min</button></div>
+    </div>
+    <div class="note">Activa el Turbo, sube la frecuencia de la GPU de 2 en 2 % y luego baja su voltaje de 10 en 10 mV. Tras cada paso calcula resultados conocidos en todos los núcleos y verifica la memoria bit a bit, con la GPU cargada, vigilando la temperatura y los errores del kernel. Al primer fallo vuelve al último paso estable y retrocede uno más como margen. Si el equipo se colgara, al reiniciar vuelve solo a valores de fábrica y no repite ese valor.</div>
+    <div id="autoOut"></div>
+  </section>
+
   <section class="card w2"><h3>Recomendaciones para este equipo</h3><ul class="rec" id="recs"><li class="note">Ejecuta «centinela setup» para medir el equipo.</li></ul></section>
   <section class="card w2"><h3>Arranque <button class="btn" id="boot">Analizar</button></h3><div id="bootOut" class="note">Mide cuánto tarda cada etapa y qué servicios lo retrasan.</div></section>
 </main>
@@ -111,6 +121,17 @@ $("#applyOc").onclick=async()=>{const r=await api("/api/oc",{gpu:+$("#oc").value
 $("#resetOc").onclick=async()=>{$("#oc").value=0;updOc();const r=await api("/api/oc",{gpu:0});toast(r.ok?"GPU a frecuencia de fábrica":"Error: "+r.salida,!r.ok)};
 $("#turbo").onclick=async()=>{const on=!$("#turbo").classList.contains("on");const r=await api("/api/oc",{turbo:on});toast(r.ok?(on?"Turbo activado":"Turbo desactivado"):"Error: "+r.salida,!r.ok)};
 document.querySelectorAll("#perfil button").forEach(b=>b.onclick=async()=>{const r=await api("/api/perfil",{perfil:b.dataset.p});toast(r.ok?`Perfil ${b.textContent}`:"Error: "+r.salida,!r.ok);tick()});
+let autoSec=45,autoTimer=null;
+document.querySelectorAll("#autoDur button").forEach(b=>b.onclick=()=>{autoSec=+b.dataset.s;document.querySelectorAll("#autoDur button").forEach(x=>x.classList.toggle("on",x===b))});
+function renderAuto(r){const p=r.progreso||{};const lbl=x=>x.ajuste.startsWith("oc")?`Overclock GPU +${x.valor} %`:x.ajuste.startsWith("uv")?`Undervolt GPU ${x.valor} mV`:`${x.ajuste} ${x.valor}`;
+ const pasos=(p.pasos||[]).map(x=>`<div class="b" style="grid-template-columns:190px 1fr 70px"><span>${x.ok?"✓":"✗"} ${esc(lbl(x))}</span><div class="t"><i style="width:${Math.min(100,(x.temp_max||0))}%;background:${x.ok?"var(--ok)":"var(--err)"}"></i></div><span class="n">${(x.temp_max||0).toFixed(0)} °C</span></div>${x.ok?"":`<div class="note" style="margin:-4px 0 6px 0">${esc(x.motivo)}</div>`}`).join("");
+ const res=p.resultado&&Object.keys(p.resultado).length?`<div class="warn" style="background:#1f4d3a;border-color:#2f7a5a;color:#bff5dc">Resultado estable: ${Object.entries(p.resultado).map(([k,v])=>`${esc(k.replace("gpu_oc_","overclock GPU ").replace("gpu_uv_mv_","undervolt GPU "))} = ${esc(v)}${k.startsWith("gpu_oc")?" %":k.startsWith("gpu_uv")?" mV":""}`).join(" · ")}</div>`:"";
+ const fase=r.en_curso?`<div class="note">En curso: ${esc(p.fase||"preparando…")}. Puedes seguir usando el equipo, aunque irá más lento.</div>`:"";
+ const cap=p.capacidades?`<div class="note">Detectado: ${p.capacidades.gpu_oc?.length?"overclock de GPU":"sin overclock de GPU"} · ${Object.keys(p.capacidades.gpu_uv||{}).length?"undervolt de GPU":"sin undervolt de GPU"} · ${p.capacidades.turbo?"Turbo":"sin Turbo"}. ${esc(p.aviso_cpu_uv||"")}</div>`:"";
+ $("#autoOut").innerHTML=fase+`<div class="bars">${pasos}</div>`+res+cap;$("#auto").disabled=!!r.en_curso;$("#auto").textContent=r.en_curso?"Optimizando…":"⚡ Optimizar automáticamente"}
+async function pollAuto(){try{const r=await api("/api/autotune");renderAuto(r);if(!r.en_curso&&autoTimer){clearInterval(autoTimer);autoTimer=null;toast(r.codigo===0?"Optimización terminada":"La optimización no se completó",r.codigo!==0)}}catch(e){}}
+$("#auto").onclick=async()=>{try{await api("/api/autotune",{segundos:autoSec});toast("Optimización iniciada (te pedirá la contraseña)");autoTimer=setInterval(pollAuto,2000);pollAuto()}catch(e){toast(e.message,true)}};
+pollAuto();
 $("#boot").onclick=async()=>{$("#bootOut").textContent="Analizando…";const r=await api("/api/arranque");if(r.error){$("#bootOut").textContent=r.error;return}
  const e=r.etapas;$("#bootOut").innerHTML=`<div class="bars">${Object.entries(e).map(([k,v])=>`<div class="b"><span>${esc(k)}</span><div class="t"><i style="width:${Math.min(100,v*8)}%"></i></div><span class="n">${v.toFixed(1)} s</span></div>`).join("")}</div>`+(r.recomendaciones.length?`<ul class="rec">${r.recomendaciones.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:"<div class='note'>Sin retrasos importantes.</div>")};
 (async()=>{history.replaceState(null,"","/");try{const d=await api("/api/equipo");

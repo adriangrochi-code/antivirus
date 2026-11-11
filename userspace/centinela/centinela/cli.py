@@ -186,6 +186,23 @@ def cmd_oc(args) -> int:
     return 0
 
 
+def cmd_autotune(args) -> int:
+    from . import autotune
+    if args.al_arrancar:
+        print(autotune.boot_apply(args.dry_run))
+        return 0
+    r = autotune.run(seconds=args.segundos, dry_run=args.dry_run)
+    if args.json:
+        print(json.dumps(r, ensure_ascii=False))
+        return 0
+    for p_ in r["pasos"]:
+        print(f"  {'✓' if p_['ok'] else '✗'} {p_['ajuste']} = {p_['valor']}  {p_['motivo'] or 'estable'}  "
+              f"({p_['temp_max']:.0f} °C)")
+    print("Resultado:", json.dumps(r["resultado"], ensure_ascii=False))
+    print("Nota:", r["aviso_cpu_uv"])
+    return 0
+
+
 def cmd_boot(args) -> int:
     from . import boot
     r = boot.analyze()
@@ -255,6 +272,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--turbo", choices=["si", "no"])
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_oc)
+
+    s = sub.add_parser("autotune", help="overclock y undervolt automáticos con pruebas de estabilidad")
+    s.add_argument("--segundos", type=int, default=45, choices=range(10, 601), metavar="10-600")
+    s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--al-arrancar", action="store_true", help="(servicio) comprobar cuelgues y reaplicar el perfil")
+    s.set_defaults(func=cmd_autotune)
 
     s = sub.add_parser("arranque", help="analiza qué retrasa el arranque y cómo mejorarlo")
     s.add_argument("--json", action="store_true")

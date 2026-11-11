@@ -1,0 +1,16 @@
+[Unit]
+Description=Centinela - comprobar cuelgues del autoajuste y reaplicar el perfil estable
+After=centinela-power.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela autotune --al-arrancar
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela /run/centinela
+ProtectHome=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+
+[Install]
+WantedBy=tisma-fase2.target

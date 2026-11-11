@@ -140,6 +140,7 @@ fi
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
+gcc -O2 -static -pthread -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
 chmod 700 "$CHROOT/var/lib/escudo"
 

@@ -31,6 +31,9 @@ STATE = Path(os.environ.get("CENTINELA_STATE", "/var/lib/centinela"))
 PLAN = Path(os.environ.get("CENTINELA_ETC", "/etc")) / "centinela/plan.json"
 TOKEN = secrets.token_urlsafe(24)
 RUN = subprocess.run          # punto de sustitución en las pruebas
+PROGRESS = Path(os.environ.get("CENTINELA_PROGRESS", "/run/centinela/autotune.json"))
+AUTOTUNE = {"proc": None}
+POPEN = subprocess.Popen
 
 
 def read_json(p: Path) -> dict:
@@ -95,6 +98,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, status.snapshot())
         if u.path == "/api/equipo":
             return self._send(200, device_info())
+        if u.path == "/api/autotune":
+            p = AUTOTUNE["proc"]
+            running = p is not None and p.poll() is None
+            return self._send(200, {"en_curso": running, "progreso": read_json(PROGRESS),
+                                    "codigo": None if running or p is None else p.returncode})
         if u.path == "/api/arranque":
             try:
                 from centinela import boot
@@ -118,6 +126,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "perfil inválido"})
             r = RUN(["systemctl", "start", f"centinela-perfil@{perfil}.service"], capture_output=True, text=True, timeout=60)
             return self._send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0, "salida": (r.stderr or r.stdout)[-400:]})
+        if u.path == "/api/autotune":
+            seg = b.get("segundos", 45)
+            if isinstance(seg, bool) or not isinstance(seg, int) or not 10 <= seg <= 600:
+                return self._send(400, {"error": "segundos entre 10 y 600"})
+            p = AUTOTUNE["proc"]
+            if p is not None and p.poll() is None:
+                return self._send(409, {"error": "ya hay una optimización en curso"})
+            AUTOTUNE["proc"] = POPEN(["pkexec", "/usr/bin/centinela", "autotune", "--segundos", str(seg), "--json"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self._send(200, {"ok": True})
         if u.path == "/api/oc":
             argv = ["pkexec", "/usr/bin/centinela", "oc"]
             if "gpu" in b:

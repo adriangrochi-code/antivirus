@@ -51,3 +51,20 @@ def test_actions_validated_before_running(srv):
     assert req(port, "POST", "/api/perfil", {"perfil": "rendimiento"})[0] == 200
     assert calls == [["pkexec", "/usr/bin/centinela", "oc", "--gpu", "10", "--turbo", "si"],
                      ["systemctl", "start", "centinela-perfil@rendimiento.service"]]
+
+
+def test_autotune_endpoint_validated(srv, monkeypatch):
+    port, _ = srv
+    started = []
+
+    class P:
+        returncode = 0
+        def poll(self): return None
+    monkeypatch.setattr(server, "POPEN", lambda argv, **k: started.append(argv) or P())
+    server.AUTOTUNE["proc"] = None
+    for bad in ({"segundos": 5}, {"segundos": True}, {"segundos": "45; reboot"}):
+        assert req(port, "POST", "/api/autotune", bad)[0] == 400
+    assert req(port, "POST", "/api/autotune", {"segundos": 45})[0] == 200
+    assert req(port, "POST", "/api/autotune", {"segundos": 45})[0] == 409      # una sola a la vez
+    assert started == [["pkexec", "/usr/bin/centinela", "autotune", "--segundos", "45", "--json"]]
+    server.AUTOTUNE["proc"] = None

@@ -33,6 +33,7 @@ WRITABLE = [
     "/sys/kernel/mm/transparent_hugepage/defrag",
     "/sys/devices/system/cpu/cpufreq/boost",
     "/sys/class/drm/card*/device/pp_sclk_od",
+    "/sys/class/drm/card*/device/pp_od_clk_voltage",
 ]
 OC_MAX = 15               # % máximo de overclock de la GPU integrada que centinela acepta
 
@@ -181,6 +182,8 @@ def apply_power(plan: Plan, act: Actuator) -> None:
     # Core Performance Boost: activo salvo en silencioso
     act.write("/sys/devices/system/cpu/cpufreq/boost", "0" if plan.power_profile == "silencioso" else "1")
     oc = max(0, min(OC_MAX, int(getattr(plan, "gpu_oc_percent", 0) or 0)))
+    if (load_state("prefs.json") or {}).get("autotune"):
+        return                       # el perfil del autoajuste (probado) manda sobre el del plan
     for card in sysfs.ls("/sys/class/drm/card[0-9]"):
         if sysfs.read(f"{card}/device/pp_sclk_od") is not None:
             act.write(f"{card}/device/pp_sclk_od", str(oc))
