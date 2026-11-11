@@ -52,6 +52,8 @@ jobs:
       - name: Kernel TISMA (perfil minimal)
         run: |
           make kernel-minimal BUILD_DIR="$PWD/build"
+          # CVE conocidas del kernel compilado (base de kernel.org): informe en el registro, antes de borrar el árbol
+          make cve-check BUILD_DIR="$PWD/build" || echo "AVISO: no se pudo comprobar las CVE del kernel"
           # El árbol de fuentes ya no hace falta (solo los .deb): libera ~8 GB para el chroot
           rm -rf build/linux-*/
           df -h /

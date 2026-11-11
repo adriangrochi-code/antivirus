@@ -18,8 +18,9 @@ check-paquetes:
 
 check-latest:
 	@if [ -n "$(LATEST)" ] && [ "$(LATEST)" != "$(KERNEL_VERSION)" ]; then \
-	  echo "Aviso: hay un parche más nuevo de la rama LTS: $(LATEST) (make KERNEL_VERSION=$(LATEST) ...)"; \
-	else echo "Kernel $(KERNEL_VERSION): última versión de su rama LTS"; fi
+	  echo "Aviso: hay un parche más nuevo de la rama: $(LATEST) (make KERNEL_VERSION=$(LATEST) ...)"; \
+	else echo "Kernel $(KERNEL_VERSION): última versión de su rama"; fi
+	@./kernel/rama-mas-nueva.sh $(KERNEL_VERSION) || true
 
 # Config base de Debian (amplio soporte de hardware, todo como módulos)
 base-config: $(DEBCFG)/config
