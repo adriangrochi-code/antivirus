@@ -1,0 +1,9 @@
+[Unit]
+Description=TISMA - recomprimir con zstd la memoria comprimida que no se usa
+ConditionPathExists=/sys/block/zram0/recompress
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/lib/tisma/zram-recomprimir
+Nice=15

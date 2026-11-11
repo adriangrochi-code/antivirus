@@ -148,11 +148,14 @@ def _memory(plan: Plan, hw: dict, bench: dict) -> None:
         plan.why("Hay swap en disco: zswap comprime en RAM antes de escribir al disco.")
     else:
         size = "ram" if ram <= 4096 else "ram / 2" if ram <= 32768 else "min(ram / 4, 16384)"
-        plan.zram = {"zram-size": size, "compression-algorithm": algo, "swap-priority": 100}
+        # Dos niveles: lz4 (muy rápido) para lo que se usa a menudo y, cada 15 min, recompresión con zstd (más
+        # denso) de lo que lleva ese tiempo sin tocarse (tisma-zram-recomprimir). Lo mejor de ambos en CPUs modestas.
+        comp = "lz4 zstd" if algo == "zstd" else "lz4"
+        plan.zram = {"zram-size": size, "compression-algorithm": comp, "swap-priority": 100}
         plan.cmdline.append("zswap.enabled=0")
         plan.sysctl.update({"vm.swappiness": "180", "vm.page-cluster": "0",
                             "vm.watermark_boost_factor": "0", "vm.watermark_scale_factor": "125"})
-        plan.why(f"Sin swap en disco: zram ({size}) con {algo}; swappiness alta porque "
+        plan.why(f"Sin swap en disco: zram ({size}) con {comp.replace(' ', ' + recompresión ')}; swappiness alta porque "
                  "el swap comprimido en RAM es mucho más rápido que releer desde disco.")
 
     plan.sysctl["vm.vfs_cache_pressure"] = "50" if ram >= 16384 else "100"

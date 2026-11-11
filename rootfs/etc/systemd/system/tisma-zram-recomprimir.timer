@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - recompresión de zram cada 15 minutos
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

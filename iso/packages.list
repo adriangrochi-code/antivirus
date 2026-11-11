@@ -16,7 +16,7 @@ systemd-zram-generator python3 cpupower-gui
 # --- Memoria y copias de seguridad ---
 systemd-oomd btrfs-progs restic
 # --- Salud del hardware: memtest86+ en el menú de arranque, SMART, errores de máquina ---
-memtest86+ smartmontools nvme-cli rasdaemon
+memtest86+ smartmontools nvme-cli rasdaemon btrfs-compsize
 # --- Hora autenticada (NTS) ---
 chrony
 # --- Escritorio KDE Plasma 6 ---

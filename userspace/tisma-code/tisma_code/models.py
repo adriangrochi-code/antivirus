@@ -318,6 +318,12 @@ def measure_threads(path: str, hw: dict, bench=None) -> dict:
     return res
 
 
+# Caché KV (el «contexto» del modelo) en 8 bits en vez de 16: la mitad de memoria para la misma conversación,
+# con pérdida de calidad inapreciable. La V comprimida exige Flash Attention («auto» lo activa si el backend
+# lo soporta; si no, LocalServer relanza sin compresión).
+KV_QUANT = ["-fa", "auto", "-ctk", "q8_0", "-ctv", "q8_0"]
+
+
 class LocalServer:
     """Sirve un GGUF descargado con llama-server (llama.cpp): puerto aleatorio y clave aleatoria."""
 
@@ -344,11 +350,27 @@ class LocalServer:
                 self.port = sk.getsockname()[1]
         th = threads or threads_for(str(p))
         thr = ["-t", str(th[0]), "-tb", str(th[1])] if th else []
-        self.proc = subprocess.Popen([exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                                      "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja", *thr],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        base = [exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
+                "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja", *thr]
+        self.kv_quant = True
+        self.proc = self._spawn(base + KV_QUANT)
         self.model = p.name
+        threading.Thread(target=self._fallback, args=(self.proc, base), daemon=True).start()
         return f"http://127.0.0.1:{self.port}/v1"
+
+    @staticmethod
+    def _spawn(argv: list[str]) -> subprocess.Popen:
+        return subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _fallback(self, proc: subprocess.Popen, base: list[str], wait_s: float = 180) -> None:
+        """Si el motor no admite la caché KV comprimida (requiere Flash Attention), se relanza sin ella."""
+        try:
+            rc = proc.wait(wait_s)
+        except subprocess.TimeoutExpired:
+            return                                   # sigue vivo: funcionó
+        if rc != 0 and self.proc is proc and self.kv_quant:
+            self.kv_quant = False
+            self.proc = self._spawn(base)
 
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:

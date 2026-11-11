@@ -57,5 +57,7 @@
   ],
   "ExtensionManifestV2Availability": 0,
   "BrowserThemeColor": "#5A2B8F",
-  "DefaultJavaScriptOptimizerSetting": 2
+  "DefaultJavaScriptOptimizerSetting": 2,
+  "HighEfficiencyModeEnabled": true,
+  "MemorySaverModeSavings": 1
 }

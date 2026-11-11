@@ -1,0 +1,10 @@
+#!/bin/sh
+# Recomprime con el algoritmo secundario (zstd) las páginas de zram que no se han tocado desde la última
+# ejecución, y vuelve a marcarlas todas. Las páginas pequeñas (ya bien comprimidas) no se tocan.
+for z in /sys/block/zram*; do
+    [ -w "$z/recompress" ] || continue
+    grep -q '\[' "$z/recomp_algorithm" 2>/dev/null || continue     # sin algoritmo secundario configurado
+    echo "type=idle threshold=1024" > "$z/recompress" 2>/dev/null || true
+    echo all > "$z/idle" 2>/dev/null || true
+done
+exit 0

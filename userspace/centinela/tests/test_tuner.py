@@ -167,3 +167,11 @@ def test_boot_drivers_follow_luks_to_disk(tmp_path, monkeypatch):
     b = hw.boot_drivers()
     assert b["root_fs"] == "btrfs"
     assert b["drivers"][:2] == ["dm_mod", "dm_crypt"] and "nvme" in b["drivers"]
+
+
+def test_zram_two_tier_compression():
+    p = make_plan(A275_HW, {"compression": {"zstd": {"ratio": 3.1, "decompress_mbs": 900},
+                                            "lz4": {"ratio": 2.2, "decompress_mbs": 2500}}}, "escritorio", "equilibrado")
+    assert p.zram["compression-algorithm"] == "lz4 zstd"
+    from centinela.apply import render_files
+    assert "compression-algorithm = lz4 zstd" in render_files(p)["systemd/zram-generator.conf"]

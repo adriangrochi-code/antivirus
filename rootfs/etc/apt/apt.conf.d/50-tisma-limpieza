@@ -1,0 +1,2 @@
+// Borrar de la caché de apt los paquetes que ya no se pueden descargar (cada semana).
+APT::Periodic::AutocleanInterval "7";

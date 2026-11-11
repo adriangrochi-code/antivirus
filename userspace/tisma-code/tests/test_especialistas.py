@@ -194,3 +194,31 @@ def test_threads_measurement_and_choice(tmp_path, monkeypatch):
     speeds = {(2, 4): (4.0, 30.0), (4, 2): (4.4, 35.0)}               # si los datos dicen otra cosa, mandan
     r = models.measure_threads("/m/y.gguf", {}, bench=lambda t, tb: speeds[(t, tb)])
     assert models.threads_for("y.gguf") == (4, 2)
+
+
+def test_local_server_kv_quant_with_fallback(tmp_path, monkeypatch):
+    import subprocess as sp
+    from tisma_code import models
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path)
+    (tmp_path / "a__b").mkdir()
+    g = tmp_path / "a__b" / "m.gguf"
+    g.write_bytes(b"0" * 1000)
+    monkeypatch.setattr(models.shutil, "which", lambda n: "/bin/false")
+    spawned = []
+
+    def fake_spawn(argv):
+        spawned.append(argv)
+        # primero falla (sin soporte de Flash Attention); el relanzamiento sin compresión sigue vivo
+        return sp.Popen(["false"] if len(spawned) == 1 else ["sleep", "5"])
+    srv = models.LocalServer()
+    monkeypatch.setattr(srv, "_spawn", fake_spawn)
+    monkeypatch.setattr(models, "threads_for", lambda f: None)
+    srv.start(str(g), {"ram_mb": 16000, "vram_mb": 0})
+    assert "-ctv" in spawned[0] and "q8_0" in spawned[0]
+    import time
+    for _ in range(50):
+        if len(spawned) == 2:
+            break
+        time.sleep(0.05)
+    assert len(spawned) == 2 and "-ctv" not in spawned[1] and srv.kv_quant is False
+    srv.stop()
