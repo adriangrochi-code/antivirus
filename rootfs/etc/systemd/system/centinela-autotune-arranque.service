@@ -4,9 +4,14 @@ After=centinela-power.service
 
 [Service]
 Type=oneshot
+# Una sola vez por arranque: si fase 2 se relanza no se vuelve a aplicar (el undervolt se acumularía)
+RemainAfterExit=yes
 ExecStart=/usr/bin/centinela autotune --al-arrancar
 ProtectSystem=strict
-ReadWritePaths=/var/lib/centinela /run/centinela
+ReadWritePaths=/var/lib/centinela
+# /run/centinela no existe al arrancar: sin esto la unidad fallaba (226/NAMESPACE)
+RuntimeDirectory=centinela
+RuntimeDirectoryPreserve=yes
 ProtectHome=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes

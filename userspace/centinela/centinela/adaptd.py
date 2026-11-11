@@ -19,7 +19,7 @@ import threading
 from dataclasses import dataclass, field
 
 from . import sysfs
-from .apply import Actuator, apply_power
+from .apply import STATE_DIR, Actuator, apply_power, load_state, save_state
 from .tuner import Plan
 
 log = logging.getLogger("centinela.adaptd")
@@ -115,8 +115,10 @@ def decide(psi_mem: dict, psi_cpu: dict, avail_now: float, avail_pred: float,
 
 class AdaptDaemon:
     def __init__(self, base_plan: Plan, interval: float = 3.0, horizon_s: float = 30.0,
-                 dry_run: bool = False, allow_game_boost: bool = True):
+                 dry_run: bool = False, allow_game_boost: bool = True, reload_plan=None):
         self.base = base_plan
+        self.reload_plan = reload_plan
+        self._prefs_mtime = self._mtime()
         self.interval = interval
         self.horizon_steps = horizon_s / interval
         self.act = Actuator(dry_run=dry_run)
@@ -164,9 +166,32 @@ class AdaptDaemon:
             temps = [sysfs.read_int(f"{h}/temp1_input") or 0 for h in sysfs.ls(f"{card}/device/hwmon/hwmon*")]
             if temps and max(temps) >= 90_000:
                 self.act.write(f"{card}/device/pp_sclk_od", "0")
+                # Se recuerda: si no, el siguiente cambio de estado volvía a poner el overclock
+                prefs = load_state("prefs.json") or {}
+                prefs["gpu_oc"] = 0
+                prefs.pop("autotune", None)
+                save_state("prefs.json", prefs)
                 log.warning("GPU a %.0f °C: overclock revertido a reloj de fábrica", max(temps) / 1000)
 
+    @staticmethod
+    def _mtime() -> float:
+        try:
+            return os.stat(os.path.join(STATE_DIR, "prefs.json")).st_mtime
+        except OSError:
+            return 0.0
+
+    def _maybe_reload(self) -> None:
+        m = self._mtime()
+        if self.reload_plan and m != self._prefs_mtime:
+            self._prefs_mtime = m
+            try:
+                self.base = self.reload_plan()
+                log.info("Preferencias cambiadas: plan base %s / %s", self.base.power_profile, self.base.use_case)
+            except Exception:  # noqa: BLE001
+                log.exception("No se pudo recalcular el plan")
+
     def tick(self) -> Decision:
+        self._maybe_reload()
         self.thermal_guard()
         avail = mem_available_mb()
         self.mem.update(avail)

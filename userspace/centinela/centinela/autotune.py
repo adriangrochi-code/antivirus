@@ -72,7 +72,16 @@ def set_gpu_oc(act: Actuator, card: str, pct: int) -> None:
     act.write(f"{card}/device/pp_sclk_od", str(max(0, min(OC_MAX, int(pct)))))
 
 
-def stock_curve(card: str) -> list[tuple[int, int, int]]:
+def stock_curve(card: str, reset: bool = False, dry_run: bool = False) -> list[tuple[int, int, int]]:
+    """Curva de reloj/voltaje. Con reset=True se restaura antes la de fábrica: si no, se leía la ya rebajada y
+    cada aplicación restaba otros N mV (el undervolt se acumulaba hasta el mínimo y colgaba la GPU)."""
+    if reset and not dry_run:
+        for val in ("r", "c"):
+            try:
+                with open(sysfs.path(f"{card}/device/pp_od_clk_voltage"), "w") as fh:
+                    fh.write(val + "\n")
+            except OSError:
+                pass
     table = sysfs.read(f"{card}/device/pp_od_clk_voltage") or ""
     sec = table.split("OD_SCLK:")[1].split("OD_")[0] if "OD_SCLK:" in table else ""
     return [(int(a), int(b), int(c)) for a, b, c in re.findall(r"(\d+):\s*(\d+)Mhz\s+(\d+)mV", sec, re.I)]
@@ -182,6 +191,11 @@ def stability_test(seconds: int = 45) -> StabilityResult:
                 motivo = "error del kernel: " + errs[0]
                 stress.kill()
                 break
+            if gpu and gpu.poll() is not None:
+                # Sin carga de GPU la prueba solo validaría la CPU: se da por no superada (lo seguro)
+                motivo = "la carga de GPU (glmark2) se cerró: no se pudo probar la GPU"
+                stress.kill()
+                break
             time.sleep(1)
         out = stress.communicate()[0] or "{}"
     finally:
@@ -198,7 +212,8 @@ def stability_test(seconds: int = 45) -> StabilityResult:
 
 
 # ---------------------------------------------------------------- búsqueda
-def search(steps: list[int], apply, test, progress=lambda *_: None, known_bad: set | None = None) -> tuple[int, list]:
+def search(steps: list[int], apply, test, progress=lambda *_: None, known_bad: set | None = None,
+           before=lambda v: None) -> tuple[int, list]:
     """Prueba los pasos en orden; devuelve (valor estable con margen, historial).
     El valor estable es el anterior al último que pasó si hubo un fallo (margen de un paso)."""
     history, stable = [], 0
@@ -208,6 +223,7 @@ def search(steps: list[int], apply, test, progress=lambda *_: None, known_bad: s
             history.append({"valor": v, "ok": False, "motivo": "inestable en un intento anterior"})
             break
         progress(v)
+        before(v)                       # la marca «en prueba» va ANTES de aplicar: un cuelgue al aplicar cuenta
         apply(v)
         r = test(v)
         history.append({"valor": v, "ok": r.ok, "motivo": r.motivo, "temp_max": r.temp_max})
@@ -249,7 +265,6 @@ def run(seconds: int = 45, dry_run: bool = False, test=stability_test) -> dict:
         def t(v):
             report["fase"] = f"{knob} {v}"
             write_progress(report)
-            mark(knob, v)
             r = test(seconds)
             report["pasos"].append({"ajuste": knob, "valor": v, "ok": r.ok, "motivo": r.motivo,
                                     "temp_max": r.temp_max, "detalle": r.detalle})
@@ -257,25 +272,42 @@ def run(seconds: int = 45, dry_run: bool = False, test=stability_test) -> dict:
             return r
         return t
 
-    # 1) Modo OC: Turbo encendido
-    if caps["turbo"]:
-        act.write("/sys/devices/system/cpu/cpufreq/boost", "1")
-        report["resultado"]["turbo"] = True
-    # 2) Overclock de GPU por pasos de 2 %
-    for card in caps["gpu_oc"]:
-        name = card.rsplit("/", 1)[-1]
-        oc, _ = search(list(range(2, OC_MAX + 1, 2)) + ([OC_MAX] if OC_MAX % 2 else []),
-                       lambda v, c=card: set_gpu_oc(act, c, v), tested(f"oc {name}"),
-                       known_bad=set(bad.get(f"oc {name}", [])))
-        report["resultado"][f"gpu_oc_{name}"] = oc
-    # 3) Undervolt de GPU por pasos de 10 mV (con el overclock ya fijado)
-    for card, method in caps["gpu_uv"].items():
-        name = card.rsplit("/", 1)[-1]
-        base = stock_curve(card) if method == "curve" else None
-        uv, _ = search(list(range(-10, UV_MIN_MV - 1, -10)),
-                       lambda v, c=card, m=method, b=base: set_gpu_uv(c, m, v, b, dry_run), tested(f"uv {name}"),
-                       known_bad=set(bad.get(f"uv {name}", [])))
-        report["resultado"][f"gpu_uv_mv_{name}"] = uv
+    try:
+        # 1) Modo OC: Turbo encendido
+        if caps["turbo"]:
+            act.write("/sys/devices/system/cpu/cpufreq/boost", "1")
+            report["resultado"]["turbo"] = True
+        # 2) Overclock de GPU por pasos de 2 %
+        for card in caps["gpu_oc"]:
+            name = card.rsplit("/", 1)[-1]
+            knob = f"oc {name}"
+            oc, _ = search(list(range(2, OC_MAX + 1, 2)) + ([OC_MAX] if OC_MAX % 2 else []),
+                           lambda v, c=card: set_gpu_oc(act, c, v), tested(knob),
+                           known_bad=set(bad.get(knob, [])), before=lambda v, k=knob: mark(k, v))
+            report["resultado"][f"gpu_oc_{name}"] = oc
+        # 3) Undervolt de GPU por pasos de 10 mV (con el overclock ya fijado), siempre desde la curva de fábrica
+        for card, method in caps["gpu_uv"].items():
+            name = card.rsplit("/", 1)[-1]
+            knob = f"uv {name}"
+            base = None
+            if method == "curve":
+                base = stock_curve(card, reset=True, dry_run=dry_run)
+                oc = report["resultado"].get(f"gpu_oc_{name}")
+                if oc:
+                    set_gpu_oc(act, card, oc)          # el reset de la tabla puede deshacer el overclock
+            uv, _ = search(list(range(-10, UV_MIN_MV - 1, -10)),
+                           lambda v, c=card, m=method, b=base: set_gpu_uv(c, m, v, b, dry_run), tested(knob),
+                           known_bad=set(bad.get(knob, [])), before=lambda v, k=knob: mark(k, v))
+            report["resultado"][f"gpu_uv_mv_{name}"] = uv
+    except BaseException:
+        # Error, falta de centinela-estres o Ctrl+C: nunca dejar aplicado un paso sin probar
+        for c in gpu_cards():
+            reset_gpu(c, dry_run)
+        if not dry_run and MARKER.exists():
+            MARKER.unlink()
+        report["estado"] = "interrumpido: valores de fábrica restaurados"
+        write_progress(report)
+        raise
     if not dry_run and MARKER.exists():
         MARKER.unlink()
     report["estado"] = "terminado"
@@ -315,5 +347,8 @@ def boot_apply(dry_run: bool = False) -> str:
             set_gpu_oc(act, c, res[f"gpu_oc_{name}"])
         m = uv_method(c)
         if m and res.get(f"gpu_uv_mv_{name}"):
-            set_gpu_uv(c, m, res[f"gpu_uv_mv_{name}"], stock_curve(c) if m == "curve" else None, dry_run)
+            base = stock_curve(c, reset=True, dry_run=dry_run) if m == "curve" else None
+            if m == "curve" and f"gpu_oc_{name}" in res:
+                set_gpu_oc(act, c, res[f"gpu_oc_{name}"])
+            set_gpu_uv(c, m, res[f"gpu_uv_mv_{name}"], base, dry_run)
     return "Perfil estable aplicado" if res else "Sin perfil automático"

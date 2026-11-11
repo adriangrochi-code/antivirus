@@ -4,7 +4,7 @@ After=centinela-firstboot.service systemd-udevd.service
 
 [Service]
 ProtectSystem=strict
-ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d /etc/centinela /boot/grub
+ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d /etc/centinela /boot/grub -/etc/initramfs-tools -/etc/xdg
 Type=oneshot
 ExecStart=/usr/bin/centinela apply
 RemainAfterExit=yes

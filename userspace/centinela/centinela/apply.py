@@ -62,13 +62,14 @@ class Actuator:
             raise PermissionError(f"Ruta fuera de la lista blanca: {p}")
         if sysfs.read(p) == str(value):
             return False
-        self.changes.append((p, str(value)))
         if self.dry_run:
+            self.changes.append((p, str(value)))
             log.info("[dry-run] %s <- %s", p, value)
             return True
         try:
             with open(sysfs.path(p), "w", encoding="utf-8") as fh:
                 fh.write(str(value))
+            self.changes.append((p, str(value)))   # solo lo que de verdad se escribió
             log.info("%s <- %s", p, value)
             return True
         except OSError as e:
@@ -153,7 +154,13 @@ def persist(plan: Plan, dry_run: bool = False) -> list[str]:
         except OSError:
             cur = ""
         files["xdg/kwinrc"] = light_kwinrc(cur)
-    return [_write_file(rel, content, dry_run) for rel, content in files.items()]
+    out = []
+    for rel, content in files.items():
+        try:
+            out.append(_write_file(rel, content, dry_run))
+        except OSError as e:           # uno que falle (p. ej. solo lectura) no debe impedir aplicar el resto
+            log.warning("No se pudo escribir %s: %s", rel, e)
+    return out
 
 
 def apply_runtime(plan: Plan, act: Actuator) -> None:
@@ -206,9 +213,11 @@ def apply_power(plan: Plan, act: Actuator) -> None:
         act.write(f"{hwmon}/power1_cap", str(int(r["target_w"] * 1e6)))
     # Core Performance Boost: activo salvo en silencioso
     act.write("/sys/devices/system/cpu/cpufreq/boost", "0" if plan.power_profile == "silencioso" else "1")
-    oc = max(0, min(OC_MAX, int(getattr(plan, "gpu_oc_percent", 0) or 0)))
-    if (load_state("prefs.json") or {}).get("autotune"):
+    prefs = load_state("prefs.json") or {}
+    if prefs.get("autotune"):
         return                       # el perfil del autoajuste (probado) manda sobre el del plan
+    # La elección del usuario (o la reversión por temperatura) manda sobre la sugerencia del plan
+    oc = max(0, min(OC_MAX, int(prefs["gpu_oc"] if "gpu_oc" in prefs else (getattr(plan, "gpu_oc_percent", 0) or 0))))
     for card in sysfs.ls("/sys/class/drm/card[0-9]"):
         if sysfs.read(f"{card}/device/pp_sclk_od") is not None:
             act.write(f"{card}/device/pp_sclk_od", str(oc))

@@ -175,3 +175,20 @@ def test_zram_two_tier_compression():
     assert p.zram["compression-algorithm"] == "lz4 zstd"
     from centinela.apply import render_files
     assert "compression-algorithm = lz4 zstd" in render_files(p)["systemd/zram-generator.conf"]
+
+
+def test_user_oc_choice_beats_plan_and_apply_keeps_prefs(tmp_path, monkeypatch):
+    import json
+    from centinela import apply, sysfs
+    monkeypatch.setattr(apply, "STATE_DIR", str(tmp_path))
+    (tmp_path / "prefs.json").write_text(json.dumps({"gpu_oc": 0, "autotune": None, "perfil": "rendimiento"}))
+    root = tmp_path / "sys"
+    card = root / "sys/class/drm/card0/device"
+    card.mkdir(parents=True)
+    (card / "pp_sclk_od").write_text("0")
+    monkeypatch.setattr(sysfs, "ROOT", str(root))
+    p = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "rendimiento")
+    assert p.gpu_oc_percent == 10
+    act = Actuator(dry_run=True)
+    apply.apply_power(p, act)
+    assert not any(path.endswith("pp_sclk_od") and v == "10" for path, v in act.changes)   # el usuario puso 0

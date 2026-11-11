@@ -282,7 +282,8 @@ def memory_modules() -> list[dict]:
         size = struct.unpack_from("<H", raw, 0x0C)[0]
         if size in (0, 0xFFFF):
             continue                                   # zócalo vacío
-        mb = (size & 0x7FFF) * (1 if size & 0x8000 else 1024) // (1024 if size & 0x8000 else 1)
+        # Bit 15 = 0: el valor está en MB; bit 15 = 1: en KB (SMBIOS 3.x, tipo 17, desplazamiento 0Ch)
+        mb = (size & 0x7FFF) // 1024 if size & 0x8000 else size & 0x7FFF
         if size == 0x7FFF and len(raw) >= 0x20:
             mb = struct.unpack_from("<I", raw, 0x1C)[0]
         speed = struct.unpack_from("<H", raw, 0x15)[0]

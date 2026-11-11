@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 
@@ -27,8 +28,27 @@ from .tuner import POWER_PROFILES, USE_CASES, Plan, make_plan
 KERNEL_SCRIPT = os.environ.get("CENTINELA_KERNEL_SCRIPT", "/usr/lib/centinela/kernel/build-kernel.sh")
 
 
+def _factory_power_limits(probe: dict) -> None:
+    """Guarda los límites de potencia la primera vez que se ven y los anota en el probe como «fabrica_w»."""
+    saved = ap.load_state("potencia-fabrica.json") or {}
+    changed = False
+    for z in (probe.get("power") or {}).get("rapl", []):
+        for cname, cons in (z.get("constraints") or {}).items():
+            key = f"{z.get('zone')}:{cname}"
+            if key not in saved and cons.get("limit_w"):
+                saved[key] = cons["limit_w"]
+                changed = True
+            cons["fabrica_w"] = saved.get(key)
+    if changed:
+        try:
+            ap.save_state("potencia-fabrica.json", saved)
+        except OSError:
+            pass
+
+
 def _plan_from_state(args) -> Plan:
     probe = ap.load_state("hardware.json") or hw.probe()
+    _factory_power_limits(probe)
     measures = ap.load_state("bench.json") or {}
     prefs = ap.load_state("prefs.json") or {}
     use = getattr(args, "uso", None) or prefs.get("uso", "escritorio")
@@ -71,7 +91,11 @@ def cmd_plan(args) -> int:
 
 def cmd_apply(args) -> int:
     plan = _plan_from_state(args)
-    ap.save_state("prefs.json", {"uso": plan.use_case, "perfil": plan.power_profile})
+    # Se conservan las demás preferencias (overclock elegido, perfil del autoajuste): antes se sobrescribía
+    # el archivo en cada arranque y el perfil probado del autoajuste nunca se volvía a aplicar.
+    prefs = ap.load_state("prefs.json") or {}
+    prefs.update({"uso": plan.use_case, "perfil": plan.power_profile})
+    ap.save_state("prefs.json", prefs)
     for f in ap.persist(plan, dry_run=args.dry_run):
         print(f"escrito {f}")
     act = ap.Actuator(dry_run=args.dry_run)
@@ -94,10 +118,26 @@ def cmd_power(args) -> int:
     return 0
 
 
+def _kernel_version() -> str:
+    """Última versión de la rama LTS (con todos los parches) o la fijada si no hay red."""
+    if os.environ.get("KERNEL_VERSION"):
+        return os.environ["KERNEL_VERSION"]
+    latest = os.path.join(os.path.dirname(KERNEL_SCRIPT), "latest-lts.sh")
+    try:
+        v = subprocess.run([latest], capture_output=True, text=True, timeout=60).stdout.strip()
+        if re.fullmatch(r"\d+\.\d+\.\d+", v):
+            return v
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return "6.18.63"
+
+
 def cmd_build_kernel(args) -> int:
     plan = _plan_from_state(args)
     ap.persist(plan)
-    env = dict(os.environ, KERNEL_PROFILE="tailored",
+    version = _kernel_version()
+    print(f"Versión del kernel: {version}")
+    env = dict(os.environ, KERNEL_PROFILE="tailored", KERNEL_VERSION=version,
                HW_FRAGMENT=os.path.join(ap.ETC, "centinela/hardware.config"),
                BUILTIN_MODULES=os.path.join(ap.ETC, "centinela/builtin-modules.txt"),
                BUILD_DIR=args.build_dir)
@@ -118,7 +158,15 @@ def cmd_build_kernel(args) -> int:
         print("AVISO DE SEGURIDAD: con la clave de firma en disco, cualquiera que obtenga root podrá firmar\n"
               "módulos del kernel y anular la protección lockdown. Úsalo solo si necesitas drivers externos\n"
               "(NVIDIA/CUDA). La clave queda en /var/lib/centinela/keys (solo root).")
-        setup_dkms_signing(os.path.join(args.build_dir, f"linux-{os.environ.get('KERNEL_VERSION', '6.18.63')}"))
+        setup_dkms_signing(os.path.join(args.build_dir, f"linux-{version}"))
+    else:
+        # Sin --firmar-dkms la clave privada de firma de módulos no debe quedar en disco: con ella, root podría
+        # firmar módulos y saltarse el lockdown.
+        for name in ("signing_key.pem", "signing_key.x509.priv"):
+            try:
+                os.remove(os.path.join(args.build_dir, f"linux-{version}", "certs", name))
+            except FileNotFoundError:
+                pass
     if args.install and debs:
         subprocess.run(["dpkg", "-i", *debs], check=True)
         print("Kernel instalado. El kernel genérico sigue disponible en 'Opciones avanzadas' de GRUB.")
@@ -225,8 +273,9 @@ def cmd_boot(args) -> int:
 
 def cmd_adaptd(args) -> int:
     plan = _plan_from_state(args)
-    AdaptDaemon(plan, interval=args.interval, dry_run=args.dry_run,
-                allow_game_boost=not args.no_game_boost).run()
+    # Si el usuario cambia de perfil (centinela-perfil@), adaptd recalcula su plan base en vez de volver al viejo
+    AdaptDaemon(plan, interval=args.interval, dry_run=args.dry_run, allow_game_boost=not args.no_game_boost,
+                reload_plan=lambda: _plan_from_state(argparse.Namespace(uso=None, perfil=None, quick=True))).run()
     return 0
 
 
@@ -291,13 +340,22 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# Lo único que se puede pedir con pkexec (autorización de «overclock» desde TISMA Rendimiento). El resto
+# (compilar e instalar kernels, aplicar planes…) exige sudo: si no, la misma autorización (que se recuerda unos
+# minutos) permitiría a cualquier programa de la sesión instalar un kernel compilado desde una carpeta suya.
+PKEXEC_ALLOWED = {"oc", "autotune", "estado", "arranque"}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if os.environ.get("PKEXEC_UID") and args.cmd not in PKEXEC_ALLOWED:
+        print(f"error: «centinela {args.cmd}» no se puede ejecutar con pkexec; usa sudo", file=sys.stderr)
+        return 2
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(levelname)s %(name)s: %(message)s")
     try:
         return args.func(args)
-    except (ValueError, PermissionError) as e:
+    except (ValueError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

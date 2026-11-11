@@ -78,3 +78,29 @@ def test_crash_during_test_restores_stock(fake):
     assert (root / "sys/class/drm/card0/device/pp_sclk_od").read_text().strip() == "0"
     assert json.loads((state / "autotune-inestables.json").read_text()) == {"oc card0": [12]}
     assert "autotune" not in json.loads((state / "prefs.json").read_text())
+
+
+def test_marker_written_before_applying_each_step():
+    order = []
+    autotune.search([2, 4], lambda v: order.append(("aplicar", v)), lambda v: StabilityResult(v < 4, "x"),
+                    before=lambda v: order.append(("marca", v)))
+    assert order[:4] == [("marca", 2), ("aplicar", 2), ("marca", 4), ("aplicar", 4)]
+
+
+def test_run_restores_factory_values_on_error(monkeypatch):
+    resets = []
+    monkeypatch.setattr(autotune, "capabilities", lambda: {"gpu_oc": ["/sys/class/drm/card0"], "gpu_uv": {},
+                                                            "turbo": False, "cpu_uv": False, "cpu_uv_motivo": ""})
+    monkeypatch.setattr(autotune, "gpu_cards", lambda: ["/sys/class/drm/card0"])
+    monkeypatch.setattr(autotune, "reset_gpu", lambda c, dry_run=False: resets.append(c))
+    monkeypatch.setattr(autotune, "set_gpu_oc", lambda act, c, v: None)
+    monkeypatch.setattr(autotune, "write_progress", lambda d: None)
+
+    def boom(seconds):
+        raise FileNotFoundError("centinela-estres")
+    try:
+        autotune.run(10, dry_run=True, test=boom)
+        raise AssertionError("debe propagar el error")
+    except FileNotFoundError:
+        pass
+    assert resets == ["/sys/class/drm/card0"]

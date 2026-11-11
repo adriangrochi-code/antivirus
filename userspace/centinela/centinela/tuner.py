@@ -264,7 +264,9 @@ def _cpu_power(plan: Plan, hw: dict) -> None:
     for z in pw.get("rapl", []):
         if z.get("name", "").startswith("package"):
             for cname, cons in z["constraints"].items():
-                cur, mx = cons["limit_w"], cons["max_w"]
+                # «fabrica_w»: el límite visto la primera vez (cli lo conserva). Sin él, aplicar «silencioso» dos
+                # veces bajaba al 60 % del 60 %, y «equilibrado» ya no volvía al valor original.
+                cur, mx = cons.get("fabrica_w") or cons["limit_w"], cons["max_w"]
                 if not cur:
                     continue
                 if prof == "rendimiento" and mx and mx > cur:
