@@ -1,13 +1,13 @@
-"""Energía adaptativa: con batería, cada componente a su modo de bajo consumo; con cargador, a pleno rendimiento.
+"""Energía adaptativa: con batería se ahorra SOLO en lo que no se nota al usar el equipo.
 
-Lo que con batería se cambia (y con cargador se deshace), al conectar o desconectar el cargador:
+Criterio: el portátil se usa con normalidad con batería. Nada que el usuario perciba (USB, audio, red) cambia;
+solo ajustes internos invisibles. Con batería (y al revés con cargador), al conectar o desconectar el cargador:
 * SATA: gestión de energía del enlace (med_power_with_dipm): el disco entra en reposo entre accesos.
-* PCIe: ASPM «powersupersave» y gestión de energía en tiempo de ejecución de los dispositivos PCI (auto).
-* USB: suspensión automática de lo que no se usa, EXCEPTO teclados, ratones y mandos (clase HID), que con
-  ella pierden pulsaciones o tardan en despertar.
-* Audio: el códec HDA se apaga tras 1 s de silencio.
+* PCIe: ASPM «powersave» (moderado) y gestión de energía en tiempo de ejecución de los dispositivos PCI,
+  EXCEPTO red y controladoras USB (sin cortes de Wi-Fi ni retrasos al conectar algo).
 * Escritura a disco agrupada cada 15 s en vez de 5 s (el disco despierta menos).
 * Estadísticas de memoria del kernel cada 10 s (menos despertares de todas las CPU).
+No se tocan: los puertos y dispositivos USB (funcionan siempre igual) ni el audio (sin clics al volver a sonar).
 Todo a través de la lista blanca de centinela (Actuator): nada fuera de estas rutas.
 
 Umbrales de carga (opcional, portátiles con soporte: ThinkPad, muchos ASUS/Dell/Lenovo): cargar solo hasta
@@ -19,10 +19,11 @@ from __future__ import annotations
 from . import sysfs
 from .apply import Actuator, load_state, save_state
 
-BATTERY = {"sata": "med_power_with_dipm", "aspm": "powersupersave", "runtime_pm": "auto", "usb": "auto",
-           "audio": "1", "dirty_writeback": "1500", "stat_interval": "10"}
-AC = {"sata": "max_performance", "aspm": "default", "runtime_pm": "on", "usb": "on",
-      "audio": "0", "dirty_writeback": "500", "stat_interval": "1"}
+BATTERY = {"sata": "med_power_with_dipm", "aspm": "powersave", "runtime_pm": "auto",
+           "dirty_writeback": "1500", "stat_interval": "10"}
+AC = {"sata": "max_performance", "aspm": "default", "runtime_pm": "on", "dirty_writeback": "500", "stat_interval": "1"}
+# Clases PCI que nunca se suspenden: red (0x02), controladoras USB (0x0c03)
+PCI_KEEP = ("0x02", "0x0c03")
 
 
 def on_ac() -> bool:
@@ -37,13 +38,6 @@ def on_ac() -> bool:
     return not any(sysfs.read(f"{b}/status") == "Discharging" for b in batteries) and bool(mains)
 
 
-def _is_hid(dev: str) -> bool:
-    """¿Algún interfaz del dispositivo USB es HID (teclado, ratón, mando) o es un concentrador?"""
-    if sysfs.read(f"{dev}/bDeviceClass") == "09":                 # hub
-        return True
-    return any(sysfs.read(f"{i}/bInterfaceClass") == "03" for i in sysfs.ls(f"{dev}/*:*"))
-
-
 def apply(mode: str, act: Actuator) -> dict:
     v = BATTERY if mode == "bateria" else AC
     for h in sysfs.ls("/sys/class/scsi_host/host*"):
@@ -52,13 +46,9 @@ def apply(mode: str, act: Actuator) -> dict:
     if sysfs.read("/sys/module/pcie_aspm/parameters/policy") is not None:
         act.write("/sys/module/pcie_aspm/parameters/policy", v["aspm"])
     for d in sysfs.ls("/sys/bus/pci/devices/*"):
-        if sysfs.read(f"{d}/power/control") is not None:
+        cls = sysfs.read(f"{d}/class") or ""
+        if sysfs.read(f"{d}/power/control") is not None and not cls.startswith(PCI_KEEP):
             act.write(f"{d}/power/control", v["runtime_pm"])
-    for d in sysfs.ls("/sys/bus/usb/devices/*"):
-        if sysfs.read(f"{d}/power/control") is not None and sysfs.read(f"{d}/idVendor") and not _is_hid(d):
-            act.write(f"{d}/power/control", v["usb"])
-    if sysfs.read("/sys/module/snd_hda_intel/parameters/power_save") is not None:
-        act.write("/sys/module/snd_hda_intel/parameters/power_save", v["audio"])
     act.sysctl("vm.dirty_writeback_centisecs", v["dirty_writeback"])
     act.sysctl("vm.stat_interval", v["stat_interval"])
     apply_thresholds(act)

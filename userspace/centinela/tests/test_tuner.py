@@ -210,6 +210,11 @@ def test_energy_modes_battery_and_ac(tmp_path, monkeypatch):
     mk("/sys/class/scsi_host/host0/link_power_management_policy", "max_performance")
     mk("/sys/module/pcie_aspm/parameters/policy", "default")
     mk("/sys/bus/pci/devices/0000:00:01.0/power/control", "on")
+    mk("/sys/bus/pci/devices/0000:00:01.0/class", "0x060400")             # puente PCI: sí se gestiona
+    mk("/sys/bus/pci/devices/0000:02:00.0/power/control", "on")
+    mk("/sys/bus/pci/devices/0000:02:00.0/class", "0x028000")             # Wi-Fi: no se toca
+    mk("/sys/bus/pci/devices/0000:00:14.0/power/control", "on")
+    mk("/sys/bus/pci/devices/0000:00:14.0/class", "0x0c0330")             # controladora USB: no se toca
     mk("/sys/bus/usb/devices/1-1/idVendor", "046d")                     # ratón: no se suspende
     mk("/sys/bus/usb/devices/1-1/power/control", "on")
     mk("/sys/bus/usb/devices/1-1/1-1:1.0/bInterfaceClass", "03")
@@ -225,9 +230,11 @@ def test_energy_modes_battery_and_ac(tmp_path, monkeypatch):
     energia.apply("bateria", act)
     ch = dict(act.changes)
     assert ch["/sys/class/scsi_host/host0/link_power_management_policy"] == "med_power_with_dipm"
-    assert ch["/sys/module/pcie_aspm/parameters/policy"] == "powersupersave"
-    assert ch["/sys/bus/usb/devices/1-2/power/control"] == "auto"
-    assert "/sys/bus/usb/devices/1-1/power/control" not in ch               # HID intacto
+    assert ch["/sys/module/pcie_aspm/parameters/policy"] == "powersave"
+    assert ch["/sys/bus/pci/devices/0000:00:01.0/power/control"] == "auto"
+    assert not any(k.startswith("/sys/bus/usb/") for k in ch)                 # USB: nunca se toca
+    assert "/sys/bus/pci/devices/0000:02:00.0/power/control" not in ch       # red intacta
+    assert "/sys/bus/pci/devices/0000:00:14.0/power/control" not in ch       # controladora USB intacta
     assert ch["/proc/sys/vm/dirty_writeback_centisecs"] == "1500"
     act = Actuator(dry_run=True)
     assert "80 %" in energia.set_threshold(80, act)

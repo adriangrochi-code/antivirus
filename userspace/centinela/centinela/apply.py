@@ -39,8 +39,6 @@ WRITABLE = [
     "/sys/class/scsi_host/host*/link_power_management_policy",
     "/sys/module/pcie_aspm/parameters/policy",
     "/sys/bus/pci/devices/*/power/control",
-    "/sys/bus/usb/devices/*/power/control",
-    "/sys/module/snd_hda_intel/parameters/power_save",
     "/proc/sys/vm/dirty_writeback_centisecs", "/proc/sys/vm/stat_interval",
     "/sys/class/power_supply/BAT*/charge_control_start_threshold",
     "/sys/class/power_supply/BAT*/charge_control_end_threshold",
