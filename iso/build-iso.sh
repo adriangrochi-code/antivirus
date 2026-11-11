@@ -298,6 +298,8 @@ in_chroot systemctl enable tisma-completar.service 2>/dev/null || true
 in_chroot systemctl enable tisma-drivers.timer 2>/dev/null || true
 # Driver gráfico en prueba (GPU AMD GCN 1/2 → amdgpu): confirmar o descartar tras arrancar
 in_chroot systemctl enable centinela-graficos.timer 2>/dev/null || true
+# Comparaciones A/B: reaplicar los ajustes ganadores y medir cada arranque para comparar kernels
+in_chroot systemctl enable centinela-comparar-reaplicar.service centinela-comparar-registrar.timer 2>/dev/null || true
 chmod 755 "$CHROOT/etc/grub.d/05_tisma_graficos"
 # TRIM semanal de todos los SSD (incluido ext4, que ya no usa «discard» síncrono)
 in_chroot systemctl enable fstrim.timer 2>/dev/null || log "AVISO: sin fstrim.timer"

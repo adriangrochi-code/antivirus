@@ -1,0 +1,13 @@
+# Vuelve a aplicar en cada arranque los ajustes que ganaron en «centinela comparar probar … --dejar»
+# (los de /sys se pierden al reiniciar). Sin decisiones guardadas no hace nada.
+[Unit]
+Description=Centinela: reaplicar los ajustes que ganaron en las comparaciones A/B
+ConditionPathExists=/var/lib/centinela/comparar/decisiones.json
+After=centinela-power.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela comparar reaplicar
+
+[Install]
+WantedBy=multi-user.target

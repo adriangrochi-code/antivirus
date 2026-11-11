@@ -1,0 +1,8 @@
+[Unit]
+Description=Centinela: medir cada arranque para comparar kernels (4 min después, con el sistema ya asentado)
+
+[Timer]
+OnBootSec=4min
+
+[Install]
+WantedBy=timers.target

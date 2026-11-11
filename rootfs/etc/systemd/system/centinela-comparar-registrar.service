@@ -1,0 +1,10 @@
+# Medidas de este arranque (tiempo de arranque, memoria, latencia del planificador) etiquetadas con el kernel,
+# para «centinela comparar kernels». Solo con varios kernels instalados y con el equipo libre y enchufado.
+[Unit]
+Description=Centinela: registrar las medidas de este arranque para comparar kernels
+ConditionKernelCommandLine=!boot=live
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela comparar registrar

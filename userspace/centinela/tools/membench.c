@@ -5,6 +5,9 @@
 //              lo que revela L1/L2/L3/RAM
 //   c2c        latencia núcleo a núcleo (ping-pong de una línea de caché):
 //              revela CCDs, clusters de núcleos E y sockets
+//   --sched    latencia del planificador (sin fijar CPUs: la decide el kernel): ida y vuelta entre dos hilos
+//              por tuberías (despertar un proceso) y retraso de un temporizador de 1 ms (lo que nota el
+//              escritorio y el audio). Lo usa «centinela comparar» para medir HZ, preempción y sched_ext.
 //
 // Salida: JSON por stdout. Compilar: cc -O2 -pthread -o centinela-membench membench.c
 #define _GNU_SOURCE
@@ -149,7 +152,51 @@ static double c2c_ns(int a, int b) {
     return t / rounds / 2 * 1e9;  // ida
 }
 
+/* ------------------------------------------------------------ planificador */
+static int pp_a[2], pp_b[2];
+static void *sched_pong(void *p) {
+    int n = *(int *)p;
+    char c;
+    for (int i = 0; i < n; i++) {
+        if (read(pp_a[0], &c, 1) != 1 || write(pp_b[1], &c, 1) != 1) break;
+    }
+    return NULL;
+}
+
+static int cmp_d(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+static int sched_bench(void) {
+    enum { RT = 20000, TIMERS = 400 };
+    if (pipe(pp_a) || pipe(pp_b)) return 1;
+    int n = RT;
+    pthread_t th;
+    pthread_create(&th, NULL, sched_pong, &n);
+    char c = 'x';
+    double t0 = now();
+    for (int i = 0; i < RT; i++) {
+        if (write(pp_a[1], &c, 1) != 1 || read(pp_b[0], &c, 1) != 1) return 1;
+    }
+    double pingpong_us = (now() - t0) / RT * 1e6;
+    pthread_join(th, NULL);
+
+    static double over[TIMERS];
+    struct timespec req = {0, 1000000};
+    for (int i = 0; i < TIMERS; i++) {
+        double a = now();
+        nanosleep(&req, NULL);
+        over[i] = (now() - a) * 1e6 - 1000.0;
+    }
+    qsort(over, TIMERS, sizeof over[0], cmp_d);
+    printf("{\"pingpong_us\": %.2f, \"timer_p50_us\": %.1f, \"timer_p99_us\": %.1f}\n",
+           pingpong_us, over[TIMERS / 2], over[TIMERS * 99 / 100]);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--sched") == 0) return sched_bench();
     int ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
     int quick = argc > 1 && strcmp(argv[1], "--quick") == 0;
     size_t per_thread = (quick ? 32 : 128) << 20;

@@ -8,6 +8,7 @@
   centinela build-kernel          compila el kernel a medida para este equipo
   centinela setup                 todo lo anterior, para el primer arranque
   centinela adaptd                demonio de adaptación en tiempo real
+  centinela comparar …            prueba un ajuste A/B y solo lo deja si gana (también kernels)
 """
 
 from __future__ import annotations
@@ -311,6 +312,71 @@ def cmd_boot(args) -> int:
     return 0
 
 
+def cmd_comparar(args) -> int:
+    from . import comparar as cp
+    if args.accion == "lista":
+        for a in cp.AJUSTES.values():
+            motivo = a.disponible()
+            hecho = cp._leer_json(os.path.join(cp.ESTADO, "decisiones.json")).get(a.id)
+            estado = f"último: {hecho['veredicto']}{', aplicado' if hecho['aplicado'] else ''}" if hecho else "sin probar"
+            print(f"{a.id:<14} {'(no disponible: ' + motivo + ')' if motivo else estado}\n  {a.descripcion}")
+        return 0
+    if args.accion == "kernels":
+        r = cp.kernels(args.minimo)
+        if args.json:
+            print(json.dumps(r, indent=2, ensure_ascii=False))
+            return 0
+        if r.get("falta"):
+            print(r["falta"] + ".\nCon varios kernels instalados, cada arranque registra sus medidas solo "
+                  "(centinela-comparar-registrar.timer): arranca alternando kernels desde el menú de GRUB.")
+            return 0
+        for c in r["comparaciones"]:
+            print(f"{c['referencia']} → {c['kernel']}: {cp.TEXTO_VEREDICTO[c['veredicto']]}")
+            print(cp.tabla(c["filas"]))
+        return 0
+    if os.geteuid() != 0:
+        print("Necesita permisos de administrador (sudo centinela comparar …)", file=sys.stderr)
+        return 2
+    if args.accion == "registrar":
+        if len([f for f in os.listdir("/boot") if f.startswith("vmlinuz-")]) < 2 and not args.forzar:
+            return 0                     # un solo kernel: nada que comparar entre arranques
+        motivo = cp.condiciones(args.forzar)
+        if motivo:
+            print(f"No se registra este arranque: {motivo}")
+            return 0
+        print(json.dumps(cp.registrar(), ensure_ascii=False))
+        return 0
+    if args.accion == "reaplicar":
+        hechos = cp.reaplicar()
+        if hechos:
+            print("Reaplicados: " + ", ".join(hechos))
+        return 0
+    # probar
+    aj = cp.AJUSTES.get(args.ajuste or "")
+    if not aj:
+        print(f"Ajuste desconocido. Hay: {', '.join(cp.AJUSTES)}", file=sys.stderr)
+        return 2
+    motivo = aj.disponible() or cp.condiciones(args.forzar)
+    if motivo:
+        print(f"No se puede probar «{aj.id}»: {motivo}", file=sys.stderr)
+        return 1
+    ctx = {"modelo": args.modelo, "ngl": args.ngl}
+    print(f"Probando «{aj.id}» en {args.rondas} rondas A-B-B-A (no uses el equipo mientras tanto)…")
+    r = cp.ejecutar(aj, rondas=args.rondas, ctx=ctx, dejar=args.dejar)
+    if args.json:
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+        return 0
+    print(cp.tabla(r["filas"]))
+    print(cp.TEXTO_VEREDICTO[r["veredicto"]])
+    if r["aplicado"]:
+        print(f"«{aj.id}» queda activado (y se reaplica en cada arranque).")
+    elif r["veredicto"] == "mejor":
+        print(f"Para dejarlo activado: sudo centinela comparar probar {aj.id} --dejar")
+    else:
+        print("El sistema quedó como estaba.")
+    return 0
+
+
 def cmd_adaptd(args) -> int:
     plan = _plan_from_state(args)
     # Si el usuario cambia de perfil (centinela-perfil@), adaptd recalcula su plan base en vez de volver al viejo
@@ -384,6 +450,18 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("arranque", help="analiza qué retrasa el arranque y cómo mejorarlo")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_boot)
+
+    s = sub.add_parser("comparar", help="prueba un ajuste A/B y solo lo deja si gana; compara kernels")
+    s.add_argument("accion", choices=["lista", "probar", "kernels", "registrar", "reaplicar"])
+    s.add_argument("ajuste", nargs="?", help="con «probar»: el ajuste (ver «lista»)")
+    s.add_argument("--rondas", type=int, default=4, help="rondas A-B-B-A (más rondas, decisión más fiable)")
+    s.add_argument("--modelo", help="GGUF para medir también la IA (tokens/s con llama.cpp)")
+    s.add_argument("--ngl", type=int, default=0, help="capas en la gráfica para la prueba de IA (0 = CPU)")
+    s.add_argument("--dejar", action="store_true", help="si gana, dejarlo activado (y reaplicarlo al arrancar)")
+    s.add_argument("--forzar", action="store_true", help="medir aunque el equipo esté ocupado o a batería")
+    s.add_argument("--minimo", type=int, default=3, help="con «kernels»: arranques mínimos por kernel")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_comparar)
 
     s = sub.add_parser("power")
     s.add_argument("perfil", choices=POWER_PROFILES)
