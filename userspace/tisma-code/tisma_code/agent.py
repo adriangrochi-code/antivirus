@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from . import harness, memory, review, tools
+from . import contexto, harness, memory, review, tools
 from . import devtools
 from .docs import DocSpace
 
@@ -58,6 +58,9 @@ Cómo trabajas:
 4g. Para simular y comprobar diseños (OpenSCAD, FreeCAD, mallas, gmsh, OpenFOAM, ngspice, KiCad, Verilog,
     Octave, Blender, pandoc) usa ingenieria (lee antes ingenieria_guia). Da por buenos solo los números que
     devuelva la herramienta y compáralos con tu estimación previa.
+4h. Tu contexto es limitado: para preguntas que exigen leer muchos archivos usa explorar (investiga aparte y
+    solo te devuelve la conclusión). Anota con anotar cada hecho verificado (con su evidencia), decisión o
+    intento fallido: cuando el contexto se llene empezarás de cero con un resumen y tu cuaderno.
 4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
     y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
     error) guárdalo con docs_guardar para la próxima vez.
@@ -95,9 +98,10 @@ def _check_local_owner(endpoint: str) -> None:
 
 
 def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
-                    api_key: str = "local", timeout: int = 900) -> tuple[dict, dict]:
+                    api_key: str = "local", timeout: int = 900, extra: dict | None = None) -> tuple[dict, dict]:
     _check_local_owner(endpoint)
     body = {"model": model, "messages": messages, "temperature": 0.2, "top_p": 0.9}
+    body.update(extra or {})       # p. ej. sin «pensamiento» para resúmenes (Strata y llama.cpp con --jinja)
     if tool_schemas:
         body["tools"] = tool_schemas
         body["tool_choice"] = "auto"
@@ -139,6 +143,13 @@ class Session:
             self.schemas += ESP_SCHEMAS
         self.tool_names = {t["function"]["name"] for t in self.schemas}
         self.context_tokens = context_tokens
+        self._measured: tuple[int, int] | None = None   # (tokens reales del último paso, nº de mensajes)
+        try:
+            import inspect
+            ps = inspect.signature(llm).parameters
+            self._llm_extra = "extra" in ps or any(p.kind == p.VAR_KEYWORD for p in ps.values())
+        except (TypeError, ValueError):
+            self._llm_extra = False
         self.target_tps = target_tps
         self.auto_verify = auto_verify
         self.kb = memory.KnowledgeBase(self.ws.root, **({"base": kb_dir} if kb_dir else {}))
@@ -164,6 +175,8 @@ class Session:
         self._cancel = threading.Event()
         self._originals: dict[str, str] = {}     # archivos tocados en la tarea → contenido previo
         self.docs = DocSpace(self.ws.root, self.kb.dir)
+        self.cuaderno = contexto.Cuaderno(self.kb.dir)   # memoria de trabajo: sobrevive a los reinicios
+        self._task_text, self._task_start = "", 1
         self.rea = None                       # REA se arranca solo si el modelo lo usa
         self.craft = None                     # Craft Anything, igual: bajo demanda
         self.solidcraft = None                # SolidCraft (CAD), bajo demanda
@@ -211,8 +224,11 @@ class Session:
             return self._plain_chat
         return lambda messages, temperature=0.2: self.especialistas.chat(name, messages)
 
-    def _plain_chat(self, messages: list, temperature: float = 0.2) -> str:
-        msg, usage = self.llm(self.current.endpoint, self.current.model, messages, None)
+    def _plain_chat(self, messages: list, temperature: float = 0.2, rapido: bool = False) -> str:
+        # rapido: tareas internas (resúmenes) sin «pensamiento»: misma calidad de resumen, muchos menos tokens
+        kw = {"extra": {"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"}} \
+            if rapido and self._llm_extra else {}
+        msg, usage = self.llm(self.current.endpoint, self.current.model, messages, None, **kw)
         self.stats["prompt_tokens"] += usage.get("prompt_tokens", 0)
         self.stats["completion_tokens"] += usage.get("completion_tokens", 0)
         return msg.get("content") or ""
@@ -304,7 +320,8 @@ class Session:
 
     def _task(self, text: str) -> None:
         experience, used_ids = self.kb.context(text)
-        start_msgs = len(self.messages)
+        self._task_text = text
+        self.cuaderno.pedido(text)
         extra = f"\n\n{experience}" if experience else ""
         if not self._mapped:                  # mapa del repositorio una vez por sesión (ctags)
             self._mapped = True
@@ -315,6 +332,7 @@ class Session:
                 pass
         if self.especialistas:
             extra += self.especialistas.hint(text)
+        self._task_start = len(self.messages)
         self.messages.append({"role": "user", "content": text + harness.hypothesis_note(text) + extra})
         self._evidence = set()
         if experience:
@@ -366,6 +384,7 @@ class Session:
                     verified = True
                 else:
                     verified = False
+                    self.cuaderno.fallo(last_verify)       # el próximo reinicio no lo olvida
                     if state != "reintentar":
                         self.emit("info", message="Sin progreso en la corrección: se detiene y te deja el último resultado"
                                   if state == "sin_progreso" else "Se agotaron las rondas de corrección")
@@ -393,7 +412,7 @@ class Session:
                     continue                           # cambió algo: volver a verificar
             break
 
-        self._learn(text, final if 'final' in locals() else "", verified, loop, used_ids, start_msgs)
+        self._learn(text, final if 'final' in locals() else "", verified, loop, used_ids, self._task_start)
 
     def _learn(self, task: str, summary: str, verified, loop: review.ReviewLoop,
                used_ids: list[int], start: int) -> None:
@@ -437,30 +456,44 @@ class Session:
         self.stats["prompt_tokens"] += usage.get("prompt_tokens", 0)
         self.stats["completion_tokens"] += usage.get("completion_tokens", 0)
         tps = usage.get("completion_tokens", 0) / dt if dt > 0 else 0
+        if messages is self.messages and usage.get("prompt_tokens"):
+            # medida real del motor (Strata y llama.cpp la dan): mejor que estimar por caracteres
+            self._measured = (usage["prompt_tokens"] + usage.get("completion_tokens", 0), len(messages))
         self.emit("metrics", seconds=round(dt, 1), tokens_s=round(tps, 1), usage=usage, model=self.current.name,
-                  context=harness.estimate_tokens(self.messages), context_max=self.context_tokens)
+                  context=self.context_used(), context_max=self.context_tokens)
         return msg
 
-    def _maybe_compact(self) -> None:
-        if harness.estimate_tokens(self.messages) < self.context_tokens * 0.75 or len(self.messages) < 8:
-            return
-        keep = 6
-        middle = self.messages[1:-keep]
-        while middle and self.messages[len(middle) + 1]["role"] == "tool":
-            middle = middle[:-1]               # no partir un par llamada/resultado
-        if not middle:
-            return
-        self.emit("info", message="Contexto casi lleno: resumiendo la conversación anterior…")
+    def context_used(self) -> int:
+        est = contexto.tokens(self.messages)
+        if self._measured and self._measured[1] <= len(self.messages):
+            return max(est // 2, self._measured[0] + contexto.tokens(self.messages[self._measured[1]:]))
+        return est
+
+    def _maybe_compact(self, force: bool = False) -> bool:
+        """Reinicio limpio: archiva, resume por partes y empieza de cero con el traspaso como primer mensaje."""
+        if not force and (self.context_used() < self.context_tokens * contexto.UMBRAL or len(self.messages) < 6):
+            return False
+        old = self.messages[1:]
+        if not old:
+            return False
+        self.emit("info", message="Contexto al límite: se resume y el modelo continúa desde cero con el resumen…")
+        self.cuaderno.archivar(self.messages)
         role = self.especialistas.roles.get("compactar") if self.especialistas else None
-        if role:
-            summary = self.especialistas.chat(role, harness.compaction_prompt(middle))
-        else:
-            summary = self._call_llm(harness.compaction_prompt(middle), None).get("content") or ""
-        self.messages = ([self.messages[0],
-                          {"role": "user", "content": "Resumen de lo hecho hasta ahora:\n" + summary},
-                          {"role": "assistant", "content": "Entendido, continúo desde ahí."}]
-                         + self.messages[len(middle) + 1:])
+        chat = ((lambda m: self.especialistas.chat(role, m)) if role
+                else (lambda m: self._plain_chat(m, rapido=True)))
+        summary = contexto.resumir(old, chat, self.context_tokens)
+        last = next((m.get("content") or "" for m in reversed(old) if m["role"] == "tool"), "")
+        self.cuaderno.data["reinicios"] += 1
+        self.cuaderno._save()
+        handoff = contexto.traspaso(self.cuaderno.data["reinicios"], self._task_text, self.cuaderno.render(),
+                                    summary, self.todos, sorted(self._originals),
+                                    contexto.recortar(last, min(3000, contexto.presupuesto_salida(self.context_tokens))))
+        self.messages = [self.messages[0], {"role": "user", "content": handoff}]
+        self._task_start = 1
+        self._measured = None
+        self._loops = harness.LoopDetector()
         self.stats["compactions"] += 1
+        return True
 
     def _agent_loop(self) -> str:
         """Pasos del modelo hasta que responde sin herramientas. Devuelve su respuesta final."""
@@ -492,6 +525,50 @@ class Session:
         self.emit("info", message=f"Se alcanzó el límite de {MAX_STEPS} pasos")
         return ""
 
+    EXPLORAR_TOOLS = ("list_dir", "read_file", "search", "mapa_repo", "simbolo", "docs_buscar", "docs_leer")
+    EXPLORAR_PROMPT = ("Eres un explorador de código de solo lectura. Responde a la pregunta investigando el proyecto "
+                       "con las herramientas. Empieza por mapa_repo o search y lee solo lo necesario. Termina con una "
+                       "respuesta breve (máximo 250 palabras) que cite rutas y números de línea como evidencia; si no "
+                       "lo encontraste, dilo. No inventes.")
+
+    def _explorar(self, pregunta: str, max_steps: int = 14) -> str:
+        """Subagente con contexto propio: solo vuelve la conclusión (el contexto principal no se llena)."""
+        if not pregunta.strip():
+            return "Error: indica la pregunta"
+        schemas = [t for t in self.schemas if t["function"]["name"] in self.EXPLORAR_TOOLS]
+        names = {t["function"]["name"] for t in schemas}
+        msgs = [{"role": "system", "content": self.EXPLORAR_PROMPT + f"\nCarpeta del proyecto: {self.ws.root}"},
+                {"role": "user", "content": pregunta}]
+        cap = contexto.presupuesto_salida(self.context_tokens)
+        loops = harness.LoopDetector()
+        for step in range(max_steps):
+            if self._cancel.is_set():
+                return "Exploración detenida"
+            if contexto.tokens(msgs) > self.context_tokens * 0.7 or step == max_steps - 1:
+                msgs.append({"role": "user", "content": "Se acabó el presupuesto: responde ya con lo que sabes."})
+                return (self._call_llm(msgs, None).get("content") or "Sin conclusión")[:3000]
+            msg = self._call_llm(msgs, schemas)
+            calls = msg.get("tool_calls") or harness.extract_text_tool_calls(msg.get("content") or "", names)
+            msgs.append({"role": "assistant", "content": msg.get("content") or "", **({"tool_calls": calls} if calls else {})})
+            if not calls:
+                return (msg.get("content") or "Sin conclusión")[:3000]
+            for c in calls:
+                fn = c.get("function", {})
+                args, err = harness.normalize_arguments(fn.get("arguments"))
+                if err or fn.get("name") not in names:
+                    out = f"Error: {err or 'herramienta no disponible'}"
+                elif loops.check(fn["name"], args):
+                    out = "Aviso: llamada repetida; cambia de enfoque."
+                else:
+                    try:
+                        out = tools.execute(self.ws, fn["name"], args) if fn["name"] not in ("docs_buscar", "docs_leer") \
+                            else self._run_call(c)["content"]
+                    except (tools.ToolError, KeyError, OSError, ValueError) as e:
+                        out = f"Error: {e}"
+                msgs.append({"role": "tool", "tool_call_id": c.get("id") or uuid.uuid4().hex[:12],
+                             "content": contexto.recortar(out, cap)})
+        return "Sin conclusión"
+
     def _lint_feedback(self, target, before: str) -> str:
         """Linters sobre las líneas recién cambiadas: el modelo ve sus errores al instante."""
         try:
@@ -512,6 +589,12 @@ class Session:
         cid = call.get("id") or uuid.uuid4().hex[:12]
 
         def reply(result: str, ok: bool, args: dict | None = None) -> dict:
+            cap = contexto.presupuesto_salida(self.context_tokens)
+            if len(result) > cap and name != "recordar":
+                # La salida entera queda en disco; al contexto solo llega lo esencial (principio y final)
+                n = self.cuaderno.guardar_salida(name, result)
+                result = contexto.recortar(result, cap) + \
+                    f"\n[Salida completa guardada como n.º {n}: léela por partes con recordar(salida={n}, desde=…)]"
             if ok:
                 self._evidence.add(name)
                 result = harness.untrusted_wrap(name, result)
@@ -544,6 +627,24 @@ class Session:
                 return reply(txt, r["verdict"] == "ok", args)
             except Exception as e:  # noqa: BLE001
                 return reply(f"Error en Hope: {e}", False, args)
+        if name == "anotar":
+            try:
+                return reply(self.cuaderno.anotar(str(args.get("tipo", "")), str(args.get("texto", "")),
+                                                  str(args.get("evidencia") or "")), True, args)
+            except ValueError as e:
+                return reply(f"Error: {e}", False, args)
+        if name == "recordar":
+            sal = args.get("salida")
+            try:
+                return reply(self.cuaderno.recordar(str(args.get("consulta") or ""),
+                                                    int(sal) if sal is not None else None,
+                                                    int(args.get("desde") or 1), int(args.get("lineas") or 120)),
+                             True, args)
+            except (ValueError, TypeError) as e:
+                return reply(f"Error: {e}", False, args)
+        if name == "explorar":
+            self.emit("info", message="Explorando en un contexto aparte…")
+            return reply(self._explorar(str(args.get("pregunta", ""))), True, args)
         if name in ("docs_buscar", "docs_leer", "docs_guardar"):
             try:
                 if name == "docs_buscar":

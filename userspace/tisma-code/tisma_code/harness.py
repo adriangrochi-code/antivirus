@@ -154,26 +154,6 @@ def project_memory(root: Path, limit: int = 6000) -> str:
     return ""
 
 
-# ---------------------------------------------------------------- contexto
-def estimate_tokens(messages: list[dict]) -> int:
-    chars = sum(len(m.get("content") or "") + len(json.dumps(m.get("tool_calls", ""))) for m in messages)
-    return int(chars / 3.5)
-
-
-def compaction_prompt(messages: list[dict]) -> list[dict]:
-    transcript = []
-    for m in messages:
-        role = m["role"]
-        content = (m.get("content") or "")[:3000]
-        if m.get("tool_calls"):
-            content += " " + ", ".join(c["function"]["name"] for c in m["tool_calls"])
-        transcript.append(f"[{role}] {content}")
-    return [{"role": "system", "content": "Resume esta sesión de programación para continuarla. Incluye: "
-             "objetivo del usuario, archivos tocados y su estado, decisiones tomadas, errores pendientes "
-             "y próximos pasos. Máximo 400 palabras."},
-            {"role": "user", "content": "\n".join(transcript)}]
-
-
 class LoopDetector:
     """Detecta cuando el modelo repite la misma llamada (bucle típico de modelos pequeños)."""
 

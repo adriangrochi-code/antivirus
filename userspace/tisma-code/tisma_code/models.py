@@ -212,6 +212,40 @@ def endpoint_models(endpoint: str) -> list[str]:
         return []
 
 
+def server_context(endpoint: str, api_key: str = "local") -> int | None:
+    """Ventana REAL del motor (no la que suponga la interfaz): Strata la da en /health (max_context) y
+    llama-server en /props (n_ctx por ranura). Con una ventana supuesta mayor que la real, el reinicio de
+    contexto llegaba tarde y el motor rechazaba la petición."""
+    base = endpoint.rstrip("/")
+    base = base[:-3] if base.endswith("/v1") else base
+    hdr = {"User-Agent": "tisma-code/0.1", "Authorization": f"Bearer {api_key}"}
+    for path, keys in (("/health", ("max_context",)), ("/props", ("default_generation_settings", "n_ctx"))):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(base + path, headers=hdr), timeout=3) as r:  # noqa: S310
+                v = json.load(r)
+            for k in keys:
+                v = v[k]
+            if isinstance(v, int) and v >= 1024:
+                return v
+        except Exception:  # noqa: BLE001 (motor apagado, otra API…)
+            continue
+    return None
+
+
+def strata_status(hw: dict) -> dict:
+    """Strata (motor principal) necesita GPU dedicada (NVIDIA, AMD RX 6000+, Intel Arc o Apple) y unos 32 GB
+    entre RAM y VRAM para su modelo más pequeño (Coder); no tiene motor solo-CPU ni para APU. En equipos que
+    no llegan, TISMA Code usa llama.cpp con modelos GGUF pequeños (mismo arnés y herramientas)."""
+    total = hw.get("ram_mb", 0) + hw.get("vram_mb", 0)
+    if not hw.get("gpus"):
+        return {"ok": False, "motivo": "Strata necesita una GPU dedicada (este equipo solo tiene gráfica integrada): "
+                "se usará llama.cpp con un modelo descargado"}
+    if total < 32000:
+        return {"ok": False, "motivo": f"Strata necesita ~32 GB entre RAM y VRAM (hay {total // 1024} GB): "
+                "se usará llama.cpp con un modelo descargado"}
+    return {"ok": True, "motivo": ""}
+
+
 # ---------------------------------------------------------------- servidor llama.cpp
 def port_owner_is_me(port: int) -> bool:
     """¿El proceso que escucha en 127.0.0.1:port es de este usuario? (evita que otro usuario local
@@ -332,8 +366,9 @@ class LocalServer:
         self.api_key = secrets.token_urlsafe(24)
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
+        self.ctx = 0
 
-    def start(self, path: str, hw: dict, ctx: int = 16384, threads: tuple[int, int] | None = None) -> str:
+    def start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None) -> str:
         exe = shutil.which("llama-server")
         if not exe:
             raise RuntimeError("llama-server (llama.cpp) no está instalado")
@@ -341,6 +376,9 @@ class LocalServer:
         if MODELS_DIR.resolve() not in p.parents or p.suffix != ".gguf":
             raise ValueError("Solo se pueden servir modelos descargados por TISMA Code")
         self.stop()
+        # 32k con 16 GB o más (con la caché KV en q8_0, un modelo de 7-8 B ocupa ~1 GB de KV a 32k)
+        ctx = ctx or (32768 if hw.get("ram_mb", 0) >= 15000 else 16384)
+        self.ctx = ctx
         f = fit(p.stat().st_size, hw)
         ngl = "999" if f["where"] == "gpu" else "20" if f["where"] == "mixto" else "0"
         if not self.port:
@@ -351,7 +389,9 @@ class LocalServer:
         th = threads or threads_for(str(p))
         thr = ["-t", str(th[0]), "-tb", str(th[1])] if th else []
         base = [exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja", *thr]
+                "--api-key", self.api_key, "-ngl", ngl, "-c", str(ctx), "--jinja",
+                # reutiliza trozos de la caché KV aunque el prefijo cambie (p. ej. tras un reinicio de contexto)
+                "--cache-reuse", "256", *thr]
         self.kv_quant = True
         self.proc = self._spawn(base + KV_QUANT)
         self.model = p.name

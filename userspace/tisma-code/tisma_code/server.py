@@ -48,6 +48,12 @@ class App:
         own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
         return functools.partial(chat_completion, api_key=self.server.api_key if own else "local")
 
+    def context(self, wanted: int) -> int:
+        """La ventana que de verdad tiene el motor (si la publica); nunca más que esa."""
+        own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
+        real = models.server_context(self.config["endpoint"], self.server.api_key if own else "local")
+        return min(wanted, real) if real else wanted
+
     def save_config(self) -> None:
         CONFIG.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         CONFIG.write_text(json.dumps(self.config, indent=2))
@@ -182,7 +188,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "estadisticas": pool.stats if pool else {}})
             if url.path == "/api/models/local":
                 return self._send(200, {"downloaded": models.local_models(),
-                                        "endpoint": models.endpoint_models(APP.config["endpoint"])})
+                                        "endpoint": models.endpoint_models(APP.config["endpoint"]),
+                                        "strata": models.strata_status(APP.hw)})
         except (OSError, ValueError) as e:
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})
@@ -201,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
                 APP.config.update({k: b[k] for k in ("endpoint", "model") if k in b})
                 ws = b["workspace"]
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
-                            llm=APP.llm(), context_tokens=int(b.get("context", 32768)))
+                            llm=APP.llm(), context_tokens=APP.context(int(b.get("context", 32768))))
                 s.ws.allow_network = bool(b.get("network", False))
                 APP.session = s
                 if old:
@@ -215,6 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 APP.save_config()
                 if APP.session:
                     APP.session.endpoint, APP.session.model = APP.config["endpoint"], APP.config["model"]
+                    APP.session.context_tokens = APP.context(APP.session.context_tokens)
                 return self._send(200, {"ok": True})
             if url.path == "/api/message":
                 if not APP.session:
@@ -268,6 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                 if APP.session:
                     APP.session.endpoint, APP.session.model = ep, APP.config["model"]
                     APP.session.llm = APP.llm()
+                    APP.session.context_tokens = APP.context(APP.server.ctx)
                 return self._send(200, {"endpoint": ep})
         except (KeyError, ValueError, OSError, RuntimeError, ToolError) as e:  # SpecialistError es RuntimeError
             return self._send(400, {"error": str(e)})

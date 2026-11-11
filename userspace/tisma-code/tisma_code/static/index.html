@@ -325,7 +325,7 @@ async function openModels() {
   const cur = state.config.model;
   $("#modelPop").innerHTML = `<div class="tt">En el motor local</div>` +
     (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
-     '<div class="it" style="cursor:default;color:var(--faint)">Motor apagado: abre Strata o usa un modelo descargado</div>') +
+     `<div class="it" style="cursor:default;color:var(--faint)">${m.strata && !m.strata.ok ? esc(m.strata.motivo) : "Motor apagado: abre Strata o usa un modelo descargado"}</div>`) +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
       m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir cuántos hilos de CPU van mejor con este modelo">⚙ hilos</small></div>`).join("") : "") +
     `<hr><div class="it" id="addModel">＋ Añadir modelo…</div>`;

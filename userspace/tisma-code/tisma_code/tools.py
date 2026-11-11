@@ -237,11 +237,12 @@ from . import devtools  # noqa: E402  (importa Workspace/ToolError ya definidos 
 from .craft import SCHEMAS as CRAFT_SCHEMAS  # noqa: E402
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
 from . import ingenieria  # noqa: E402
+from .contexto import SCHEMAS as CONTEXTO_SCHEMAS  # noqa: E402
 from .jarvis import SCHEMAS as JARVIS_SCHEMAS  # noqa: E402
 from .rea import SCHEMAS as REA_SCHEMAS  # noqa: E402
 from .solidcraft import SCHEMAS as SOLIDCRAFT_SCHEMAS  # noqa: E402
 
-TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA]
+TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + CONTEXTO_SCHEMAS
                 + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + SOLIDCRAFT_SCHEMAS + ingenieria.SCHEMAS
                 + JARVIS_SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
