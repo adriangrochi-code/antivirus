@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - firmware para hardware recién conectado
+# Al arrancar udev «conecta» todo: se espera a la fase 2 para no retrasar el escritorio
+After=tisma-fase2.target network-online.target
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/bin/tisma-drivers nuevo
+Nice=10

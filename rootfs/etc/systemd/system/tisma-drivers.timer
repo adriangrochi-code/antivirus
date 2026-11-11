@@ -1,0 +1,11 @@
+[Unit]
+Description=TISMA - drivers y firmware (al arrancar y cada semana)
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=1w
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

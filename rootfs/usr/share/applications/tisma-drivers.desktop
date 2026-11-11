@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Drivers y firmware
+Comment=Busca e instala el firmware que necesita tu hardware
+Exec=sh -c 'pkexec tisma-drivers instalar; tisma-drivers buscar; echo; read -p "Pulsa Intro para cerrar" x'
+Icon=hwinfo
+Terminal=true
+Categories=System;Settings;HardwareSettings;
+Keywords=drivers;controladores;firmware;nvidia;wifi;hardware;

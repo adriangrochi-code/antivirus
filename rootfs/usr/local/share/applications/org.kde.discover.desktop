@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Discover
+Exec=plasma-discover %U
+Icon=plasmadiscover
+# Se muestra como «Tienda TISMA» (tisma-tienda.desktop); esta entrada solo atiende los enlaces appstream://
+NoDisplay=true
+MimeType=x-scheme-handler/appstream;x-scheme-handler/flatpak+https;application/vnd.flatpak.ref;application/vnd.flatpak.repo;

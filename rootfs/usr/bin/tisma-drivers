@@ -1,0 +1,165 @@
+#!/usr/bin/python3 -I
+"""tisma-drivers: drivers y firmware automáticos, y sus actualizaciones.
+
+En Linux casi todos los drivers vienen dentro del kernel; lo que suele faltar es el FIRMWARE (el programa que
+carga el propio chip: Wi-Fi, Bluetooth, GPU, audio). Esta herramienta:
+
+* detecta el hardware (isenkram: alias de módulo → paquete de Debian) y el firmware que el kernel pidió y no
+  encontró (registro del kernel), e instala esos paquetes de firmware desde los repositorios firmados;
+* avisa de los drivers que NO se instalan solos: los que se compilan aparte (DKMS: NVIDIA propietario,
+  Broadcom «wl»). TISMA exige módulos del kernel firmados (lockdown), así que esos drivers necesitan firmarse
+  con «centinela build-kernel --firmar-dkms». Para NVIDIA, el driver libre «nouveau» funciona sin nada;
+* comprueba actualizaciones de firmware de BIOS, SSD y periféricos (fwupd / LVFS), que se instalan desde
+  la Tienda (Discover) o con «fwupdmgr update».
+Las actualizaciones de los paquetes de drivers y firmware llegan con las actualizaciones automáticas.
+
+Uso: tisma-drivers [buscar | instalar | comprobar | nuevo]   (salvo buscar: como administrador)
+  nuevo: lo usa udev al conectar hardware; solo instala firmware que falte (sin consultar fwupd).
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+ALERTS = os.environ.get("ESCUDO_ALERTS", "/run/escudo/alertas.jsonl")
+DKMS = re.compile(r"(-dkms$|^nvidia-driver$|^nvidia-open)")
+FW_MISSING = re.compile(r"(?:Direct firmware load for|firmware: failed to load) (\S+?)(?: failed|[ (])")
+VENDORS = {"10de": "NVIDIA", "14e4": "Broadcom", "1002": "AMD", "8086": "Intel", "10ec": "Realtek"}
+
+
+def sh(argv: list[str], timeout: int = 600) -> tuple[int, str]:
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
+def hardware_packages(run=sh) -> list[str]:
+    """Paquetes que isenkram asocia al hardware conectado (por alias de módulo)."""
+    _, out = run(["isenkram-lookup"])
+    return sorted({p.strip() for p in out.split() if re.fullmatch(r"[a-z0-9][a-z0-9.+-]+", p.strip())})
+
+
+def missing_firmware(run=sh) -> list[str]:
+    _, out = run(["journalctl", "-k", "-b", "-q", "--no-pager", "-o", "cat"])
+    return sorted(set(FW_MISSING.findall(out)))
+
+
+def firmware_owner(files: list[str], run=sh) -> list[str]:
+    """Paquete de Debian que contiene cada archivo de firmware que faltó (índice Contents vía apt-file)."""
+    pkgs = set()
+    if files:
+        run(["apt-file", "update"], timeout=900)    # índice de contenidos de Debian (solo si faltó algo)
+    for f in files:
+        _, out = run(["apt-file", "search", "-l", f"/lib/firmware/{f}"])
+        pkgs.update(line.strip() for line in out.splitlines() if line.strip().startswith("firmware-"))
+    return sorted(pkgs)
+
+
+def installed(pkgs: list[str], run=sh) -> set[str]:
+    if not pkgs:
+        return set()
+    _, out = run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Status}\n", *pkgs])
+    return {line.split()[0] for line in out.splitlines() if line.endswith(" installed")}
+
+
+def gpu_vendors(run=sh) -> set[str]:
+    _, out = run(["lspci", "-n"])
+    return {VENDORS.get(m, m) for m in re.findall(r"\s(?:0300|0302|0380|0280): ([0-9a-f]{4}):", out)}
+
+
+def nvidia_advice(run=sh) -> str | None:
+    if "NVIDIA" not in gpu_vendors(run):
+        return None
+    _, rec = run(["nvidia-detect"])
+    pkg = next((m for m in re.findall(r"(nvidia-[a-z0-9-]*driver|nvidia-open-kernel-dkms)", rec)), "nvidia-driver")
+    return (f"GPU NVIDIA: funciona ya con el driver libre «nouveau». Para el propietario ({pkg}, necesario para CUDA "
+            "y mejor rendimiento en juegos) hay que firmar sus módulos: sudo centinela build-kernel --firmar-dkms "
+            f"--install y después sudo apt install {pkg}.")
+
+
+def plan(run=sh) -> dict:
+    fw_files = missing_firmware(run)
+    cands = sorted(set(hardware_packages(run)) | set(firmware_owner(fw_files, run)))
+    have = installed(cands, run)
+    pending = [p for p in cands if p not in have]
+    return {"firmware_que_falto": fw_files,
+            "instalar": [p for p in pending if not DKMS.search(p)],
+            "manual_dkms": [p for p in pending if DKMS.search(p)],
+            "nvidia": nvidia_advice(run)}
+
+
+def install(pkgs: list[str], run=sh) -> bool:
+    if not pkgs:
+        return True
+    run(["apt-get", "update", "-q"], timeout=900)
+    rc, _ = run(["apt-get", "install", "-y", "-q", "--no-install-recommends", *pkgs], timeout=3600)
+    return rc == 0
+
+
+def firmware_updates(run=sh) -> list[str]:
+    """Actualizaciones de firmware (BIOS, SSD, periféricos) publicadas en LVFS."""
+    run(["fwupdmgr", "refresh", "--force"], timeout=300)
+    rc, out = run(["fwupdmgr", "get-updates", "--json"], timeout=300)
+    try:
+        devs = json.loads(out).get("Devices", [])
+    except ValueError:
+        return []
+    return [f"{d.get('Name', '?')}: {d['Releases'][0].get('Version', '?')}" for d in devs if d.get("Releases")]
+
+
+def alert(detail: str, action: str, severity: str = "low") -> None:
+    try:
+        os.makedirs(os.path.dirname(ALERTS), exist_ok=True)
+        fd = os.open(ALERTS, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.time(), "kind": "drivers", "severity": severity, "detail": detail,
+                                "action": action}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def main(argv: list[str]) -> int:
+    cmd = argv[0] if argv else "buscar"
+    if cmd not in ("buscar", "instalar", "comprobar", "nuevo"):
+        print(__doc__)
+        return 2
+    if cmd != "buscar" and os.geteuid() != 0:
+        print("Necesita permisos de administrador: pkexec tisma-drivers " + cmd, file=sys.stderr)
+        return 2
+    p = plan()
+    if cmd == "buscar":
+        print(f"Firmware que faltó en este arranque: {', '.join(p['firmware_que_falto']) or 'ninguno'}")
+        print(f"Paquetes de drivers/firmware a instalar: {', '.join(p['instalar']) or 'ninguno'}")
+        if p["manual_dkms"]:
+            print(f"Drivers que requieren firma (DKMS): {', '.join(p['manual_dkms'])}")
+        if p["nvidia"]:
+            print(p["nvidia"])
+        return 0
+    ok = install(p["instalar"])
+    if cmd == "instalar":
+        print("Instalado: " + (", ".join(p["instalar"]) or "nada que instalar") if ok else "Fallo al instalar")
+        return 0 if ok else 1
+    # comprobar (semanal) y nuevo (hardware conectado): firmware solo, y avisos
+    if p["instalar"] and ok:
+        alert(f"Firmware instalado para tu hardware: {', '.join(p['instalar'])}",
+              "Desconecta y vuelve a conectar el dispositivo (o reinicia) para usarlo.")
+    if cmd == "nuevo":
+        return 0
+    for msg in filter(None, [p["nvidia"]] + ([f"Drivers que requieren firma: {', '.join(p['manual_dkms'])}"]
+                                             if p["manual_dkms"] else [])):
+        alert(msg, "Detalles: tisma-drivers buscar")
+    ups = firmware_updates()
+    if ups:
+        alert("Actualizaciones de firmware disponibles: " + "; ".join(ups[:4]),
+              "Instálalas desde la Tienda (sección Actualizaciones) o con «fwupdmgr update».", "medium")
+    return 0
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

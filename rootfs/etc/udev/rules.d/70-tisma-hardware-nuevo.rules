@@ -1,0 +1,2 @@
+# Hardware nuevo (tarjeta PCI, adaptador USB Wi-Fi/Bluetooth): buscar su firmware en segundo plano
+ACTION=="add", SUBSYSTEM=="pci|usb", ENV{DEVTYPE}!="usb_interface", TAG+="systemd", ENV{SYSTEMD_WANTS}+="tisma-drivers-nuevo.service"

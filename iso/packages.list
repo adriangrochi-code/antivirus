@@ -36,7 +36,15 @@ fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea f
 # --- Diseño ---
 gimp inkscape krita blender
 firefox-esr firefox-esr-l10n-es-es
-plasma-discover plasma-discover-backend-flatpak flatpak
+# --- Tienda TISMA (Discover): apps de Debian, Flatpak/Flathub y firmware (fwupd); permisos de Flatpak ---
+plasma-discover plasma-discover-backend-flatpak plasma-discover-backend-fwupd flatpak kde-config-flatpak
+flatpak-xdg-utils xdg-desktop-portal-gtk
+# --- Entornos para ejecutar casi cualquier programa ---
+# AppImage (libfuse2), Java + JavaFX, .NET Framework (Mono), Node.js, Python (pip/pipx), Ruby, Qt5/Qt6/SDL
+libfuse2t64 default-jre openjfx mono-runtime nodejs npm python3-pip pipx ruby qtwayland5 qt6-wayland libsdl2-2.0-0
+# --- Drivers: detección de hardware, NVIDIA, impresoras y escáneres sin driver (IPP/eSCL) ---
+isenkram-cli apt-file nvidia-detect dkms ipp-usb sane-airscan system-config-printer
+firmware-linux-nonfree firmware-brcm80211 firmware-libertas firmware-ath9k-htc firmware-cirrus firmware-intel-sound
 breeze-gtk-theme kde-config-gtk-style xdg-desktop-portal-kde
 fonts-noto-core fonts-noto-color-emoji
 pipewire pipewire-pulse wireplumber

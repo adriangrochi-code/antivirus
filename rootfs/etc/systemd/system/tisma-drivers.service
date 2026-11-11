@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - instalar el firmware que necesita el hardware y avisar de drivers y actualizaciones
+After=network-online.target
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/bin/tisma-drivers comprobar
+Nice=10
+IOSchedulingClass=idle

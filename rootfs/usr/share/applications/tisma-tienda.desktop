@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Tienda TISMA
+GenericName=Aplicaciones, drivers y actualizaciones
+Comment=Instala aplicaciones (Debian y Flathub), actualiza el sistema y el firmware
+Exec=plasma-discover %U
+Icon=plasmadiscover
+Terminal=false
+Categories=System;PackageManager;
+Keywords=tienda;apps;aplicaciones;instalar;actualizar;drivers;firmware;flatpak;
