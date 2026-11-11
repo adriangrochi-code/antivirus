@@ -49,6 +49,10 @@ Cómo trabajas:
     firmware, protocolos, webs) usa REA: primero rea_guia para el procedimiento, luego rea_buscar y rea.
     Empieza en modo estático; pide rea_modo (dinámico) solo si la evidencia estática no basta.
     Para dudas de documentación o investigación usa jarvis.
+4e. Para investigaciones largas o para recrear/rediseñar algo a partir de una referencia (web, app, juego,
+    interfaz) usa Craft Anything: craft_guia para el método, craft_buscar y craft. Lleva la memoria de la
+    investigación (brief, plan, hipótesis, hallazgos con ID de evidencia) y cierra el ciclo
+    Estudiar → Construir → Verificar → Refinar con una comparación medida contra la referencia.
 4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
     y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
     error) guárdalo con docs_guardar para la próxima vez.
@@ -142,6 +146,7 @@ class Session:
         self._originals: dict[str, str] = {}     # archivos tocados en la tarea → contenido previo
         self.docs = DocSpace(self.ws.root, self.kb.dir)
         self.rea = None                       # REA se arranca solo si el modelo lo usa
+        self.craft = None                     # Craft Anything, igual: bajo demanda
         self.hope = None
         if HopeTools is not None:
             try:
@@ -521,6 +526,37 @@ class Session:
                 return reply(tools._clip(self.rea.call(tool, targs), 12000), True, args)
             except Exception as e:  # noqa: BLE001 (MCPError, ausencia de REA…)
                 return reply(f"Error en REA: {e}", False, args)
+        if name == "craft_guia":
+            from .craft import guide as craft_guide
+            return reply(craft_guide(str(args.get("tema", ""))), True, args)
+        if name in ("craft_buscar", "craft", "craft_modo"):
+            try:
+                from .craft import CraftTools
+                if name == "craft_modo":
+                    modo, net = str(args.get("modo", "limpio")), bool(args.get("red"))
+                    if (modo != "limpio" or net) and not self._ask("craft_modo", args,
+                                                                   tools.preview(self.ws, "craft_modo", args)):
+                        return reply("El usuario no permitió cambiar el modo de Craft Anything.", False, args)
+                    if self.craft is not None:
+                        self.craft.close()
+                        self.craft = None
+                    self.emit("info", message=f"Craft Anything en modo {modo}{' con red' if net else ''}…")
+                    self.craft = CraftTools(self.ws, mode=modo, network=net)
+                    return reply(f"Craft Anything ahora en modo {self.craft.mode()}.", True, args)
+                if self.craft is None:
+                    self.emit("info", message="Iniciando Craft Anything (aislado, modo limpio)…")
+                    self.craft = CraftTools(self.ws)
+                if name == "craft_buscar":
+                    return reply(self.craft.search(str(args.get("consulta", ""))), True, args)
+                tool = str(args.get("herramienta", ""))
+                targs = args.get("argumentos") or {}
+                if not isinstance(targs, dict):
+                    return reply("Error: argumentos debe ser un objeto JSON", False, args)
+                if self.craft.needs_approval(tool) and not self._ask("craft", args, tools.preview(self.ws, "craft", args)):
+                    return reply("El usuario denegó esta acción.", False, args)
+                return reply(tools._clip(self.craft.call(tool, targs), 12000), True, args)
+            except Exception as e:  # noqa: BLE001 (MCPError, ausencia de Craft Anything…)
+                return reply(f"Error en Craft Anything: {e}", False, args)
         if name == "jarvis":
             if not self._ask("jarvis", args, tools.preview(self.ws, "jarvis", args)):
                 return reply("El usuario denegó esta acción.", False, args)

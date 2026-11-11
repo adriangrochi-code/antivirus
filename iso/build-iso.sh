@@ -137,6 +137,7 @@ fi
     || log "AVISO: no se pudo instalar Tisma engine"
 "$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
 "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
+"$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"

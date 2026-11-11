@@ -65,6 +65,11 @@ Interfaz tipo chat: eliges **carpeta/repo** y **modelo** y conversas. Funciona c
   verificador, base de conocimiento con lecciones. Hope es privado: `userspace/tisma-code/fetch-hope.sh`
   copia en la build solo la parte que no es la red neuronal; no se versiona aquí.
 - Las trayectorias **verificadas** se guardan como episodios para afinar (LoRA) el modelo local.
+- **REA** (Reverse Engineer Anything) y **Craft Anything** como servidores MCP en bubblewrap: entender
+  cualquier programa, web o archivo con evidencia citable. Craft Anything añade memoria de investigación
+  (brief, plan, hipótesis, hallazgos, traspaso) y el ciclo Estudiar → Construir → Verificar → Refinar con
+  comparaciones medidas. Modos: limpio (por defecto), profundo y ejecución; cada cambio de modo, la red y cada
+  ejecución del objetivo piden permiso. Versión y SHA-256 fijados en `iso/components/craft-anything.sh`.
 
 ## Construir
 

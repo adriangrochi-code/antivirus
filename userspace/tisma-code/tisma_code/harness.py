@@ -258,7 +258,7 @@ def rigor_check(answer: str, evidence: set[str]) -> str | None:
 FILE_LINE = re.compile(r"`?([\w./-]+\.[A-Za-z0-9]{1,6}):(\d+)(?:-(\d+))?`?")
 INLINE = re.compile(r"`([^`\n]{3,120})`")
 SYMBOL_CALL = re.compile(r"^([A-Za-z_][\w.]*)\(\)$")
-UNTRUSTED_TOOLS = {"docs_leer", "docs_buscar", "jarvis", "rea"}
+UNTRUSTED_TOOLS = {"docs_leer", "docs_buscar", "jarvis", "rea", "craft"}
 
 
 def grounding_check(answer: str, ws) -> list[str]:

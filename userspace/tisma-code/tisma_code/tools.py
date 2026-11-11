@@ -234,12 +234,13 @@ HOPE_SCHEMAS = [
 ]
 
 from . import devtools  # noqa: E402  (importa Workspace/ToolError ya definidos arriba)
+from .craft import SCHEMAS as CRAFT_SCHEMAS  # noqa: E402
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
 from .jarvis import SCHEMAS as JARVIS_SCHEMAS  # noqa: E402
 from .rea import SCHEMAS as REA_SCHEMAS  # noqa: E402
 
 TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA]
-                + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + JARVIS_SCHEMAS)
+                + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + JARVIS_SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -299,6 +300,15 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
         red = " · CON acceso a la red" if args.get("red") else " · sin red"
         return (f"REA pasará a modo {modo}{red} (aislado con bubblewrap, sin acceso a tu carpeta personal).\n"
                 f"Motivo: {args.get('motivo', '—')}")
+    if name == "craft":
+        return f"Craft Anything: {args.get('herramienta')} {json.dumps(args.get('argumentos') or {}, ensure_ascii=False)}"
+    if name == "craft_modo":
+        modo = {"profundo": "PROFUNDO: leerá el código, archivos y fuente de las páginas del objetivo",
+                "ejecucion": "EJECUCIÓN: podrá ejecutar y observar el objetivo (cada ejecución pide permiso)"
+                }.get(str(args.get("modo")), "limpio (solo desde fuera)")
+        red = " · CON acceso a la red" if args.get("red") else " · sin red"
+        return (f"Craft Anything pasará a modo {modo}{red} (aislado con bubblewrap, sin acceso a tu carpeta "
+                f"personal).\nMotivo: {args.get('motivo', '—')}")
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         return ("Ejecutará el código de pruebas del proyecto (aislado, sin red):\n" +
