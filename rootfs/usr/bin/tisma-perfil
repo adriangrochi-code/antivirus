@@ -25,6 +25,10 @@ DIR = os.environ.get("TISMA_PERFILES", "/usr/share/tisma/perfiles")
 ESTADO = os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json")
 COMPONENTES = os.environ.get("TISMA_COMPONENTES", "/usr/lib/tisma/componentes")
 HECHO = os.environ.get("TISMA_COMPLETAR_HECHO", "/var/lib/tisma/completar-hecho")
+# Por seguridad el sistema arranca sin llamadas al sistema de 32 bits (52-tisma-32bits.cfg); Steam y Wine las
+# necesitan: el perfil de juegos las vuelve a activar (tras reiniciar)
+MARCA_32 = os.environ.get("TISMA_32BITS", "/etc/tisma/32bits")
+PERFILES_32 = {"juegos"}
 # Lock::Timeout: si la Bienvenida y tisma-completar coinciden, uno espera al otro en vez de fallar
 APT = ["apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confold", "-o", "Acquire::Retries=3",
        "-o", "DPkg::Lock::Timeout=900"]
@@ -134,10 +138,26 @@ def instalar(nombres: list[str], run=None) -> int:
         if r.returncode != 0:
             errores.append(f"{c}: " + (r.stderr or r.stdout)[-300:])
     ok = not errores
+    aviso = ""
+    if ok and PERFILES_32 & set(nombres) and not os.path.exists(MARCA_32):
+        aviso = activar_32bits(run)
     guardar({**estado, "fase": "listo" if ok else "error", "ok": ok, "fin": time.time(),
-             "mensaje": "\n".join(errores)})
-    print("Instalado." if ok else "No se pudo instalar:\n" + "\n".join(errores))
+             "mensaje": "\n".join(errores) or aviso})
+    print(("Instalado." + (f" {aviso}" if aviso else "")) if ok else "No se pudo instalar:\n" + "\n".join(errores))
     return 0 if ok else 1
+
+
+def activar_32bits(run=None) -> str:
+    """Steam y Wine: vuelve a permitir las llamadas al sistema de 32 bits (desde el próximo arranque)."""
+    run = run or subprocess.run
+    os.makedirs(os.path.dirname(MARCA_32), exist_ok=True)
+    with open(MARCA_32, "w") as fh:
+        fh.write("Creado por el perfil de juegos (tisma-perfil): Steam y Wine necesitan programas de 32 bits.\n"
+                 "Bórralo y ejecuta update-grub para volver a desactivarlos (más seguro).\n")
+    r = run(["update-grub"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return "No se pudo actualizar GRUB: ejecuta «sudo update-grub» y reinicia para usar Steam y Wine."
+    return "Reinicia el equipo para usar Steam y Wine (activa los programas de 32 bits)."
 
 
 def main(argv: list[str]) -> int:

@@ -1,0 +1,12 @@
+#!/bin/sh
+# TISMA OS: sin programas setuid ni archivos de dispositivo en las zonas donde escriben los usuarios o el
+# sistema de datos (/home, /var…): un setuid o un nodo de dispositivo plantado ahí no da privilegios. Solo en los
+# que son puntos de montaje propios (subvolúmenes de btrfs, particiones aparte); /tmp y /dev/shm ya los monta
+# systemd así. /boot y /boot/efi además sin ejecución.
+for m in /home /var /var/tmp /var/log /srv; do
+    mountpoint -q "$m" && mount -o remount,nosuid,nodev "$m" 2>/dev/null
+done
+for m in /boot /boot/efi; do
+    mountpoint -q "$m" && mount -o remount,nosuid,nodev,noexec "$m" 2>/dev/null
+done
+exit 0

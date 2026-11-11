@@ -114,3 +114,29 @@ def test_installer_downloads_base_extras_after_final_sources():
     assert sp["script"] == ["-/usr/bin/tisma-perfil completar"] and sp["timeout"] >= 1800   # «-»: sin red no falla
     unit = (ROOT / "rootfs/etc/systemd/system/tisma-completar.service").read_text()
     assert "ConditionPathExists=!/var/lib/tisma/completar-hecho" in unit and "!boot=live" in unit
+
+
+def test_games_profile_reenables_32bit_and_asks_for_reboot(tmp_path, monkeypatch):
+    (tmp_path / "juegos.list").write_text("# J\nsteam-installer\n")
+    marca = tmp_path / "etc/32bits"
+    monkeypatch.setattr(mod, "DIR", str(tmp_path))
+    monkeypatch.setattr(mod, "ESTADO", str(tmp_path / "estado.json"))
+    monkeypatch.setattr(mod, "MARCA_32", str(marca))
+    calls = []
+    assert mod.instalar(["juegos"], _fake_run([], calls)) == 0
+    assert marca.exists() and ["update-grub"] in calls
+    assert "Reinicia" in json.loads((tmp_path / "estado.json").read_text())["mensaje"]
+    calls.clear()
+    (tmp_path / "otro.list").write_text("# O\nalgo\n")
+    assert mod.instalar(["otro"], _fake_run([], calls)) == 0 and ["update-grub"] not in calls
+
+
+def test_32bit_is_off_by_default_in_grub(tmp_path):
+    cfg = (ROOT / "rootfs/etc/default/grub.d/52-tisma-32bits.cfg").read_text()
+    out = subprocess.run(["sh", "-c", cfg.replace("/etc/tisma/32bits", str(tmp_path / "no")) +
+                          '\necho "$GRUB_CMDLINE_LINUX_DEFAULT"'], capture_output=True, text=True).stdout
+    assert "ia32_emulation=0" in out and "vdso32=0" in out
+    (tmp_path / "si").write_text("")
+    out = subprocess.run(["sh", "-c", cfg.replace("/etc/tisma/32bits", str(tmp_path / "si")) +
+                          '\necho "$GRUB_CMDLINE_LINUX_DEFAULT"'], capture_output=True, text=True).stdout
+    assert "ia32_emulation" not in out

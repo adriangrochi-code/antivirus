@@ -213,6 +213,21 @@ chmod 600 "$CHROOT"/etc/usbguard/usbguard-daemon.conf "$CHROOT"/etc/usbguard/rul
 mkdir -p "$CHROOT/etc/centinela"
 python3 "$HERE/make-branding.py" "$REPO/branding" "$CHROOT"
 
+# Endurecimiento del sistema base (noviembre de 2026, comparado con Kicksecure/secureblue)
+# - Sin el bit setuid/setgid en programas que un escritorio no usa: vía clásica de escalada de privilegios (los
+#   medios extraíbles los monta udisks2 con polkit, no mount setuid). dpkg-statoverride: persiste al actualizar.
+for f in /usr/bin/chfn /usr/bin/chsh /usr/bin/chage /usr/bin/expiry /usr/bin/gpasswd /usr/bin/newgrp \
+         /usr/bin/mount /usr/bin/umount /usr/lib/openssh/ssh-keysign /usr/libexec/lxc/lxc-user-nic; do
+    [[ -e "$CHROOT$f" ]] || continue
+    in_chroot dpkg-statoverride --list "$f" >/dev/null 2>&1 \
+        || in_chroot dpkg-statoverride --update --add root root 0755 "$f"
+done
+# - 10 contraseñas fallidas seguidas: cuenta bloqueada 10 min (pam_faillock, /etc/security/faillock.conf)
+in_chroot pam-auth-update --enable tisma-faillock-pre tisma-faillock-fallo tisma-faillock-ok
+# - su solo para administradores (grupo sudo); root sigue pudiendo (pam_rootok va antes)
+sed -i 's/^# auth       required   pam_wheel.so$/auth       required   pam_wheel.so group=sudo/' "$CHROOT/etc/pam.d/su"
+grep -q '^auth       required   pam_wheel.so group=sudo' "$CHROOT/etc/pam.d/su" || die "no se pudo restringir su"
+
 LIB="$CHROOT/usr/lib/centinela"
 mkdir -p "$LIB/python" "$LIB/kernel"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
@@ -306,6 +321,8 @@ in_chroot systemctl enable centinela-graficos.timer 2>/dev/null || true
 in_chroot systemctl enable centinela-comparar-reaplicar.service centinela-comparar-registrar.timer 2>/dev/null || true
 # Apps Flatpak al día con el equipo libre (sustituye al notificador de Discover, desactivado)
 in_chroot systemctl enable tisma-flatpak-actualizar.timer 2>/dev/null || true
+# /home, /var y /boot sin setuid ni dispositivos
+in_chroot systemctl enable tisma-montajes-seguros.service 2>/dev/null || true
 chmod 755 "$CHROOT/etc/grub.d/05_tisma_graficos"
 # TRIM semanal de todos los SSD (incluido ext4, que ya no usa «discard» síncrono)
 in_chroot systemctl enable fstrim.timer 2>/dev/null || log "AVISO: sin fstrim.timer"
@@ -408,7 +425,11 @@ log "Kernel de la sesión live: $KVER${TVER:+ · kernel TISMA: $TVER}"
 cp -r "$CHROOT/boot/grub/themes" "$ISODIR/boot/grub/"
 
 LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es timezone=Europe/Madrid hostname=tisma username=tisma"
-SEC="lsm=landlock,lockdown,yama,integrity,apparmor,bpf lockdown=integrity init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 randomize_kstack_offset=on slab_nomerge vsyscall=none iommu.strict=1"
+# Los MISMOS parámetros de seguridad que el sistema instalado (una sola fuente: 50-centinela.cfg), más los de
+# 32 bits (la sesión live no trae el perfil de juegos). Antes la live tenía su propia lista y le faltaban varios.
+SEC="$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash \(.*\)"$/\1/p' "$REPO/rootfs/etc/default/grub.d/50-centinela.cfg")"
+[[ "$SEC" == *lockdown=integrity* ]] || die "no se pudieron leer los parámetros de seguridad de 50-centinela.cfg"
+SEC="$SEC ia32_emulation=0 vdso32=0"
 cat > "$ISODIR/boot/grub/grub.cfg" <<EOF
 insmod all_video
 insmod gfxterm

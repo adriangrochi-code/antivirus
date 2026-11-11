@@ -51,3 +51,23 @@ def test_escudo_protects_before_any_login():
     assert "Requires" not in u                                        # si fallara, no deja el equipo inusable
     fase2 = (SD / "tisma-fase2.target.d/servicios.conf").read_text()
     assert "escudo.service" not in fase2.split("[Unit]", 1)[1]
+
+
+def test_group_a_hardening_is_in_place():
+    cmd = (ROOT / "etc/default/grub.d/50-centinela.cfg").read_text()
+    for p in ("intel_iommu=on", "amd_iommu=force_isolation", "iommu.passthrough=0", "random.trust_cpu=off",
+              "random.trust_bootloader=off", "efi_pstore.pstore_disable=1", "erst_disable",
+              "proc_mem.force_override=ptrace", "kfence.sample_interval=100"):
+        assert p in cmd, p
+    assert "extra_latent_entropy" not in cmd                      # no existe en el kernel oficial
+    sysctl = (ROOT / "etc/sysctl.d/50-centinela-hardening.conf").read_text()
+    assert "kernel.core_pattern = |/bin/false" in sysctl and "net.ipv4.conf.all.arp_ignore = 2" in sysctl
+    assert 'APT::Sandbox::Seccomp "true"' in (ROOT / "etc/apt/apt.conf.d/40-tisma-sandbox").read_text()
+    fl = (ROOT / "etc/security/faillock.conf").read_text()
+    assert "deny = 10" in fl and "unlock_time = 600" in fl
+    pc = ROOT / "usr/share/pam-configs"
+    assert "pam_faillock.so preauth" in (pc / "tisma-faillock-pre").read_text()
+    assert "[default=die]\tpam_faillock.so authfail" in (pc / "tisma-faillock-fallo").read_text()
+    assert "Priority: 128" in (pc / "tisma-faillock-fallo").read_text()       # después de pam_unix (256)
+    assert "pam_faillock.so authsucc" in (pc / "tisma-faillock-ok").read_text()
+    assert ini(SD / "tisma-montajes-seguros.service")["Service"]["ExecStart"] == "/usr/lib/tisma/montajes-seguros"

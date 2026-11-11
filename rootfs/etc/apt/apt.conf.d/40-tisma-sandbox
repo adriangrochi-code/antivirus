@@ -1,0 +1,3 @@
+// Los procesos de descarga de apt corren con un filtro seccomp: un fallo en el código que habla con la red (o
+// un servidor espejo malicioso) no puede llamar a lo que esos procesos nunca necesitan.
+APT::Sandbox::Seccomp "true";

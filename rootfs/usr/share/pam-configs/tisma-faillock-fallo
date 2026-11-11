@@ -1,0 +1,6 @@
+Name: TISMA: bloqueo temporal de la cuenta tras 10 contraseñas fallidas (cuenta el fallo)
+Default: yes
+Priority: 128
+Auth-Type: Primary
+Auth:
+	[default=die]	pam_faillock.so authfail
