@@ -94,6 +94,12 @@ def load(path: Path = CONFIG) -> tuple[dict[str, Specialist], dict[str, str]]:
             raise SpecialistError(f"{s.nombre}: falta «comando» (lista de argumentos)")
         if s.tipo == "llm" and not (s.gguf or s.endpoint):
             raise SpecialistError(f"{s.nombre}: indica «gguf» o «endpoint»")
+        if s.endpoint:
+            from urllib.parse import urlparse
+            u = urlparse(s.endpoint)
+            if u.scheme != "http" or u.username or u.hostname not in ("127.0.0.1", "localhost", "::1"):
+                raise SpecialistError(f"{s.nombre}: el endpoint debe ser local (http://127.0.0.1:…): TISMA Code "
+                                      "no envía tus datos a servidores externos")
         s.carpeta, s.gguf = _expand(s.carpeta), _expand(s.gguf)
         s.tiempo = max(5, min(int(s.tiempo), 1800))
         out[s.nombre] = s

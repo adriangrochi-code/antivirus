@@ -26,9 +26,9 @@ ALERTS = os.environ.get("ESCUDO_ALERTS", "/run/escudo/alertas.jsonl")
 PSTORE = "/var/lib/systemd/pstore"
 
 
-def sh(argv: list[str]) -> tuple[int, str]:
+def sh(argv: list[str], timeout: int = 1800) -> tuple[int, str]:
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=7200)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         return r.returncode, r.stdout
     except (OSError, subprocess.TimeoutExpired):
         return 127, ""
@@ -210,11 +210,14 @@ def semanal(run=sh) -> list[str]:
 
 
 def scrub(run=sh) -> str:
-    rc, _ = run(["findmnt", "-n", "-o", "FSTYPE", "/"])
-    _, fstype = rc, _.strip()
-    if fstype != "btrfs":
+    _, out = run(["findmnt", "-n", "-o", "FSTYPE", "/"])
+    if out.strip() != "btrfs":
         return "La raíz no es btrfs: no hay scrub."
-    run(["btrfs", "scrub", "start", "-B", "-d", "/"])
+    # Un disco grande y lento puede tardar horas: sin límite corto (la unidad corre con prioridad «idle»)
+    if run is sh:
+        sh(["btrfs", "scrub", "start", "-B", "-d", "/"], timeout=48 * 3600)
+    else:
+        run(["btrfs", "scrub", "start", "-B", "-d", "/"])
     _, out = run(["btrfs", "scrub", "status", "-R", "/"])
     num = lambda k: sum(int(n) for n in re.findall(rf"{k}:\s*(\d+)", out))  # noqa: E731
     unc, cor = num("uncorrectable_errors"), num("corrected_errors")

@@ -47,7 +47,9 @@ def test_config_must_be_private_and_valid(tmp_path):
     assert "x" in esp.load(p)[0]
     for bad in ({"nombre": "../x", "tipo": "programa", "descripcion": "", "comando": ["true"]},
                 {"nombre": "y", "tipo": "otro", "descripcion": ""},
-                {"nombre": "z", "tipo": "programa", "descripcion": ""}):
+                {"nombre": "z", "tipo": "programa", "descripcion": ""},
+                {"nombre": "nube", "tipo": "llm", "descripcion": "", "endpoint": "https://api.example.com/v1"},
+                {"nombre": "truco", "tipo": "llm", "descripcion": "", "endpoint": "http://127.0.0.1@evil.example/v1"}):
         config(tmp_path, {"especialistas": [bad]})
         try:
             esp.load(p)
