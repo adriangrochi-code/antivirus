@@ -1,6 +1,7 @@
 """Pruebas del arnés de TISMA Code con un modelo simulado (sin GPU ni red)."""
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +27,15 @@ class FakeLLM:
         return msg, {"prompt_tokens": 100, "completion_tokens": 20}
 
 
+def _bwrap_ok() -> bool:
+    """La verificación corre las pruebas dentro de bubblewrap: sin él (o sin espacios de nombres) no hay bucle."""
+    try:
+        return bool(shutil.which("bwrap")) and subprocess.run(
+            ["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 @pytest.fixture
 def project(tmp_path):
     (tmp_path / "calc.py").write_text("def suma(a, b):\n    return a - b\n")
@@ -47,7 +57,7 @@ def run_session(project, script, tmp_path_factory, **kw):
     return s, llm, events
 
 
-@pytest.mark.skipif(not shutil.which("pytest") and not shutil.which("python3"), reason="sin python")
+@pytest.mark.skipif(not _bwrap_ok(), reason="sin bubblewrap utilizable (la verificación se ejecuta aislada)")
 def test_review_loop_fuzzy_edit_and_learning(project, tmp_path_factory):
     script = [
         {"content": "", "tool_calls": [call("read_file", path="calc.py")]},
