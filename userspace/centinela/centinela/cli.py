@@ -9,6 +9,7 @@
   centinela setup                 todo lo anterior, para el primer arranque
   centinela adaptd                demonio de adaptación en tiempo real
   centinela comparar …            prueba un ajuste A/B y solo lo deja si gana (también kernels)
+  centinela esperar-libre         espera a que el equipo esté enchufado y sin uso (tareas de mantenimiento)
 """
 
 from __future__ import annotations
@@ -377,6 +378,12 @@ def cmd_comparar(args) -> int:
     return 0
 
 
+def cmd_esperar_libre(args) -> int:
+    from . import mantenimiento as mt
+    return mt.esperar(max_s=args.max_horas * 3600, abs_s=max(args.max_horas * 2, 24) * 3600,
+                      log=lambda m: print(m, flush=True))
+
+
 def cmd_adaptd(args) -> int:
     plan = _plan_from_state(args)
     # Si el usuario cambia de perfil (centinela-perfil@), adaptd recalcula su plan base en vez de volver al viejo
@@ -462,6 +469,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--minimo", type=int, default=3, help="con «kernels»: arranques mínimos por kernel")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_comparar)
+
+    s = sub.add_parser("esperar-libre", help="espera a que el equipo esté enchufado y sin uso (mantenimiento)")
+    s.add_argument("--max-horas", type=float, default=12, help="pasado esto se ejecuta igual (si hay batería)")
+    s.set_defaults(func=cmd_esperar_libre)
 
     s = sub.add_parser("power")
     s.add_argument("perfil", choices=POWER_PROFILES)

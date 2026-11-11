@@ -3,13 +3,14 @@ Description=TISMA - análisis de una muestra (solo en la máquina virtual de Esc
 ConditionKernelCommandLine=tisma.detonar
 After=local-fs.target systemd-tmpfiles-setup.service
 DefaultDependencies=no
+# Al terminar (bien o mal) la máquina virtual se apaga y se descarta (opciones de [Unit]: en [Service] systemd
+# las ignoraba y la VM seguía encendida hasta el tiempo límite del análisis)
+SuccessAction=poweroff-force
+FailureAction=poweroff-force
 
 [Service]
 Type=oneshot
 ExecStart=/usr/lib/tisma/detonar-invitado
-# Al terminar (bien o mal) la máquina virtual se apaga y se descarta
-SuccessAction=poweroff-force
-FailureAction=poweroff-force
 TimeoutStartSec=15min
 
 [Install]

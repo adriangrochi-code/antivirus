@@ -1,6 +1,5 @@
 [Unit]
 Description=TISMA - salud del hardware y del sistema (scrub)
-ConditionACPower=true
 
 [Service]
 Type=oneshot
