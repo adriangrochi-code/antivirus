@@ -1,6 +1,8 @@
 # Perfil «Programación»: compiladores, depuración, linters y análisis (TISMA Code los usa si están)
-cmake ninja-build clang clang-format clang-tidy cppcheck mypy bandit
+build-essential cmake ninja-build clang clang-format clang-tidy cppcheck mypy bandit
 cargo rustc libbpf-dev libelf-dev zlib1g-dev pkg-config glslc libvulkan-dev
-tshark binwalk openjfx
+tshark binwalk shellcheck shfmt
+# Entornos para ejecutar programas: Java + JavaFX, .NET Framework (Mono), Node.js, Ruby
+default-jre openjfx mono-runtime nodejs npm ruby
 # Componentes desde GitHub/npm (versión e integridad fijadas): REA, análisis de binarios para TISMA Code
 @rea

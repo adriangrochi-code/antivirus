@@ -41,12 +41,14 @@ def test_plan_separates_firmware_from_dkms():
     assert p["firmware_que_falto"] == ["iwlwifi-8265-36.ucode", "rtl_bt/rtl8822b_fw.bin"]
     assert p["instalar"] == ["firmware-iwlwifi"]                 # realtek ya estaba instalado
     assert p["manual_dkms"] == ["broadcom-sta-dkms"]             # nunca se instala solo
-    assert p["nvidia"] is None
+    assert p["nvidia"] is None and "firmware-nvidia-graphics" not in p["instalar"]
     assert ["apt-file", "update"] in pc.calls
 
 
 def test_nvidia_advice_mentions_signing():
-    msg = mod.plan(PC(nvidia=True))["nvidia"]
+    p = mod.plan(PC(nvidia=True))
+    msg = p["nvidia"]
+    assert "firmware-nvidia-graphics" in p["instalar"]           # no va en la ISO: se instala al detectar la GPU
     assert "nouveau" in msg and "--firmar-dkms" in msg and "nvidia-driver" in msg
 
 

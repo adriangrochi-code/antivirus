@@ -1,0 +1,20 @@
+# TISMA OS: sin traducciones que el sistema no usa ni documentación de paquetes (la ISO pesaba ~800 MB más).
+# Las licencias (copyright) se conservan siempre. Para otro idioma: quitar sus líneas y reinstalar los paquetes.
+path-exclude=/usr/share/doc/*
+path-include=/usr/share/doc/*/copyright
+path-exclude=/usr/share/locale/*
+path-include=/usr/share/locale/es/*
+path-include=/usr/share/locale/es_*/*
+path-include=/usr/share/locale/en/*
+path-include=/usr/share/locale/en_*/*
+path-include=/usr/share/locale/locale.alias
+path-exclude=/usr/share/man/*
+path-include=/usr/share/man/man*
+path-include=/usr/share/man/es/*
+path-exclude=/usr/share/help/*
+path-include=/usr/share/help/C/*
+path-include=/usr/share/help/es/*
+path-exclude=/usr/lib/chromium/locales/*
+path-include=/usr/lib/chromium/locales/es.pak
+path-include=/usr/lib/chromium/locales/es-419.pak
+path-include=/usr/lib/chromium/locales/en-US.pak

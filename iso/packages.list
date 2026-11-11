@@ -35,13 +35,13 @@ libreoffice-l10n-es libreoffice-help-es hunspell-es hyphen-es mythes-es
 vlc haruna elisa ffmpeg libavcodec-extra gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
 gstreamer1.0-plugins-ugly gstreamer1.0-libav mesa-va-drivers intel-media-va-driver vainfo
 cups printer-driver-all hplip print-manager sane-utils skanpage
-fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea fonts-noto-cjk
+fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea
 7zip unar
 # --- Aspecto: arranque con logo, iconos y tipografía modernos ---
 plymouth plymouth-themes plymouth-label papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
 # --- Más aplicaciones de uso común: vídeo, grabación, audio, descargas, PDF, escritorio remoto, cámara ---
 qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
-kalk font-manager
+kalk
 # --- Accesibilidad ---
 orca kmag kmousetool
 # --- Privacidad y cifrado: claves GPG con interfaz, quitar metadatos, limpiar rastros, Tor ---
@@ -51,8 +51,8 @@ kleopatra mat2 metadata-cleaner bleachbit torbrowser-launcher
 plasma-discover plasma-discover-backend-flatpak plasma-discover-backend-fwupd flatpak kde-config-flatpak
 flatpak-xdg-utils xdg-desktop-portal-gtk
 # --- Entornos para ejecutar casi cualquier programa ---
-# AppImage (libfuse2), Java + JavaFX, .NET Framework (Mono), Node.js, Python (pip/pipx), Ruby, Qt5/Qt6/SDL
-libfuse2t64 default-jre mono-runtime nodejs npm python3-pip pipx ruby qtwayland5 qt6-wayland libsdl2-2.0-0
+# AppImage (libfuse2), Python (pip/pipx), Qt5/Qt6/SDL. Java, Mono (.NET), Node.js y Ruby: perfil «programación»
+libfuse2t64 python3-pip pipx qtwayland5 qt6-wayland libsdl2-2.0-0
 # --- Drivers: detección de hardware, NVIDIA, impresoras y escáneres sin driver (IPP/eSCL) ---
 isenkram-cli apt-file nvidia-detect dkms ipp-usb sane-airscan system-config-printer
 firmware-linux-nonfree firmware-brcm80211 firmware-libertas firmware-ath9k-htc firmware-cirrus firmware-intel-sound
@@ -62,7 +62,8 @@ pipewire pipewire-pulse wireplumber
 # --- Gráficos y firmware ---
 mesa-vulkan-drivers
 vulkan-tools mesa-utils
-firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics firmware-nvidia-graphics
+# (firmware-nvidia-graphics, ~150 MB: lo instala tisma-drivers al detectar una GPU NVIDIA)
+firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics
 firmware-iwlwifi firmware-realtek firmware-atheros firmware-mediatek firmware-sof-signed
 intel-microcode amd64-microcode
 # --- Programas de Windows: Wine + Proton (Steam) ---
@@ -91,8 +92,8 @@ espeak-ng pipewire-bin python3-cffi
 # --- TISMA Navegador, DNS cifrado con bloqueo de anuncios y VPN ---
 chromium chromium-l10n chromium-sandbox dnscrypt-proxy wireguard-tools network-manager-openvpn
 # --- Sandbox por app y herramientas del arnés de TISMA Code ---
-xdg-dbus-proxy ripgrep universal-ctags shfmt shellcheck
-build-essential git
+# (compiladores, shellcheck y shfmt: perfil «programación»; TISMA Code los usa si están)
+xdg-dbus-proxy ripgrep universal-ctags git
 python3-yara yara python3-pefile libnotify-bin gpgv
 # Motor ML de Escudo (lightgbm y signify se instalan con iso/components/escudo-ml.sh)
 python3-sklearn python3-asn1crypto python3-oscrypto python3-certvalidator python3-typing-extensions libgomp1

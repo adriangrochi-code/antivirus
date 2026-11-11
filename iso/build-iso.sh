@@ -84,6 +84,8 @@ if [[ ! -f "$CHROOT/.base-ok" ]]; then
         --include=ca-certificates,curl,gnupg "$SUITE" "$CHROOT" "$MIRROR"
     touch "$CHROOT/.base-ok"
 fi
+# Sin traducciones ni documentación que no se usan (las licencias se quedan): antes de instalar nada
+install -D -m 644 "$REPO/rootfs/etc/dpkg/dpkg.cfg.d/50-tisma-ligero" "$CHROOT/etc/dpkg/dpkg.cfg.d/50-tisma-ligero"
 mount_chroot
 # Durante la build el chroot resuelve con el DNS del anfitrión. Al final se pone el definitivo (127.0.2.1,
 # dnscrypt-proxy), que dentro del chroot no responde: sin esto, reconstruir sobre un chroot ya terminado fallaba.
@@ -125,7 +127,8 @@ if [[ -n "${TISMA_BUILD_CA:-}" ]]; then
     install -m 644 "$TISMA_BUILD_CA" "$CHROOT/etc/ssl/tisma-build-ca.crt"
     echo 'Acquire::https::CaInfo "/etc/ssl/tisma-build-ca.crt";' > "$BUILD_CA_APT"
 fi
-in_chroot dpkg --add-architecture i386
+# 32 bits (Steam, Wine) solo en la ISO completa; si no, lo añade tisma-perfil al instalar el perfil de juegos
+if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then in_chroot dpkg --add-architecture i386; fi
 
 # Waydroid (Android) desde su repositorio oficial firmado
 # Huella fijada de la clave del repositorio de Waydroid

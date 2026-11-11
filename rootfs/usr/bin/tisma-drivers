@@ -109,7 +109,12 @@ def without_driver(root: str = "/sys/bus/pci/devices", run=sh) -> list[str]:
 
 def plan(run=sh) -> dict:
     fw_files = missing_firmware(run)
-    cands = sorted(set(hardware_packages(run)) | set(firmware_owner(fw_files, run)))
+    cands = set(hardware_packages(run)) | set(firmware_owner(fw_files, run))
+    # El firmware de NVIDIA (GSP, ~150 MB) no va en la ISO: con una GPU NVIDIA se instala aquí (nouveau lo
+    # necesita para acelerar en las series 16xx/20xx y posteriores; sin él solo hay imagen básica)
+    if "NVIDIA" in gpu_vendors(run):
+        cands.add("firmware-nvidia-graphics")
+    cands = sorted(cands)
     have = installed(cands, run)
     pending = [p for p in cands if p not in have]
     return {"firmware_que_falto": fw_files,
