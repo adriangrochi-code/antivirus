@@ -9,6 +9,11 @@
 #
 # Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas),
 #            TISMA_ISO_MINIMA=1 (sin escritorio ni componentes pesados: valida construcción y arranque),
+#            TISMA_SB_KEY / TISMA_SB_CERT (clave Secure Boot de TISMA, iso/crear-clave-secureboot.sh: firma el
+#            kernel TISMA para arrancar con Secure Boot tras registrar la clave; sin ella, con Secure Boot
+#            activado se arranca el kernel firmado de Debian),
+#            TISMA_BORRAR_CHROOT=1 (borra el chroot tras crear el squashfs: para discos justos; la build
+#            siguiente empieza de cero),
 #            TISMA_SIN_COMPILAR=1 (escritorio completo, pero sin compilar componentes externos dentro de la
 #            build: llama.cpp, hardened_malloc, sched_ext, ML de Escudo; para CI y entornos restringidos),
 #            TISMA_BUILD_CA=<archivo.pem> (CA de un proxy HTTPS corporativo: solo durante la build, no va en la ISO)
@@ -28,7 +33,7 @@ log() { printf '\033[1;35m[iso]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[iso] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Ejecutar como root (debootstrap y chroot lo requieren)"
-for t in debootstrap mksquashfs xorriso grub-mkrescue rsvg-convert gcc git pip3; do
+for t in debootstrap mksquashfs xorriso grub-mkimage mkfs.vfat mcopy sbsign rsvg-convert gcc git pip3; do
     command -v "$t" >/dev/null || die "Falta la herramienta: $t (ver README, sección Requisitos)"
 done
 compgen -G "$BUILD_DIR/kernel-debs/linux-image-*.deb" >/dev/null \
@@ -81,6 +86,12 @@ mkdir -p "$CHROOT/etc/apt/preferences.d"
 cat > "$CHROOT/etc/apt/preferences.d/50-tisma-graficos" <<EOF
 Explanation: TISMA: Mesa (OpenGL/Vulkan: RADV, ANV, NVK…) y firmware de GPU, Wi-Fi y audio, de backports
 Package: src:mesa src:firmware-nonfree
+Pin: release n=$SUITE-backports
+Pin-Priority: 600
+
+Explanation: kernel firmado por Debian (arranca con Secure Boot sin registrar nada); el de backports, para el
+Explanation: hardware más nuevo
+Package: src:linux-signed-amd64 src:linux
 Pin: release n=$SUITE-backports
 Pin-Priority: 600
 
@@ -273,6 +284,19 @@ mkdir -p "$CHROOT/etc/skel/Desktop"
     sed 's/^Name=.*/Name=Instalar TISMA OS/; s/^Icon=.*/Icon=tisma/' \
         "$CHROOT/usr/share/applications/install-debian.desktop" > "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
 
+# Secure Boot: el kernel TISMA se firma con la clave propia (MOK) si se proporciona; su certificado va en el
+# sistema para registrarlo con «tisma-secureboot activar». Sin clave, con Secure Boot arranca el de Debian.
+if [[ -n "${TISMA_SB_KEY:-}" && -n "${TISMA_SB_CERT:-}" ]]; then
+    for k in "$CHROOT"/boot/vmlinuz-*-centinela-*; do
+        sbsign --key "$TISMA_SB_KEY" --cert "$TISMA_SB_CERT" --output "$k.firmado" "$k" && mv "$k.firmado" "$k"
+        log "Kernel TISMA firmado para Secure Boot: $(basename "$k")"
+    done
+    install -d "$CHROOT/usr/share/tisma/secureboot"
+    openssl x509 -in "$TISMA_SB_CERT" -outform DER -out "$CHROOT/usr/share/tisma/secureboot/tisma-mok.der"
+else
+    log "Sin TISMA_SB_KEY: el kernel TISMA no se firma (con Secure Boot activado arrancará el de Debian)"
+fi
+in_chroot systemctl enable tisma-secureboot.service 2>/dev/null || true
 # Pantalla de arranque con el logo (el tema lo genera make-branding.py a partir de «spinner»)
 in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/tisma ] && plymouth-set-default-theme tisma' \
     || log "AVISO: sin tema de arranque TISMA"
@@ -284,14 +308,29 @@ rm -rf "$CHROOT"/var/lib/apt/lists/* "$CHROOT"/tmp/* "$CHROOT"/root/.bash_histor
 mv -f "$CHROOT/etc/resolv.conf.final" "$CHROOT/etc/resolv.conf"
 umount_chroot
 
+# Binarios firmados de arranque (del chroot: los mismos paquetes de Debian que llevará el sistema instalado)
+SBROOT="$BUILD_DIR/secureboot"
+rm -rf "$SBROOT" && mkdir -p "$SBROOT/usr/lib/shim" "$SBROOT/usr/lib/grub"
+cp -a "$CHROOT/usr/lib/shim/." "$SBROOT/usr/lib/shim/"
+cp -a "$CHROOT/usr/lib/grub/x86_64-efi-signed" "$SBROOT/usr/lib/grub/"
+
 # ---------------------------------------------------------------- 5. ISO
 log "Creando squashfs (zstd)"
 rm -rf "$ISODIR" && mkdir -p "$ISODIR/live" "$ISODIR/boot/grub"
 mksquashfs "$CHROOT" "$ISODIR/live/filesystem.squashfs" -comp zstd -Xcompression-level 19 \
     -b 1M -noappend -e boot/efi -e .base-ok -e .packages-ok -quiet
-KVER="$(find "$CHROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -printf '%f\n' | sort -V | tail -n1 | sed 's/^vmlinuz-//')"
+# Sesión live e instalador con el kernel FIRMADO de Debian: arranca con Secure Boot en cualquier PC y trae todos
+# los drivers. El kernel TISMA, como entrada aparte (con Secure Boot, solo si está firmado y su clave registrada).
+KVER="$(find "$CHROOT/boot" -maxdepth 1 -name 'vmlinuz-*' ! -name '*centinela*' -printf '%f\n' | sort -V | tail -n1 | sed 's/^vmlinuz-//')"
+TVER="$(find "$CHROOT/boot" -maxdepth 1 -name 'vmlinuz-*centinela*' -printf '%f\n' | sort -V | tail -n1 | sed 's/^vmlinuz-//')"
+[[ -n "$KVER" ]] || KVER="$TVER"
 cp "$CHROOT/boot/vmlinuz-$KVER" "$ISODIR/live/vmlinuz"
 cp "$CHROOT/boot/initrd.img-$KVER" "$ISODIR/live/initrd.img"
+if [[ -n "$TVER" && "$TVER" != "$KVER" ]]; then
+    cp "$CHROOT/boot/vmlinuz-$TVER" "$ISODIR/live/vmlinuz-tisma"
+    cp "$CHROOT/boot/initrd.img-$TVER" "$ISODIR/live/initrd-tisma.img"
+fi
+log "Kernel de la sesión live: $KVER${TVER:+ · kernel TISMA: $TVER}"
 cp -r "$CHROOT/boot/grub/themes" "$ISODIR/boot/grub/"
 
 LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es timezone=Europe/Madrid hostname=tisma username=tisma"
@@ -318,7 +357,24 @@ menuentry "Probar TISMA OS en RAM (más rápido, requiere 8 GB)" {
     initrd /live/initrd.img
 }
 EOF
-log "Generando ISO híbrida BIOS+UEFI"
-grub-mkrescue -o "$BUILD_DIR/$ISO_NAME" "$ISODIR" -- -volid TISMA_OS 2>&1 | tail -n 3
+if [[ -f "$ISODIR/live/vmlinuz-tisma" ]]; then
+    cat >> "$ISODIR/boot/grub/grub.cfg" <<EOF
+menuentry "Probar TISMA OS con el kernel TISMA (requiere Secure Boot desactivado o su clave registrada)" {
+    linux /live/vmlinuz-tisma $LIVE $SEC
+    initrd /live/initrd-tisma.img
+}
+EOF
+fi
+if [[ "${TISMA_BORRAR_CHROOT:-0}" == 1 ]]; then
+    # Solo si no queda NADA montado dentro (si no, borrar el chroot destrozaría /proc, /dev… del anfitrión)
+    if grep -q " $CHROOT/" /proc/mounts; then
+        log "AVISO: el chroot aún tiene montajes; no se borra"
+    else
+        rm -rf "$CHROOT"
+        log "Chroot borrado para dejar sitio a la ISO (TISMA_BORRAR_CHROOT=1)"
+    fi
+fi
+log "Generando ISO híbrida BIOS + UEFI con Secure Boot (shim de Microsoft → GRUB y kernel firmados por Debian)"
+"$HERE/secureboot-iso.sh" "$ISODIR" "$SBROOT" "$BUILD_DIR/$ISO_NAME" TISMA_OS
 ( cd "$BUILD_DIR" && sha256sum "$ISO_NAME" > "$ISO_NAME.sha256" )
 log "Listo: $BUILD_DIR/$ISO_NAME ($(du -h "$BUILD_DIR/$ISO_NAME" | cut -f1))"

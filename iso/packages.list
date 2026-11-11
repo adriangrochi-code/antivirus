@@ -6,6 +6,8 @@ systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
 live-boot live-config live-config-systemd initramfs-tools
 network-manager wpasupplicant iw bluez rfkill wireless-regdb
 zstd lz4 curl ca-certificates gnupg pciutils usbutils lshw dmidecode
+# --- Secure Boot: shim (Microsoft) + GRUB y kernel firmados por Debian; mokutil para la clave TISMA ---
+shim-signed shim-helpers-amd64-signed grub-efi-amd64-signed mokutil sbsigntool linux-image-amd64
 # --- Instalador gráfico ---
 calamares calamares-settings-debian grub-efi-amd64-bin grub-pc-bin efibootmgr os-prober
 # --- Seguridad ---
