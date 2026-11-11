@@ -6,6 +6,7 @@ de probar y de revisar antes de aplicar (``centinela plan``).
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 
 USE_CASES = ("escritorio", "juegos", "servidor", "portatil")
@@ -37,6 +38,8 @@ class Plan:
     power: dict = field(default_factory=dict)
     sched_ext: str | None = None
     initramfs_compress: str = "zstd"
+    desktop_light: bool = False
+    gpu_oc_percent: int = 0
     recommendations: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
@@ -293,6 +296,51 @@ def _root_disk(hw: dict) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- APU / memoria compartida
+A275 = re.compile(r"ThinkPad A275|20KC|20KD")
+
+
+def _shared_memory(plan: Plan, hw: dict, bench: dict) -> None:
+    """CPU, GPU integrada e IA comparten el mismo bus de memoria: cada byte cuenta."""
+    gpus = hw.get("gpus", [])
+    igpu = next((g for g in gpus if g.get("integrated")), None)
+    if not igpu or any(not g.get("integrated") for g in gpus):
+        return
+    mods = hw.get("memory_modules") or []
+    bw = (bench.get("memory", {}).get("bandwidth_gbs") or {}).get("read")
+    r = plan.recommendations
+    if len(mods) == 1:
+        mts = mods[0].get("configured_mts") or 0
+        theo = mts * 8 / 1000 if mts else None
+        r.append(f"Memoria en canal simple ({mods[0]['mb'] // 1024} GB a {mts} MT/s"
+                 + (f", ~{theo:.0f} GB/s teóricos" if theo else "") + "): la GPU integrada y la CPU comparten ese "
+                 "ancho de banda. Si el equipo tiene un segundo zócalo, un módulo igual lo duplica.")
+    light = bw is not None and bw < 20
+    if light:
+        plan.desktop_light = True
+        plan.why(f"Ancho de banda medido {bw:.1f} GB/s con GPU integrada: escritorio ligero (sin desenfoque ni "
+                 "translucidez de ventanas, que leen y escriben toda la pantalla en cada fotograma).")
+    plan.cmdline.append("amdgpu.gttsize=4096" if igpu.get("vendor") == "amd" and hw["memory"].get("total_mb", 0) >= 12288
+                        else "")
+    if A275.search(hw.get("product", "")):
+        r.append("ThinkPad A275: sube la VRAM reservada (UMA Frame Buffer) de 512 MB a 1 GB. Con el BIOS mod "
+                 "(github.com/adriangrochi-code/bios-mod-a275): variable AmdSetup "
+                 "{3A997502-647A-4C82-998E-52EF9486A247}, offset 0x09, 2 bytes = 0x0400 (little-endian). "
+                 "Haz antes copia del chip SPI.")
+        r.append("ThinkPad A275 (Excavator, sin AVX-512): para IA local usa modelos de 1,5–4 B en Q4 con llama.cpp; "
+                 "a ~13 GB/s, un modelo de 2 GB da del orden de 5 tokens/s (la velocidad la limita la RAM, no la CPU).")
+    if power_profile_allows_oc(plan) and igpu.get("overdrive"):
+        plan.gpu_oc_percent = 10
+        plan.cmdline.append("amdgpu.ppfeaturemask=0xffffffff")   # habilita overdrive (efecto tras reiniciar)
+        plan.why("Overclock de la GPU integrada +10 % (amdgpu overdrive) con vigilancia de temperatura: se revierte "
+                 "solo si supera 90 °C.")
+    plan.cmdline = [c for c in plan.cmdline if c]
+
+
+def power_profile_allows_oc(plan: Plan) -> bool:
+    return plan.power_profile == "rendimiento" and plan.use_case in ("juegos", "escritorio")
+
+
 def make_plan(hw: dict, bench: dict | None = None, use_case: str = "escritorio",
               power_profile: str = "equilibrado") -> Plan:
     if use_case not in USE_CASES:
@@ -306,6 +354,7 @@ def make_plan(hw: dict, bench: dict | None = None, use_case: str = "escritorio",
     _storage(plan, hw, bench)
     _cpu_power(plan, hw)
     _sched_ext(plan, hw)
+    _shared_memory(plan, hw, bench)
     _recommendations(plan, hw, bench)
     plan.cmdline = list(dict.fromkeys(plan.cmdline))
     return plan

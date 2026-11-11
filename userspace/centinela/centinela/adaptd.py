@@ -155,7 +155,19 @@ class AdaptDaemon:
             self.act.sysctl("vm.compaction_proactiveness", "20")
         self.state = state
 
+    def thermal_guard(self) -> None:
+        """Si la GPU integrada con overclock supera 90 °C, se vuelve a reloj de fábrica."""
+        for card in sysfs.ls("/sys/class/drm/card[0-9]"):
+            od = sysfs.read(f"{card}/device/pp_sclk_od")
+            if not od or od == "0":
+                continue
+            temps = [sysfs.read_int(f"{h}/temp1_input") or 0 for h in sysfs.ls(f"{card}/device/hwmon/hwmon*")]
+            if temps and max(temps) >= 90_000:
+                self.act.write(f"{card}/device/pp_sclk_od", "0")
+                log.warning("GPU a %.0f °C: overclock revertido a reloj de fábrica", max(temps) / 1000)
+
     def tick(self) -> Decision:
+        self.thermal_guard()
         avail = mem_available_mb()
         self.mem.update(avail)
         d = decide(read_psi("memory"), read_psi("cpu"), avail,

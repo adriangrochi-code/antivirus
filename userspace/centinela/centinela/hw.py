@@ -155,6 +155,8 @@ def gpus() -> list[dict]:
                 g["power_cap_max_w"] = (sysfs.read_int(f"{hw}/power1_cap_max") or 0) / 1e6
                 g["power_cap_default_w"] = (sysfs.read_int(f"{hw}/power1_cap_default") or 0) / 1e6
                 g["power_hwmon"] = hw
+        g["overdrive"] = sysfs.read(f"{dev}/pp_sclk_od") is not None
+        g["integrated"] = g["vendor"] in ("amd", "intel") and g["boot_vga"] and (g["vram_mb"] or 0) <= 2048
         out.append(g)
     return out
 
@@ -244,6 +246,35 @@ def boot_drivers() -> dict:
     return {"root_device": root_dev, "root_fs": fstype, "drivers": drivers}
 
 
+def memory_modules() -> list[dict]:
+    """Módulos de RAM instalados (tabla SMBIOS 17, legible por root en /sys/firmware/dmi/entries)."""
+    import struct
+    mods = []
+    for e in sysfs.ls("/sys/firmware/dmi/entries/17-*"):
+        try:
+            raw = open(sysfs.path(f"{e}/raw"), "rb").read()
+        except OSError:
+            continue
+        if len(raw) < 0x17:
+            continue
+        size = struct.unpack_from("<H", raw, 0x0C)[0]
+        if size in (0, 0xFFFF):
+            continue                                   # zócalo vacío
+        mb = (size & 0x7FFF) * (1 if size & 0x8000 else 1024) // (1024 if size & 0x8000 else 1)
+        if size == 0x7FFF and len(raw) >= 0x20:
+            mb = struct.unpack_from("<I", raw, 0x1C)[0]
+        speed = struct.unpack_from("<H", raw, 0x15)[0]
+        conf = struct.unpack_from("<H", raw, 0x20)[0] if len(raw) >= 0x22 else 0
+        mods.append({"mb": mb, "speed_mts": speed, "configured_mts": conf or speed})
+    return mods
+
+
+def product() -> str:
+    return " ".join(filter(None, (sysfs.read("/sys/class/dmi/id/sys_vendor"),
+                                  sysfs.read("/sys/class/dmi/id/product_version"),
+                                  sysfs.read("/sys/class/dmi/id/product_name"))))
+
+
 def cpu_vulnerabilities() -> dict[str, str]:
     """Estado de mitigación de cada vulnerabilidad de CPU según el kernel."""
     out = {}
@@ -266,6 +297,9 @@ def probe() -> dict:
         "boot": boot_drivers(),
         "modules": loaded_modules(),
         "cpu_vulnerabilities": cpu_vulnerabilities(),
+        "memory_modules": memory_modules(),
+        "product": product(),
+        "boost": sysfs.read("/sys/devices/system/cpu/cpufreq/boost"),
         "kernel": sysfs.read("/proc/sys/kernel/osrelease"),
     }
 

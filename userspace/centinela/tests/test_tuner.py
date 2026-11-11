@@ -75,3 +75,37 @@ def test_boot_analysis_parsing():
     rec = boot.recommendations(t, b)
     assert any("BIOS" in r for r in rec) and any("ModemManager" in r for r in rec)
     assert not any("nftables" in r for r in rec)          # esencial y rápido: no se toca
+
+
+A275_HW = {**HW, "product": "LENOVO ThinkPad A275 20KD0013US",
+           "cpu": {**HW["cpu"], "logical_cpus": 4, "physical_cores": 2, "l3_domains": [], "freq_classes": 1,
+                   "epp_choices": [], "governors": ["performance", "schedutil"], "vendor": "AuthenticAMD"},
+           "memory": {"total_mb": 15800, "numa_nodes": 1, "disk_swap": False},
+           "memory_modules": [{"mb": 16384, "speed_mts": 2400, "configured_mts": 1866}],
+           "gpus": [{"card": "card0", "vendor": "amd", "integrated": True, "overdrive": True, "boot_vga": True,
+                     "vram_mb": 512, "pcie_degraded": False}],
+           "power": {"rapl": [], "platform_profiles": [], "battery": True}}
+
+
+def test_a275_shared_memory_profile():
+    p = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "rendimiento")
+    assert p.desktop_light
+    assert any("canal simple" in r for r in p.recommendations)
+    assert any("0x09" in r and "AmdSetup" in r for r in p.recommendations)
+    assert p.gpu_oc_percent == 10 and "amdgpu.ppfeaturemask=0xffffffff" in p.cmdline
+    assert "amdgpu.gttsize=4096" in p.cmdline
+    quiet = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "equilibrado")
+    assert quiet.gpu_oc_percent == 0                 # el OC solo en perfil rendimiento
+
+
+def test_light_kwinrc_keeps_other_settings():
+    from centinela.apply import light_kwinrc
+    out = light_kwinrc("[Plugins]\nblurEnabled=true\nsquashEnabled=true\n\n[Windows]\nElectricBorderTiling=true\n")
+    assert "blurEnabled=false" in out and "squashEnabled=true" in out and "ElectricBorderTiling=true" in out
+    assert "translucencyEnabled=false" in out
+
+
+def test_oc_clamped_and_whitelisted():
+    from centinela.apply import Actuator, OC_MAX
+    assert Actuator.allowed("/sys/class/drm/card0/device/pp_sclk_od")
+    assert OC_MAX <= 15

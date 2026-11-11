@@ -46,7 +46,10 @@ def hardware() -> dict:
     for card in sorted(Path("/sys/class/drm").glob("card[0-9]")):
         f = card / "device/mem_info_vram_total"
         if f.exists():
-            gpus.append({"name": card.name, "vram_mb": int(f.read_text()) // (1 << 20)})
+            mb = int(f.read_text()) // (1 << 20)
+            # APU: la «VRAM» es una reserva de la RAM compartida, no memoria propia más rápida
+            if mb > 2048:
+                gpus.append({"name": card.name, "vram_mb": mb})
     bw = None
     try:
         b = json.loads(Path("/var/lib/centinela/bench.json").read_text())

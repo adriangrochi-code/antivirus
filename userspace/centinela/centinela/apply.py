@@ -31,7 +31,10 @@ WRITABLE = [
     "/sys/class/drm/card*/device/hwmon/hwmon*/power1_cap",
     "/sys/kernel/mm/transparent_hugepage/enabled",
     "/sys/kernel/mm/transparent_hugepage/defrag",
+    "/sys/devices/system/cpu/cpufreq/boost",
+    "/sys/class/drm/card*/device/pp_sclk_od",
 ]
+OC_MAX = 15               # % máximo de overclock de la GPU integrada que centinela acepta
 
 
 class Actuator:
@@ -110,8 +113,39 @@ def render_files(plan: Plan) -> dict[str, str]:
     return files
 
 
+LIGHT = {"blurEnabled": "false", "contrastEnabled": "false", "translucencyEnabled": "false"}
+
+
+def light_kwinrc(current: str) -> str:
+    """kwinrc con los efectos que más ancho de banda gastan desactivados (se conserva el resto)."""
+    lines, in_plugins, done = [], False, set()
+    for line in current.splitlines():
+        if line.startswith("["):
+            if in_plugins:
+                lines += [f"{k}={v}" for k, v in LIGHT.items() if k not in done]
+            in_plugins = line.strip() == "[Plugins]"
+        key = line.split("=", 1)[0].strip()
+        if in_plugins and key in LIGHT:
+            lines.append(f"{key}={LIGHT[key]}")
+            done.add(key)
+            continue
+        lines.append(line)
+    if in_plugins:
+        lines += [f"{k}={v}" for k, v in LIGHT.items() if k not in done]
+    if "[Plugins]" not in current:
+        lines += ["", "[Plugins]"] + [f"{k}={v}" for k, v in LIGHT.items()]
+    return "\n".join(lines) + "\n"
+
+
 def persist(plan: Plan, dry_run: bool = False) -> list[str]:
-    return [_write_file(rel, content, dry_run) for rel, content in render_files(plan).items()]
+    files = render_files(plan)
+    if plan.desktop_light:
+        try:
+            cur = open(os.path.join(ETC, "xdg/kwinrc"), encoding="utf-8").read()
+        except OSError:
+            cur = ""
+        files["xdg/kwinrc"] = light_kwinrc(cur)
+    return [_write_file(rel, content, dry_run) for rel, content in files.items()]
 
 
 def apply_runtime(plan: Plan, act: Actuator) -> None:
@@ -144,6 +178,12 @@ def apply_power(plan: Plan, act: Actuator) -> None:
         act.write(f"{zone}/constraint_{idx}_power_limit_uw", str(int(r["target_w"] * 1e6)))
     for hwmon, r in pw.get("gpu_power_caps", {}).items():
         act.write(f"{hwmon}/power1_cap", str(int(r["target_w"] * 1e6)))
+    # Core Performance Boost: activo salvo en silencioso
+    act.write("/sys/devices/system/cpu/cpufreq/boost", "0" if plan.power_profile == "silencioso" else "1")
+    oc = max(0, min(OC_MAX, int(getattr(plan, "gpu_oc_percent", 0) or 0)))
+    for card in sysfs.ls("/sys/class/drm/card[0-9]"):
+        if sysfs.read(f"{card}/device/pp_sclk_od") is not None:
+            act.write(f"{card}/device/pp_sclk_od", str(oc))
 
 
 def save_state(name: str, data: dict) -> str:
