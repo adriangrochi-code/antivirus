@@ -45,8 +45,10 @@ Cómo trabajas:
 4b. Para cálculos, unidades o problemas de ingeniería/ciencia usa la herramienta hope (exacta) o consejo
     (varios agentes + verificación); nunca calcules de memoria. Escribe los cálculos como «Paso n: … = …»
     y termina con «Resultado: …»: un crítico revisa cada paso.
-4d. Para analizar binarios o programas sin código (ingeniería inversa, malware sospechoso) usa rea_buscar y
-    rea: el análisis es estático y aislado. Para dudas de documentación o investigación usa jarvis.
+4d. Para entender o desmontar cualquier programa sin su código (binarios, apps JavaScript/Electron, APK,
+    firmware, protocolos, webs) usa REA: primero rea_guia para el procedimiento, luego rea_buscar y rea.
+    Empieza en modo estático; pide rea_modo (dinámico) solo si la evidencia estática no basta.
+    Para dudas de documentación o investigación usa jarvis.
 4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
     y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
     error) guárdalo con docs_guardar para la próxima vez.
@@ -490,11 +492,23 @@ class Session:
                 return reply(f"Guardado en {ref}", True, args)
             except (KeyError, ValueError, OSError) as e:
                 return reply(f"Error: {e}", False, args)
-        if name in ("rea_buscar", "rea"):
+        if name == "rea_guia":
+            from .rea import guide
+            return reply(guide(str(args.get("tema", ""))), True, args)
+        if name in ("rea_buscar", "rea", "rea_modo"):
             try:
+                from .rea import REATools
+                if name == "rea_modo":
+                    dyn, net = bool(args.get("dinamico")), bool(args.get("red"))
+                    if (dyn or net) and not self._ask("rea_modo", args, tools.preview(self.ws, "rea_modo", args)):
+                        return reply("El usuario no permitió cambiar el modo de REA.", False, args)
+                    if self.rea is not None:
+                        self.rea.close()
+                    self.emit("info", message=f"REA en modo {'dinámico' if dyn else 'estático'}{' con red' if net else ''}…")
+                    self.rea = REATools(self.ws, dynamic=dyn, network=net)
+                    return reply(f"REA ahora en modo {self.rea.mode()}.", True, args)
                 if self.rea is None:
-                    from .rea import REATools
-                    self.emit("info", message="Iniciando REA (aislado, sin red)…")
+                    self.emit("info", message="Iniciando REA (aislado, modo estático)…")
                     self.rea = REATools(self.ws)
                 if name == "rea_buscar":
                     return reply(self.rea.search(str(args.get("consulta", ""))), True, args)
@@ -502,8 +516,7 @@ class Session:
                 targs = args.get("argumentos") or {}
                 if not isinstance(targs, dict):
                     return reply("Error: argumentos debe ser un objeto JSON", False, args)
-                if self.rea.needs_approval(tool) and "rea" not in self.always_allow and \
-                        not self._ask("rea", args, tools.preview(self.ws, "rea", args)):
+                if self.rea.needs_approval(tool) and not self._ask("rea", args, tools.preview(self.ws, "rea", args)):
                     return reply("El usuario denegó esta acción.", False, args)
                 return reply(tools._clip(self.rea.call(tool, targs), 12000), True, args)
             except Exception as e:  # noqa: BLE001 (MCPError, ausencia de REA…)

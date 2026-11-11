@@ -294,6 +294,11 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
         return f"OpenJarvis investigará (puede buscar en Internet):\n{args.get('pregunta', '')}"
     if name == "rea":
         return f"REA: {args.get('herramienta')} {json.dumps(args.get('argumentos') or {}, ensure_ascii=False)}"
+    if name == "rea_modo":
+        modo = "DINÁMICO: ejecutará y observará el programa analizado" if args.get("dinamico") else "estático"
+        red = " · CON acceso a la red" if args.get("red") else " · sin red"
+        return (f"REA pasará a modo {modo}{red} (aislado con bubblewrap, sin acceso a tu carpeta personal).\n"
+                f"Motivo: {args.get('motivo', '—')}")
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         return ("Ejecutará el código de pruebas del proyecto (aislado, sin red):\n" +

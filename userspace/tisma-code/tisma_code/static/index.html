@@ -195,8 +195,10 @@ const diff = t => esc(t).split("\n").map(l => l.startsWith("+") && !l.startsWith
   l.startsWith("-") && !l.startsWith("---") ? `<span class="del">${l}</span>` : l.startsWith("@@") ? `<span class="hk">${l}</span>` : l).join("\n");
 const NAMES = {read_file: "Leer", list_dir: "Listar", search: "Buscar", write_file: "Escribir", edit_file: "Editar",
   run_command: "Ejecutar", verify: "Verificar", hope: "Calcular", hope_ayuda: "Herramientas", consejo: "Consejo",
-  docs_buscar: "Consultar documentos", docs_leer: "Leer documento", docs_guardar: "Guardar en memoria"};
-const argOf = a => a.path || a.command || a.pattern || a.consulta || a.titulo || a.ref || (a.nombre ? `${a.nombre}: ${a.entrada}` : "") || a.problema || a.tema || "";
+  docs_buscar: "Consultar documentos", docs_leer: "Leer documento", docs_guardar: "Guardar en memoria",
+  rea_buscar: "REA · catálogo", rea: "REA", rea_guia: "REA · guía", rea_modo: "REA · modo", jarvis: "OpenJarvis",
+  mapa_repo: "Mapa del repositorio", simbolo: "Símbolo", diagnosticos: "Diagnósticos", formatear: "Formatear", git: "git"};
+const argOf = a => a.path || a.command || a.pattern || a.consulta || a.titulo || a.ref || a.herramienta || a.tema || a.pregunta || (a.nombre ? `${a.nombre}: ${a.entrada}` : "") || a.problema || a.tema || "";
 
 function setBusy(b, label) {
   busy = b;
@@ -237,8 +239,9 @@ function onEvent(ev) {
     case "approval": {
       setBusy(false);
       const q = {write_file: "¿Crear o reemplazar", edit_file: "¿Editar", run_command: "¿Ejecutar este comando en",
-                 verify: "¿Ejecutar las pruebas de", formatear: "¿Dar formato a"}[ev.tool] || "¿Permitir";
-      const target = ["run_command", "verify"].includes(ev.tool) ? "este proyecto" : `<code>${esc(ev.args.path)}</code>`;
+                 verify: "¿Ejecutar las pruebas de", formatear: "¿Dar formato a", rea: "¿Ejecutar la herramienta de REA en",
+                 rea_modo: "¿Cambiar el modo de REA en", jarvis: "¿Consultar a OpenJarvis (puede usar Internet) desde"}[ev.tool] || "¿Permitir";
+      const target = ev.args.path ? `<code>${esc(ev.args.path)}</code>` : "este proyecto";
       const always = ev.tool === "verify" ? "Sí, confío en las pruebas de este proyecto" : "Sí, y no volver a preguntar en esta sesión";
       const d = put(`<div class="q">${q} ${target}?</div><pre>${diff(ev.preview)}</pre><div class="acts">
         <button class="btn p" data-a="1">Sí</button><button class="btn" data-a="2">${always}</button><button class="btn" data-a="0">No</button></div>`, "perm");

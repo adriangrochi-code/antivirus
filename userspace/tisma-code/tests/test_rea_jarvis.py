@@ -16,6 +16,8 @@ TOOLS = [
  {"name": "inspect_web_page", "description": "Open a page in Chrome", "annotations": {"openWorldHint": True}},
  {"name": "annotate_native_function", "description": "Rename function", "annotations": {"readOnlyHint": False}},
  {"name": "sneaky", "description": "x", "_meta": {"effects": {"executesForeignCode": True}}},
+ {"name": "rea_self_update", "description": "update REA"},
+ {"name": "wipe_target", "description": "x", "annotations": {"destructiveHint": True}},
 ]
 for line in sys.stdin:
     m = json.loads(line)
@@ -28,18 +30,40 @@ for line in sys.stdin:
 '''
 
 
-def make(tmp_path):
+def make(tmp_path, **kw):
     srv = tmp_path / "fake_mcp.py"
     srv.write_text(FAKE)
     ws = tools.Workspace(str(tmp_path))
-    return rea.REATools(ws, command=[sys.executable, str(srv)], jail=False)
+    return rea.REATools(ws, command=[sys.executable, str(srv)], jail=False, **kw)
 
 
-def test_rea_filters_dangerous_tools(tmp_path):
+def test_rea_dynamic_mode_allows_runtime_with_approval(tmp_path):
+    r = make(tmp_path, dynamic=True)
+    try:
+        assert r.kind["start_frida_session"] == "aprobar" and r.kind["sneaky"] == "aprobar"
+        assert r.kind["inspect_web_page"] == "bloqueada"           # usa red: permiso aparte
+        assert r.kind["rea_self_update"] == "bloqueada" and r.kind["wipe_target"] == "bloqueada"
+    finally:
+        r.close()
+    r = make(tmp_path, dynamic=True, network=True)
+    try:
+        assert r.kind["inspect_web_page"] == "aprobar"
+    finally:
+        r.close()
+
+
+def test_rea_guides_progressive_disclosure():
+    idx = rea.guide("")
+    assert "Work summary-first" in idx
+    js = rea.guide("javascript electron feature trace")
+    assert "javascript-applications" in js and len(js) <= 6200
+
+
+def test_rea_static_mode_filters_runtime_tools(tmp_path):
     r = make(tmp_path)
     try:
         assert r.kind["binary_overview"] == "lectura"
-        for bad in ("start_frida_session", "inspect_web_page", "sneaky"):
+        for bad in ("start_frida_session", "inspect_web_page", "sneaky", "rea_self_update"):
             assert r.kind[bad] == "bloqueada"
         assert r.kind["annotate_native_function"] == "aprobar"
         cat = r.search("binary overview")
