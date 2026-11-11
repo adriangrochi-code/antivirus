@@ -53,6 +53,8 @@ Cómo trabajas:
     interfaz) usa Craft Anything: craft_guia para el método, craft_buscar y craft. Lleva la memoria de la
     investigación (brief, plan, hipótesis, hallazgos con ID de evidencia) y cierra el ciclo
     Estudiar → Construir → Verificar → Refinar con una comparación medida contra la referencia.
+4f. Para diseñar o modificar piezas en 3D (CAD paramétrico, STEP/STL/3MF) usa SolidCraft: solidcraft_guia,
+    solidcraft_buscar y solidcraft. Calcula antes el volumen o la caja esperados y pásalos como `expect`.
 4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
     y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
     error) guárdalo con docs_guardar para la próxima vez.
@@ -161,6 +163,7 @@ class Session:
         self.docs = DocSpace(self.ws.root, self.kb.dir)
         self.rea = None                       # REA se arranca solo si el modelo lo usa
         self.craft = None                     # Craft Anything, igual: bajo demanda
+        self.solidcraft = None                # SolidCraft (CAD), bajo demanda
         self.hope = None
         if HopeTools is not None:
             try:
@@ -172,7 +175,7 @@ class Session:
     def close(self) -> None:
         """Libera los procesos de la sesión (llama-server de especialistas, servidores MCP de REA y Craft)."""
         self.cancel()
-        for name in ("especialistas", "rea", "craft"):
+        for name in ("especialistas", "rea", "craft", "solidcraft"):
             obj = getattr(self, name, None)
             if obj is not None:
                 try:
@@ -591,6 +594,27 @@ class Session:
                                                                 str(args.get("entrada", ""))), 12000), True, args)
             except Exception as e:  # noqa: BLE001 (SpecialistError, LLMError, servidor no disponible…)
                 return reply(f"Error del especialista: {e}", False, args)
+        if name == "solidcraft_guia":
+            from .solidcraft import guide as sc_guide
+            return reply(sc_guide(str(args.get("tema", ""))), True, args)
+        if name in ("solidcraft_buscar", "solidcraft"):
+            try:
+                from .solidcraft import SolidCraftTools
+                if self.solidcraft is None:
+                    self.emit("info", message="Iniciando SolidCraft (CAD, aislado, solo la carpeta del proyecto)…")
+                    self.solidcraft = SolidCraftTools(self.ws)
+                if name == "solidcraft_buscar":
+                    return reply(self.solidcraft.search(str(args.get("consulta", ""))), True, args)
+                tool = str(args.get("herramienta", ""))
+                targs = args.get("argumentos") or {}
+                if not isinstance(targs, dict):
+                    return reply("Error: argumentos debe ser un objeto JSON", False, args)
+                if self.solidcraft.needs_approval(tool) and not self._ask("solidcraft", args,
+                                                                          tools.preview(self.ws, "solidcraft", args)):
+                    return reply("El usuario denegó esta acción.", False, args)
+                return reply(tools._clip(self.solidcraft.call(tool, targs), 12000), True, args)
+            except Exception as e:  # noqa: BLE001
+                return reply(f"Error en SolidCraft: {e}", False, args)
         if name == "craft_guia":
             from .craft import guide as craft_guide
             return reply(craft_guide(str(args.get("tema", ""))), True, args)

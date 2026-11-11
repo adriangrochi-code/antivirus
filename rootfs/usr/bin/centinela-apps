@@ -3,6 +3,7 @@
 #
 #   centinela-apps windows   Steam (Proton), Bottles y Heroic (Proton fuera de Steam)
 #   centinela-apps android   Waydroid: descarga la imagen de Android y la inicializa
+#   centinela-apps solidcraft  SolidCraft (CAD paramétrico 3D) desde su release oficial, con SHA-256 fijado
 #   centinela-apps estado    muestra qué está instalado
 set -euo pipefail
 
@@ -31,11 +32,26 @@ android)
     systemctl enable --now waydroid-container.service
     echo "Android listo: abre 'Waydroid' desde el menú. Instala APKs con: waydroid app install app.apk"
     ;;
+solidcraft)
+    need_root "$@"
+    # Se descarga del proyecto (no va dentro de la ISO: su licencia de marca pide permiso para redistribuir
+    # su interfaz y su nombre). Versión y SHA-256 fijados por TISMA; se actualiza al subir aquí la versión.
+    ver=0.30.1
+    sha=03cf32db7136891ee5c85bcd3034ea85e735cda548fbe5f8eb0b2c2329d67bbc
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    curl -fL --retry 3 -o "$tmp/solidcraft.deb" \
+        "https://github.com/tangency-labs/solidcraft/releases/download/v$ver/solidcraft-$ver-linux-x86_64.deb"
+    echo "$sha  $tmp/solidcraft.deb" | sha256sum -c - >/dev/null || { echo "SHA-256 incorrecto: descartado"; exit 1; }
+    chmod 644 "$tmp/solidcraft.deb"
+    apt-get install -y "$tmp/solidcraft.deb"
+    echo "SolidCraft $ver instalado (menú Gráficos / Ingeniería). TISMA Code ya puede modelar con él (solidcraft)."
+    ;;
 estado)
     printf 'Wine:      %s\n' "$(wine --version 2>/dev/null || echo no instalado)"
     printf 'Steam:     %s\n' "$(command -v steam >/dev/null && echo instalado || echo no instalado)"
     printf 'NTSYNC:    %s\n' "$([[ -e /dev/ntsync ]] && echo activo || echo 'no cargado (modprobe ntsync)')"
     printf 'Waydroid:  %s\n' "$(waydroid status 2>/dev/null | head -n1 || echo no instalado)"
+    printf 'SolidCraft: %s\n' "$(dpkg-query -W -f '${Version}' solidcraft 2>/dev/null || echo no instalado)"
     printf 'binderfs:  %s\n' "$(grep -q binder /proc/filesystems && echo soportado || echo NO soportado)"
     flatpak list --app --columns=application 2>/dev/null | grep -E 'bottles|heroic' || true
     ;;
