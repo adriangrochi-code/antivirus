@@ -1,9 +1,9 @@
 [Unit]
-Description=TISMA - listas de bloqueo (semanal)
+Description=TISMA - actualizar listas de bloqueo DNS (diario: la inteligencia de amenazas caduca en horas)
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=7d
+OnUnitActiveSec=1d
 RandomizedDelaySec=1h
 Persistent=true
 

@@ -1,7 +1,9 @@
 #!/usr/bin/python3 -I
 """Descarga las listas de bloqueo (anuncios, rastreo, malware), las valida y las instala.
 
-Fuentes: OISD «big» (dominios) y la lista de Hagezi «pro». Solo se aceptan nombres de dominio
+Fuentes: OISD «big» (dominios), la lista de Hagezi «pro» y la de inteligencia de amenazas de Hagezi (TIF,
+versión media: malware, mando y control de botnets, phishing, criptominería; reúne abuse.ch, ThreatFox y otras
+fuentes, sin clave de API). Solo se aceptan nombres de dominio
 válidos (nada de comandos ni rutas). Si una descarga falla se conserva la lista anterior.
 """
 import os
@@ -11,7 +13,8 @@ import tempfile
 import urllib.request
 
 SOURCES = ["https://big.oisd.nl/domainswild2",
-           "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt"]
+           "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt",
+           "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.medium-onlydomains.txt"]
 DEST = "/var/lib/tisma-dns/bloqueo.txt"
 ALLOW = "/etc/tisma-dns/permitidos.txt"           # dominios que el usuario quiere permitir
 DOMAIN = re.compile(r"^(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")

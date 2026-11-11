@@ -2,8 +2,10 @@
 # Vacío: escucha por activación de socket (dnscrypt-proxy.socket de Debian, 127.0.2.1:53). Declarar aquí la
 # misma dirección hacía que el servicio intentara abrir un puerto ya ocupado y terminara (sin DNS).
 listen_addresses = []
-# Solo resolutores sin registros, con DNSSEC y sin filtrado propio de la empresa
-server_names = ['quad9-dnscrypt-ip4-nofilter-pri', 'mullvad-doh', 'cloudflare']
+# Resolutores sin registros, con DNSSEC y que BLOQUEAN dominios de malware y phishing con inteligencia de
+# amenazas de muchos proveedores (Quad9 Secure, Cloudflare 1.1.1.2). Antes: variantes sin filtro, y mullvad-doh,
+# que Mullvad apagó el 2 de noviembre de 2026.
+server_names = ['quad9-dnscrypt-ip4-filter-pri', 'cloudflare-security']
 require_dnssec = true
 require_nolog = true
 require_nofilter = false

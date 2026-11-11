@@ -78,3 +78,12 @@ def test_installer_encrypts_by_default():
     p = yaml.safe_load((ROOT / "etc/calamares/modules/partition.conf").read_text())
     assert p["preCheckEncryption"] is True and p["enableLuksAutomatedPartitioning"] is True
     assert p["luksGeneration"] == "luks1"                          # GRUB descifra /boot
+
+
+def test_dns_blocks_malware_with_live_resolvers():
+    import tomllib
+    d = tomllib.loads((ROOT / "etc/dnscrypt-proxy/dnscrypt-proxy.toml").read_text())
+    assert all("nofilter" not in s and "mullvad" not in s for s in d["server_names"])   # mullvad-doh: apagado
+    assert d["require_nofilter"] is False                          # si no, se excluirían los que filtran
+    assert "tif.medium" in (ROOT / "usr/lib/tisma/actualizar-bloqueo").read_text()
+    assert "OnUnitActiveSec=1d" in (SD / "tisma-bloqueo.timer").read_text()
