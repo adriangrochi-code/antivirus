@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=TISMA fase 2
+Comment=Arranca en segundo plano los servicios no esenciales cuando el escritorio ya es visible
+Exec=systemctl start --no-block tisma-fase2.target
+NoDisplay=true
+X-KDE-autostart-phase=2

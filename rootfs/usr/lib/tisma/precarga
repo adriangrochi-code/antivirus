@@ -1,0 +1,60 @@
+#!/usr/bin/python3 -I
+"""Precarga en la caché de páginas los ejecutables y bibliotecas de las apps más usadas.
+
+Solo pide al kernel que lea por adelantado (posix_fadvise WILLNEED) con prioridad de E/S mínima:
+no ejecuta nada. Si hay poca RAM libre, no hace nada (no queremos expulsar datos útiles).
+Lista: /etc/tisma/precarga.conf (una ruta por línea) + bibliotecas que enlazan.
+"""
+import os
+import re
+import subprocess
+
+LIST = "/etc/tisma/precarga.conf"
+DEFAULT = ["/usr/bin/plasmashell", "/usr/bin/dolphin", "/usr/bin/konsole", "/usr/lib/chromium/chromium",
+           "/opt/tisma/tisma", "/usr/bin/python3", "/usr/bin/kwin_wayland"]
+
+
+def mem_available_ratio() -> float:
+    info = dict(re.findall(r"^(\w+):\s+(\d+)", open("/proc/meminfo").read(), re.M))
+    return int(info["MemAvailable"]) / int(info["MemTotal"])
+
+
+def libs(path: str) -> list[str]:
+    try:
+        out = subprocess.run(["ldd", path], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return re.findall(r"=> (/\S+)", out)
+
+
+def warm(path: str) -> int:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return 0
+    try:
+        size = os.fstat(fd).st_size
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_WILLNEED)
+        return size
+    finally:
+        os.close(fd)
+
+
+def main() -> None:
+    if mem_available_ratio() < 0.35:
+        print("Poca memoria libre: no se precarga")
+        return
+    try:
+        apps = [line.strip() for line in open(LIST) if line.strip() and not line.startswith("#")]
+    except OSError:
+        apps = DEFAULT
+    seen, total = set(), 0
+    for app in apps:
+        for f in [app, *libs(app)]:
+            if f not in seen and os.path.isfile(f):
+                seen.add(f)
+                total += warm(f)
+    print(f"Precargados {len(seen)} archivos ({total / 1e6:.0f} MB)")
+
+
+main()

@@ -1,0 +1,6 @@
+# Indexador de archivos de KDE: solo nombres (sin leer el contenido de cada archivo al arrancar)
+[Basic Settings]
+Indexing-Enabled=true
+
+[General]
+only basic indexing=true

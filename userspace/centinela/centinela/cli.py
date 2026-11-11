@@ -156,6 +156,26 @@ def cmd_setup(args) -> int:
     return cmd_apply(args)
 
 
+def cmd_boot(args) -> int:
+    from . import boot
+    r = boot.analyze()
+    if args.json:
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+        return 0
+    et = r["etapas"]
+    print("Arranque: " + " + ".join(f"{k} {v:.1f} s" for k, v in et.items() if k != "escritorio"))
+    if "escritorio" in et:
+        print(f"Escritorio visible a los {et['escritorio']:.1f} s de userspace")
+    print("\nMás lentos:")
+    for t, u in r["lentos"][:10]:
+        print(f"  {t:6.2f} s  {u}")
+    if r["recomendaciones"]:
+        print("\nRecomendaciones:")
+        for x in r["recomendaciones"]:
+            print(f"  • {x}")
+    return 0
+
+
 def cmd_adaptd(args) -> int:
     plan = _plan_from_state(args)
     AdaptDaemon(plan, interval=args.interval, dry_run=args.dry_run,
@@ -196,6 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "adaptd":
             s.add_argument("--interval", type=float, default=3.0)
             s.add_argument("--no-game-boost", action="store_true")
+
+    s = sub.add_parser("arranque", help="analiza qué retrasa el arranque y cómo mejorarlo")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_boot)
 
     s = sub.add_parser("power")
     s.add_argument("perfil", choices=POWER_PROFILES)

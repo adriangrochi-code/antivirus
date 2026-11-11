@@ -102,6 +102,8 @@ def render_files(plan: Plan) -> dict[str, str]:
             f"{k} = {v}\n" for k, v in plan.zram.items())
     files["default/grub.d/60-centinela-tuned.cfg"] = (
         HEADER + f'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash {" ".join(plan.cmdline)}"\n')
+    files["initramfs-tools/conf.d/60-centinela-tuned.conf"] = (
+        HEADER + f"MODULES=dep\nCOMPRESS={plan.initramfs_compress}\n")
     files["centinela/hardware.config"] = "\n".join(plan.kernel_fragment) + "\n"
     files["centinela/builtin-modules.txt"] = "\n".join(plan.builtin_modules) + "\n"
     files["centinela/plan.json"] = json.dumps(plan.to_dict(), indent=2, ensure_ascii=False)

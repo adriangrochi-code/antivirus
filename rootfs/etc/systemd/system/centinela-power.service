@@ -27,4 +27,4 @@ RestrictAddressFamilies=AF_UNIX
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=tisma-fase2.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=TISMA - precargar en caché las aplicaciones más usadas (con el disco libre)
+After=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/precarga
+Nice=19
+IOSchedulingClass=idle
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=

@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - lanzar la fase 2 aunque nadie inicie sesión (equipos sin pantalla)
+
+[Timer]
+OnBootSec=45s
+AccuracySec=5s
+Unit=tisma-fase2.target
+
+[Install]
+WantedBy=timers.target

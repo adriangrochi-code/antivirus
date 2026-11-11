@@ -31,4 +31,4 @@ Nice=10
 IOSchedulingClass=idle
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=tisma-fase2.target

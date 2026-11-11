@@ -55,3 +55,23 @@ def test_actuator_whitelist():
     assert not a.allowed("/proc/sys/vm/unprivileged_userfaultfd")
     assert not a.allowed("/sys/class/drm/card0/device/hwmon/hwmon1/x/power1_cap")  # «*» no cruza «/»
     assert a.allowed("/sys/class/drm/card0/device/hwmon/hwmon1/power1_cap")
+
+
+def test_initramfs_compressor_follows_disk_speed():
+    fast = make_plan(HW, {"storage": {"nvme0n1": {"seq_read_mbs": 3200, "rand4k_read_us": 60}}})
+    slow = make_plan(dict(HW, boot={"root_device": "/dev/sda1", "root_fs": "ext4", "drivers": []}),
+                     {"storage": {"sda": {"seq_read_mbs": 140, "rand4k_read_us": 9000}}})
+    assert fast.initramfs_compress == "lz4" and slow.initramfs_compress == "zstd"
+
+
+def test_boot_analysis_parsing():
+    from centinela import boot
+    t = boot.parse_time("Startup finished in 7.112s (firmware) + 2.010s (loader) + 1.402s (kernel) + "
+                        "3.215s (initrd) + 9.876s (userspace) = 23.615s\ngraphical.target reached after 9.811s in userspace.")
+    assert t["firmware"] == 7.112 and t["escritorio"] == 9.811
+    b = boot.parse_blame("  4.512s plymouth-quit-wait.service\n 2.1s ModemManager.service\n  812ms nftables.service\n"
+                         "1min 2.300s apt-daily.service")
+    assert b[0] == (4.512, "plymouth-quit-wait.service") and b[-1][0] == 62.3
+    rec = boot.recommendations(t, b)
+    assert any("BIOS" in r for r in rec) and any("ModemManager" in r for r in rec)
+    assert not any("nftables" in r for r in rec)          # esencial y rápido: no se toca

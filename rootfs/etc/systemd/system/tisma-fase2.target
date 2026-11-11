@@ -1,0 +1,5 @@
+[Unit]
+Description=TISMA - fase 2 del arranque (servicios no esenciales, en segundo plano)
+Documentation=man:systemd.special(7)
+# Se activa cuando el escritorio ya es visible (tisma-fase2.timer o el inicio de sesión)
+After=graphical.target

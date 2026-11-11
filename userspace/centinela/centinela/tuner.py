@@ -36,6 +36,7 @@ class Plan:
     cpu: dict = field(default_factory=dict)
     power: dict = field(default_factory=dict)
     sched_ext: str | None = None
+    initramfs_compress: str = "zstd"
     recommendations: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
@@ -179,6 +180,15 @@ def _storage(plan: Plan, hw: dict, bench: dict) -> None:
         if avail and choice not in avail:
             choice = next((s for s in ("mq-deadline", "none") if s in avail), d.get("scheduler"))
         plan.io_schedulers[d["name"]] = {"type": t, "scheduler": choice, "read_ahead_kb": ra}
+    # Compresor del initramfs: en discos muy rápidos manda la descompresión (lz4); en lentos, el tamaño (zstd)
+    root = _root_disk(hw)
+    seq = lat.get(root, {}).get("seq_read_mbs") if root else None
+    if seq and seq > 1500:
+        plan.initramfs_compress = "lz4"
+        plan.why(f"Initramfs con lz4: el disco del sistema lee a {seq:.0f} MB/s, así que descomprimir rápido "
+                 "importa más que el tamaño.")
+    elif seq:
+        plan.why(f"Initramfs con zstd: el disco lee a {seq:.0f} MB/s, leer menos bytes compensa.")
     if plan.io_schedulers:
         plan.why("Planificador de E/S por disco: NVMe y discos virtuales sin planificador, "
                  "SSD mq-deadline, HDD/USB con BFQ (prioriza la interactividad).")
