@@ -1,0 +1,12 @@
+[Unit]
+Description=TISMA: elegir el kernel de arranque según Secure Boot (kernel TISMA solo si es seguro)
+After=local-fs.target
+ConditionPathExists=/sys/firmware/efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tisma-secureboot elegir
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

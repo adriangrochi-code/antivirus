@@ -1,0 +1,171 @@
+#!/usr/bin/python3 -I
+"""tisma-secureboot: Secure Boot y kernel TISMA.
+
+La cadena de arranque con Secure Boot es: shim (firmado por Microsoft) → GRUB (firmado por Debian) → kernel. El
+kernel firmado de Debian arranca siempre. El kernel TISMA (endurecido y ajustado a tu equipo) se firma con la
+clave propia de TISMA, que el firmware no conoce: hay que registrarla UNA vez (MOK) desde MokManager.
+
+  tisma-secureboot estado    Secure Boot, clave TISMA registrada o no, y qué kernel arrancará
+  tisma-secureboot activar   prepara el registro de la clave TISMA: al reiniciar aparece MokManager («Enroll MOK»)
+                             y pide la contraseña de un solo uso que se muestra aquí
+  tisma-secureboot elegir    (al arrancar) arranca el kernel TISMA solo si es seguro hacerlo:
+                             - Secure Boot desactivado, o
+                             - Secure Boot activado, clave TISMA registrada y kernel TISMA firmado con ella;
+                             si no, el kernel firmado de Debian (el equipo siempre arranca).
+"""
+from __future__ import annotations
+
+import glob
+import os
+import re
+import secrets
+import subprocess
+import sys
+import tempfile
+
+CERT = "/usr/share/tisma/secureboot/tisma-mok.der"
+GRUB_CFG = "/etc/default/grub.d/62-tisma-kernel.cfg"
+BOOT = "/boot"
+
+
+def sh(argv: list[str], inp: str | None = None) -> tuple[int, str]:
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, input=inp, timeout=60)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+
+
+def sb_enabled(run=sh) -> bool | None:
+    rc, out = run(["mokutil", "--sb-state"])
+    if "enabled" in out.lower() and "disabled" not in out.lower():
+        return True
+    if "disabled" in out.lower() or "not supported" in out.lower() or "efi variables are not supported" in out.lower():
+        return False
+    return None
+
+
+def cert_enrolled(run=sh, cert: str = CERT) -> bool:
+    if not os.path.exists(cert):
+        return False
+    rc, out = run(["mokutil", "--test-key", cert])
+    return "already enrolled" in out.lower()
+
+
+def tisma_kernels(boot: str = BOOT) -> list[str]:
+    return sorted(glob.glob(f"{boot}/vmlinuz-*-centinela-*"), key=lambda p: [int(x) if x.isdigit() else x
+                                                                            for x in re.split(r"(\d+)", p)])
+
+
+def signed_by_tisma(kernel: str, run=sh, cert: str = CERT) -> bool:
+    if not os.path.exists(cert):
+        return False
+    pem = cert + ".pem"
+    if not os.path.exists(pem):
+        rc, _ = run(["openssl", "x509", "-inform", "DER", "-in", cert, "-out", pem])
+        if rc:
+            return False
+    rc, _ = run(["sbverify", "--cert", pem, kernel])
+    return rc == 0
+
+
+def in_vm(run=sh) -> bool:
+    rc, out = run(["systemd-detect-virt", "--vm"])
+    return rc == 0 and out.strip() not in ("", "none")
+
+
+def choose(sb: bool | None, enrolled: bool, kernels: list[str], signed: dict[str, bool], vm: bool) -> str | None:
+    """Kernel TISMA que debe arrancar por defecto, o None (el firmado de Debian). Lógica pura (probada)."""
+    usable = [k for k in kernels if "-minimal" not in k or vm]      # el perfil minimal es solo para máquinas virtuales
+    if not usable:
+        return None
+    k = usable[-1]
+    if sb is False:
+        return k
+    if sb and enrolled and signed.get(k):
+        return k
+    return None
+
+
+def elegir(run=sh) -> str:
+    sb = sb_enabled(run)
+    ks = tisma_kernels()
+    enrolled = cert_enrolled(run) if sb else False
+    k = choose(sb, enrolled, ks, {x: signed_by_tisma(x, run) for x in ks} if sb else {}, in_vm(run))
+    want = (f'# Generado por tisma-secureboot elegir\nGRUB_TOP_LEVEL="{k}"\n') if k else None
+    cur = open(GRUB_CFG).read() if os.path.exists(GRUB_CFG) else None
+    if want != cur:
+        if want:
+            with open(GRUB_CFG, "w") as fh:
+                fh.write(want)
+        elif cur is not None:
+            os.remove(GRUB_CFG)
+        run(["update-grub"])
+    return f"kernel TISMA ({os.path.basename(k)})" if k else "kernel firmado de Debian"
+
+
+def activar(run=sh) -> int:
+    if not os.path.exists(CERT):
+        print("Esta instalación no trae la clave TISMA (la ISO se construyó sin firmar el kernel TISMA).")
+        return 1
+    if sb_enabled(run) is False:
+        print("Secure Boot está desactivado: el kernel TISMA ya arranca sin registrar nada.")
+        return 0
+    if cert_enrolled(run):
+        print("La clave TISMA ya está registrada.")
+        return 0
+    pw = "".join(secrets.choice("0123456789") for _ in range(8))     # números: se teclean bien en MokManager
+    with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+        hash_file = fh.name
+    try:
+        rc, out = run(["mokutil", "--generate-hash=" + pw])
+        if rc or not out.strip():
+            print("No se pudo preparar la contraseña: " + out.strip())
+            return 1
+        with open(hash_file, "w") as fh:
+            fh.write(out.strip() + "\n")
+        rc, out = run(["mokutil", "--import", CERT, "--hash-file", hash_file])
+    finally:
+        os.remove(hash_file)
+    if rc:
+        print("mokutil no pudo preparar el registro: " + out.strip())
+        return 1
+    print("Listo. Al reiniciar aparecerá una pantalla azul (MokManager):\n"
+          "  1. Elige «Enroll MOK» → «Continue» → «Yes».\n"
+          f"  2. Escribe la contraseña: {pw}\n"
+          "  3. Elige «Reboot».\n"
+          "Después, TISMA arrancará con su propio kernel también con Secure Boot activado.")
+    return 0
+
+
+def estado(run=sh) -> int:
+    sb = sb_enabled(run)
+    print("Secure Boot: " + {True: "activado", False: "desactivado", None: "desconocido"}[sb])
+    print("Clave TISMA: " + ("registrada" if cert_enrolled(run) else "no registrada" if os.path.exists(CERT)
+                             else "no incluida en esta instalación"))
+    ks = tisma_kernels()
+    print("Kernel TISMA: " + (", ".join(os.path.basename(k) + (" (firmado)" if signed_by_tisma(k, run) else "")
+                                        for k in ks) or "no instalado"))
+    k = choose(sb, cert_enrolled(run) if sb else False, ks, {x: signed_by_tisma(x, run) for x in ks}, in_vm(run))
+    print("Arrancará: " + (f"kernel TISMA ({os.path.basename(k)})" if k else "kernel firmado de Debian"))
+    if sb and os.path.exists(CERT) and not cert_enrolled(run):
+        print("Para usar el kernel TISMA con Secure Boot: sudo tisma-secureboot activar")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    cmd = argv[0] if argv else "estado"
+    if cmd not in ("estado", "activar", "elegir"):
+        print(__doc__)
+        return 2
+    if cmd != "estado" and os.geteuid() != 0:
+        print(f"Necesita permisos de administrador: sudo tisma-secureboot {cmd}", file=sys.stderr)
+        return 2
+    if cmd == "elegir":
+        print("Arrancará: " + elegir())
+        return 0
+    return activar() if cmd == "activar" else estado()
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

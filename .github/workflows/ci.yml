@@ -23,14 +23,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Dependencias
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends python3-pytest python3-numpy python3-yaml \
-            python3-psutil python3-watchdog bubblewrap grub-common
-          # Ubuntu 24.04 restringe los espacios de nombres sin privilegios por AppArmor: bubblewrap (la jaula de
-          # TISMA Code) los necesita en las pruebas
+          # Python desde PyPI (los espejos de Ubuntu del runner fallan a veces al resolver el DNS)
+          python3 -m pip install --user --break-system-packages -q pytest numpy pyyaml psutil watchdog
+          # bubblewrap (la jaula de TISMA Code) y GRUB: con reintentos; si fallan, esas pruebas se saltan solas
+          sudo apt-get -o Acquire::Retries=5 update -q || true
+          sudo apt-get -o Acquire::Retries=5 install -y -q --no-install-recommends bubblewrap grub-common || true
+          # Ubuntu 24.04 restringe los espacios de nombres sin privilegios por AppArmor: bubblewrap los necesita
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Pruebas (make test)
         run: make test
@@ -39,11 +40,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Herramientas
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends shellcheck grub-common
+          sudo apt-get -o Acquire::Retries=5 update -q
+          sudo apt-get -o Acquire::Retries=5 install -y -q --no-install-recommends shellcheck grub-common
       - name: Scripts de shell (sintaxis y shellcheck nivel error)
         run: |
           files=$(find rootfs iso kernel tests -type f -exec grep -l '^#!.*\(bash\|/sh\)' {} +)
@@ -67,7 +68,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Dependencias de build
         run: |
           sudo apt-get update -q
