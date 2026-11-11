@@ -86,11 +86,15 @@ def test_candidates(monkeypatch):
     monkeypatch.setattr(motor, "has_igpu", lambda: True)
     base = motor.plan(INFO_DENSO, int(4.7 * GB), A275)
     c = motor.candidates(INFO_DENSO, int(4.7 * GB), A275, base, draft="/m/d.gguf")
-    assert [x["nombre"] for x in c] == ["plan", "gráfica integrada", "CPU + gráfica para el prompt", "con borrador"]
+    assert [x["nombre"] for x in c] == ["plan", "gráfica integrada", "CPU + gráfica para el prompt",
+                                         "n-gramas (sin coste de memoria)", "con borrador"]
     assert "--device" not in c[2]["args"]                     # sin --device none: el prompt puede ir a la gráfica
-    assert c[3]["args"][-6:] == ["-md", "/m/d.gguf", "--draft-max", "16", "--draft-min", "2"]
+    assert c[3]["args"][-2:] == ["--spec-type", "ngram-mod"]
+    assert c[4]["args"][-6:] == ["-md", "/m/d.gguf", "--draft-max", "16", "--draft-min", "2"]
+    mtp = motor.candidates({**INFO_DENSO, "mtp": 1}, int(4.7 * GB), A275, base)
+    assert any(x["args"][-2:] == ["--spec-type", "draft-mtp"] for x in mtp)
     base = motor.plan(INFO_MOE, 18 * GB, RTX8)
-    assert len(motor.candidates(INFO_MOE, 18 * GB, RTX8, base)) == 3
+    assert len(motor.candidates(INFO_MOE, 18 * GB, RTX8, base)) == 4
 
 
 @pytest.fixture

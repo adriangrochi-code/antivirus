@@ -368,7 +368,8 @@ def _shared_memory(plan: Plan, hw: dict, bench: dict) -> None:
         theo = mts * 8 / 1000 if mts else None
         r.append(f"Memoria en canal simple ({mods[0]['mb'] // 1024} GB a {mts} MT/s"
                  + (f", ~{theo:.0f} GB/s teóricos" if theo else "") + "): la GPU integrada y la CPU comparten ese "
-                 "ancho de banda. Si el equipo tiene un segundo zócalo, un módulo igual lo duplica.")
+                 "ancho de banda." + ("" if A275.search(hw.get("product", "")) else
+                                       " Si el equipo tiene un segundo zócalo, un módulo igual lo duplica."))
     light = bw is not None and bw < 20
     if light:
         plan.desktop_light = True
@@ -388,8 +389,10 @@ def _shared_memory(plan: Plan, hw: dict, bench: dict) -> None:
                  "(github.com/adriangrochi-code/bios-mod-a275): variable AmdSetup "
                  "{3A997502-647A-4C82-998E-52EF9486A247}, offset 0x09, 2 bytes = 0x0400 (little-endian). "
                  "Haz antes copia del chip SPI.")
-        r.append("ThinkPad A275 (Excavator, sin AVX-512): para IA local usa modelos de 1,5–4 B en Q4 con llama.cpp; "
-                 "a ~13 GB/s, un modelo de 2 GB da del orden de 5 tokens/s (la velocidad la limita la RAM, no la CPU).")
+        r.append("ThinkPad A275 (Excavator, sin AVX-512, un solo canal de memoria por diseño de la placa): para IA "
+                 "local usa modelos de 1,5–4 B en Q4 (o MoE con ~1–3 B activos) con llama.cpp; a ~13 GB/s, un modelo "
+                 "de 2 GB da del orden de 5 tokens/s. La velocidad la limita la RAM, no la CPU: TISMA Code mide "
+                 "solo la especulación por n-gramas y MTP, que generan más tokens por cada lectura de memoria.")
     if power_profile_allows_oc(plan) and igpu.get("overdrive"):
         plan.gpu_oc_percent = 10
         plan.cmdline.append("amdgpu.ppfeaturemask=0xffffffff")   # habilita overdrive (efecto tras reiniciar)

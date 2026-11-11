@@ -138,6 +138,7 @@ def _gguf_info(p: Path) -> dict:
             "capas_densas": _num(g("leading_dense_block_count", 0) or 0, hi=4096),
             "expertos": _num(g("expert_count", 0) or 0), "expertos_activos": _num(g("expert_used_count", 0) or 0),
             "contexto_max": _num(g("context_length", 0) or 0, hi=1 << 26),
+            "mtp": _num(g("nextn_predict_layers", 0) or 0, hi=64),
             "kv_heads": heads_kv,
             "key_len": _num(g("attention.key_length", 0) or (_num(g("embedding_length", 0) or 0) // heads if heads else 0)),
             "value_len": _num(g("attention.value_length", 0) or 0),
@@ -247,6 +248,13 @@ def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = 
             if 0 <= n + d <= info["capas"]:
                 out.append(dict(base, nombre=f"expertos en RAM: {n + d}",
                                 args=["-ngl", "999", "--n-cpu-moe", str(n + d)]))
+    # Especulación SIN leer más memoria: con poco ancho de banda (canal simple) es lo que más rinde. Los n-gramas
+    # adivinan tokens copiándolos del propio texto (en código y al editar archivos aciertan mucho); MTP usa las
+    # capas de predicción que algunos modelos traen dentro (Qwen3.x Next, DeepSeek, GLM). Se mide si compensa.
+    out.append(dict(base, nombre="n-gramas (sin coste de memoria)",
+                    args=base["args"] + ["--spec-type", "ngram-mod"]))
+    if info.get("mtp"):
+        out.append(dict(base, nombre="MTP del propio modelo", args=base["args"] + ["--spec-type", "draft-mtp"]))
     if draft:
         gpu_draft = ["-ngld", "999"] if base["dispositivo"] in ("gpu", "mixto") else []   # el borrador, también en GPU
         out.append(dict(base, nombre="con borrador", args=base["args"] + ["-md", draft, "--draft-max", "16",
