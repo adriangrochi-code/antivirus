@@ -103,7 +103,7 @@ make iso                # ISO híbrida BIOS/UEFI (root; HOPE_SRC=ruta para inclu
 
 Requisitos de la máquina de build (Debian/Ubuntu): `build-essential bc flex bison libssl-dev libelf-dev
 libdw-dev dwarves debhelper debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools
-librsvg2-bin rsync cpio zstd qemu-system-x86 busybox-static`.
+librsvg2-bin rsync cpio zstd qemu-system-x86 busybox-static git python3-pip`.
 
 ## Estado
 

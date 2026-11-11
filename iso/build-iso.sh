@@ -23,7 +23,7 @@ log() { printf '\033[1;35m[iso]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[iso] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Ejecutar como root (debootstrap y chroot lo requieren)"
-for t in debootstrap mksquashfs xorriso grub-mkrescue rsvg-convert gcc; do
+for t in debootstrap mksquashfs xorriso grub-mkrescue rsvg-convert gcc git pip3; do
     command -v "$t" >/dev/null || die "Falta la herramienta: $t (ver README, sección Requisitos)"
 done
 compgen -G "$BUILD_DIR/kernel-debs/linux-image-*.deb" >/dev/null \
@@ -139,6 +139,9 @@ fi
 "$HERE/components/rea.sh" "$CHROOT" || log "AVISO: no se pudo instalar REA"
 "$HERE/components/craft-anything.sh" "$CHROOT" || log "AVISO: no se pudo instalar Craft Anything"
 "$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
+"$HERE/components/llama-cpp.sh" "$CHROOT" || log "AVISO: no se pudo compilar llama.cpp (TISMA Code usará Strata)"
+"$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
+"$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
@@ -153,6 +156,9 @@ rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/pytho
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion 2>/dev/null || true
+# Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
+in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+    || log "AVISO: no se pudo añadir Flathub"
 in_chroot systemctl disable systemd-timesyncd 2>/dev/null || true
 in_chroot systemctl enable nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer \
     centinela-power centinela-adaptd escudo

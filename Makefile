@@ -11,9 +11,12 @@ export KERNEL_VERSION BUILD_DIR
 LATEST := $(shell ./kernel/latest-lts.sh $(basename $(KERNEL_VERSION)) 2>/dev/null)
 DEBCFG := $(BUILD_DIR)/debian-config
 
-.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config
+.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes
 
-check-latest:
+check-lacheck-paquetes:
+	python3 iso/check-packages.py $(DEBIAN_MIRROR) $(DEBIAN_SUITE)
+
+test:
 	@if [ -n "$(LATEST)" ] && [ "$(LATEST)" != "$(KERNEL_VERSION)" ]; then \
 	  echo "Aviso: hay un parche más nuevo de la rama LTS: $(LATEST) (make KERNEL_VERSION=$(LATEST) ...)"; \
 	else echo "Kernel $(KERNEL_VERSION): última versión de su rama LTS"; fi
