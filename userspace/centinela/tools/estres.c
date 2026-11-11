@@ -21,7 +21,7 @@
 #define N 96
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec * 1e-9; }
 
-static _Atomic long errores, iteraciones;
+static _Atomic long errores, iteraciones, sin_memoria;
 static double fin;
 static double ref_mat;
 static uint64_t ref_hash;
@@ -67,7 +67,10 @@ static size_t mem_bytes;
 static void *hilo_mem(void *arg) {
     size_t n = mem_bytes / sizeof(uint64_t);
     uint64_t *buf = malloc(mem_bytes);
-    if (!buf) return NULL;
+    if (!buf) {                       // sin memoria para la prueba: no se puede dar por superada
+        atomic_fetch_add(&sin_memoria, 1);
+        return NULL;
+    }
     uint64_t semilla = (uint64_t)(uintptr_t)arg * 0x9e3779b97f4a7c15ULL;
     while (now() < fin) {
         for (size_t i = 0; i < n; i++) buf[i] = (i * 0x9e3779b97f4a7c15ULL) ^ semilla;
@@ -89,6 +92,7 @@ int main(int argc, char **argv) {
     int hilos = argc > 3 ? atoi(argv[3]) : (int)sysconf(_SC_NPROCESSORS_ONLN);
     long mb = argc > 4 ? atol(argv[4]) : 256;
     if (hilos < 1) hilos = 1;
+    if (hilos > 1024) hilos = 1024;
     if (segundos < 1 || segundos > 3600 || mb < 16 || mb > 16384) {
         fprintf(stderr, "argumentos fuera de rango\n");
         return 2;
@@ -98,6 +102,10 @@ int main(int argc, char **argv) {
     int cpu = strcmp(modo, "mem") != 0, mem = strcmp(modo, "cpu") != 0;
     int total = (cpu ? hilos : 0) + (mem ? (hilos + 1) / 2 : 0);
     pthread_t *th = calloc((size_t)total, sizeof *th);
+    if (!th) {
+        fprintf(stderr, "sin memoria\n");
+        return 2;
+    }
     mem_bytes = (size_t)mb * 1024 * 1024 / (size_t)((hilos + 1) / 2);
     double t0 = now();
     fin = t0 + segundos;
@@ -105,7 +113,9 @@ int main(int argc, char **argv) {
     for (int i = 0; cpu && i < hilos; i++) pthread_create(&th[k++], NULL, hilo_cpu, NULL);
     for (int i = 0; mem && i < (hilos + 1) / 2; i++) pthread_create(&th[k++], NULL, hilo_mem, (void *)(uintptr_t)(i + 1));
     for (int i = 0; i < k; i++) pthread_join(th[i], NULL);
-    printf("{\"ok\": %s, \"errores\": %ld, \"iteraciones\": %ld, \"segundos\": %.1f, \"modo\": \"%s\"}\n",
-           errores ? "false" : "true", (long)errores, (long)iteraciones, now() - t0, modo);
-    return errores ? 1 : 0;
+    int ok = !errores && !sin_memoria;
+    printf("{\"ok\": %s, \"errores\": %ld, \"sin_memoria\": %ld, \"iteraciones\": %ld, \"segundos\": %.1f, "
+           "\"modo\": \"%s\"}\n", ok ? "true" : "false", (long)errores, (long)sin_memoria, (long)iteraciones,
+           now() - t0, modo);
+    return ok ? 0 : 1;
 }

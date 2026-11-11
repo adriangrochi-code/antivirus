@@ -48,6 +48,7 @@ static void *bw_worker(void *p) {
     size_t n = w->bytes / sizeof(uint64_t);
     w->a = aligned_alloc(64, w->bytes);
     w->b = aligned_alloc(64, w->bytes);
+    if (!w->a || !w->b) { fprintf(stderr, "membench: sin memoria\n"); exit(2); }
     memset(w->a, 1, w->bytes);
     memset(w->b, 2, w->bytes);
     pthread_barrier_wait(w->bar);
@@ -97,6 +98,7 @@ static double latency_ns(size_t bytes) {
     size_t n = bytes / sizeof(void *);
     void **buf = aligned_alloc(64, n * sizeof(void *));
     size_t *perm = malloc(n * sizeof(size_t));
+    if (!buf || !perm) { fprintf(stderr, "membench: sin memoria\n"); exit(2); }
     for (size_t i = 0; i < n; i++) perm[i] = i;
     srand(1234);
     for (size_t i = n - 1; i > 0; i--) {  // Fisher-Yates: recorrido aleatorio

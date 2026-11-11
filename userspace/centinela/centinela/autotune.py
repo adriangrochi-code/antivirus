@@ -207,7 +207,8 @@ def stability_test(seconds: int = 45) -> StabilityResult:
     except (ValueError, IndexError):
         res = {}
     if not motivo and not res.get("ok"):
-        motivo = f"{res.get('errores', '?')} errores de cálculo/memoria" if res else "la prueba no terminó"
+        motivo = ("no había memoria libre para la prueba" if res.get("sin_memoria")
+                  else f"{res.get('errores', '?')} errores de cálculo/memoria" if res else "la prueba no terminó")
     return StabilityResult(not motivo, motivo, tmax, {**res, "carga_gpu": bool(cmd)})
 
 
