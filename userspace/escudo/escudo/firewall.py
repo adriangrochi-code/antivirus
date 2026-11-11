@@ -23,14 +23,16 @@ from .config import IS_WINDOWS, Config
 log = logging.getLogger("escudo.firewall")
 TABLE = ["inet", "centinela"]
 # Tabla mínima para sistemas que no traen /etc/nftables.conf de Centinela.
-NFT_BOOTSTRAP = """
-table inet centinela {
-    set bloqueadas4 { type ipv4_addr; flags timeout; }
-    set bloqueadas6 { type ipv6_addr; flags timeout; }
-    chain input { type filter hook input priority filter; policy accept;
-        ip saddr @bloqueadas4 drop
-        ip6 saddr @bloqueadas6 drop }
-}
+# Solo se añade lo que falte («add» no falla si ya existe): no se redeclara la cadena input de nftables.conf.
+NFT_SETS = """
+add table inet centinela
+add set inet centinela bloqueadas4 { type ipv4_addr; flags timeout; }
+add set inet centinela bloqueadas6 { type ipv6_addr; flags timeout; }
+"""
+NFT_CHAIN = """
+add chain inet centinela input { type filter hook input priority filter; policy accept; }
+add rule inet centinela input ip saddr @bloqueadas4 drop
+add rule inet centinela input ip6 saddr @bloqueadas6 drop
 """
 RULE_PREFIX = "Escudo-Block-"
 
@@ -44,6 +46,21 @@ def essential_ips() -> set[str]:
                 out.add(str(ipaddress.IPv4Address(bytes.fromhex(f[2])[::-1])))
     except (OSError, ValueError):
         pass
+    # Puerta de enlace IPv6 (siguiente salto de la ruta por defecto ::/0)
+    try:
+        for line in Path("/proc/net/ipv6_route").read_text().splitlines():
+            f = line.split()
+            if len(f) >= 5 and f[0] == "0" * 32 and f[1] == "00" and f[4] != "0" * 32:
+                out.add(str(ipaddress.IPv6Address(bytes.fromhex(f[4]))))
+    except (OSError, ValueError):
+        pass
+    # Servidores de las VPN de tisma-vpn: bloquearlos cortaría el túnel
+    for ep in Path("/etc/tisma-vpn").glob("*.endpoint"):
+        try:
+            host = ep.read_text().strip().rsplit(":", 1)[0].strip("[]")
+            out.add(str(ipaddress.ip_address(host)))
+        except (OSError, ValueError):
+            pass
     for conf in ("/etc/resolv.conf", "/run/systemd/resolve/resolv.conf"):
         try:
             for line in Path(conf).read_text().splitlines():
@@ -95,10 +112,13 @@ class Firewall:
     def _ensure_table(self) -> None:
         if self._chain_ready or IS_WINDOWS:
             return
-        exists = self._run(["nft", "list", "set", *TABLE, "bloqueadas4"], check=False).returncode == 0
-        if not exists and not self.dry_run:
-            subprocess.run(["nft", "-f", "-"], input=NFT_BOOTSTRAP, text=True,
-                           check=True, capture_output=True, timeout=30)
+        if not self.dry_run:
+            chain = subprocess.run(["nft", "list", "chain", *TABLE, "input"], capture_output=True, timeout=30)
+            script = NFT_SETS + ("" if chain.returncode == 0 else NFT_CHAIN)
+            r = subprocess.run(["nft", "-f", "-"], input=script, text=True, capture_output=True, timeout=30)
+            if r.returncode != 0:
+                log.error("No se pudieron preparar los conjuntos de bloqueo de nftables: %s", r.stderr.strip())
+                return
         self._chain_ready = True
 
     # ------------------------------------------------------------------ API
@@ -109,8 +129,9 @@ class Firewall:
             return False
         duration = self.config.block_duration_s if duration_s is None else duration_s
         with self._lock:
-            if ip in self.blocked:
-                return False
+            exp = self.blocked.get(ip)
+            if exp is not None and (exp == 0 or exp > time.time()):
+                return False                     # ya bloqueada y vigente (una caducada se vuelve a bloquear)
             if IS_WINDOWS:
                 for direction in ("in", "out"):
                     self._run(["netsh", "advfirewall", "firewall", "add", "rule",
@@ -145,6 +166,30 @@ class Firewall:
         for ip in expired:
             self.unblock(ip)
         return expired
+
+    def restore(self) -> int:
+        """Los conjuntos de nftables se pierden al reiniciar: reinstala los bloqueos vigentes del estado guardado
+        con el tiempo que les queda (sin esto, tras un reinicio las IPs seguían «bloqueadas» solo en el JSON)."""
+        if IS_WINDOWS:
+            return 0
+        self.expire()
+        now, n = time.time(), 0
+        with self._lock:
+            for ip, exp in list(self.blocked.items()):
+                try:
+                    ip = normalize_ip(ip)
+                except ValueError:
+                    self.blocked.pop(ip, None)
+                    continue
+                if self.is_whitelisted(ip):
+                    self.blocked.pop(ip, None)   # p. ej. ahora es la puerta de enlace
+                    continue
+                self._ensure_table()
+                elem = f"{ip} timeout {max(1, int(exp - now))}s" if exp else ip
+                self._run(["nft", "add", "element", *TABLE, self._set(ip), "{", elem, "}"], check=False)
+                n += 1
+            self._save()
+        return n
 
     def block_inbound_port(self, port: int) -> None:
         """Cierra un puerto entrante (p. ej. 23/telnet, 445/SMB expuesto)."""

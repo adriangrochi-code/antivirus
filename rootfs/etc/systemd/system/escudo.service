@@ -2,6 +2,8 @@
 Description=Escudo - antivirus, vigilante de comportamiento e IPS de red
 After=network-online.target nftables.service auditd.service
 Wants=nftables.service auditd.service
+# Si se recarga el firewall, Escudo se reinicia y reinstala los bloqueos guardados
+PartOf=nftables.service
 
 [Service]
 Type=simple

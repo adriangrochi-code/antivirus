@@ -48,7 +48,9 @@ def test_ransomware_guard_freezes_culprit(tmp_path):
     alerts = []
     try:
         g = behavior.RansomwareGuard(threshold=5, window_s=10, on_alert=alerts.append,
-                                     writers=lambda uid=None: [(victim.pid, 10_000_000, "/home/ana/cifrador")])
+                                     writers=lambda uid=None: [(victim.pid, 10_000_000,
+                                                                os.readlink(f"/proc/{victim.pid}/exe"))])
+        g.protect_root = os.geteuid() != 0
         for i in range(5):
             f = tmp_path / f"doc{i}.pdf"
             f.write_bytes(os.urandom(8192))
@@ -70,3 +72,34 @@ def test_normal_edits_do_not_trigger(tmp_path):
         f.write_text("texto normal " * 200)
         g.file_changed(str(f), now=1000 + i)
     assert not alerts
+
+
+def test_ransomware_guard_never_freezes_a_different_process(tmp_path):
+    """Si entre el muestreo y la congelación el PID pasa a otro programa, solo se alerta."""
+    victim = subprocess.Popen(["sleep", "30"])
+    alerts = []
+    try:
+        g = behavior.RansomwareGuard(threshold=3, on_alert=alerts.append,
+                                     writers=lambda uid=None: [(victim.pid, 1, "/usr/bin/otro-programa")])
+        g.protect_root = False
+        for i in range(3):
+            f = tmp_path / f"d{i}.pdf"
+            f.write_bytes(os.urandom(8192))
+            g.file_changed(str(f), now=1000 + i)
+        assert alerts and "CONGELADO" not in alerts[0].action
+        assert Path(f"/proc/{victim.pid}/stat").read_text().split()[2] != "T"
+    finally:
+        victim.kill()
+        victim.wait()
+
+
+def test_ransomware_guard_ignores_fifos_and_symlinks(tmp_path):
+    g = behavior.RansomwareGuard(threshold=1, on_alert=lambda a: None, writers=lambda uid=None: [])
+    fifo = tmp_path / "x.pdf"
+    os.mkfifo(fifo)
+    assert g.file_changed(str(fifo)) is None                      # no se bloquea esperando a un escritor
+    target = tmp_path / "real.pdf"
+    target.write_bytes(os.urandom(4096))
+    link = tmp_path / "enlace.pdf"
+    link.symlink_to(target)
+    assert g.file_changed(str(link)) is None

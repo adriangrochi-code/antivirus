@@ -86,7 +86,9 @@ def explain(r: dict, endpoint: str = "http://127.0.0.1:8080/v1", model: str = "l
         {"role": "user", "content": json.dumps(r, ensure_ascii=False)[:20000]}]}
     req = urllib.request.Request(endpoint.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
-    if not endpoint.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
+    from urllib.parse import urlparse
+    u = urlparse(endpoint)          # «http://127.0.0.1@otro-host/» empezaba igual pero iba a otro host
+    if u.scheme != "http" or u.username or u.password or u.hostname not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError("Solo se admite un modelo local para explicar (los datos no salen del equipo)")
     with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 (solo localhost)
         return json.load(resp)["choices"][0]["message"]["content"]

@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import signal
+import stat
 import threading
 import time
 from collections import defaultdict, deque
@@ -238,42 +239,79 @@ PROTECTED_EXES = {"/usr/lib/systemd/systemd", "/usr/bin/plasmashell", "/usr/bin/
 
 
 class RansomwareGuard:
+    """Muchos archivos de un mismo usuario que pasan a parecer cifrados en pocos segundos → se congela (SIGSTOP)
+    el proceso de ESE usuario que más escribe. Nunca procesos de root ni del sistema (solo alerta)."""
+
     def __init__(self, threshold: int = 15, window_s: float = 10.0, freeze: bool = True, on_alert=emit,
                  writers=top_writers):
         self.threshold, self.window, self.freeze = threshold, window_s, freeze
-        self.hits: deque = deque()
+        self.hits: dict[int, deque] = {}          # por usuario: la actividad de otro no suma
         self.on_alert, self.writers = on_alert, writers
-        self._cooldown = 0.0
+        self._cooldown: dict[int, float] = {}
+        self.protect_root = True                  # procesos de root: solo alerta (las pruebas corren como root)
+
+    @staticmethod
+    def _read_head(path: str) -> tuple[bytes, int] | None:
+        """Lee el principio del archivo SIN seguir enlaces ni bloquearse en FIFO/dispositivos (corre como root)."""
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_NOATIME", 0))
+        except OSError:
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except OSError:
+                return None
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                return None
+            return os.read(fd, 65536), st.st_uid
+        except OSError:
+            return None
+        finally:
+            os.close(fd)
+
+    def _freeze(self, pid: int, exe: str, uid: int) -> str:
+        """Congela solo si el proceso sigue siendo el mismo (pidfd: inmune a la reutilización del PID), su
+        ejecutable coincide y pertenece al usuario de los archivos."""
+        if uid == 0 and self.protect_root:
+            return "alerta (proceso del sistema: no se congela)"
+        try:
+            pidfd = os.pidfd_open(pid)
+        except OSError as e:
+            return f"no se pudo congelar: {e}"
+        try:
+            real_exe = os.readlink(f"/proc/{pid}/exe")
+            puid = int(next(line.split()[1] for line in open(f"/proc/{pid}/status") if line.startswith("Uid:")))
+            if real_exe != exe or puid != uid:
+                return "alerta (el proceso cambió antes de poder congelarlo)"
+            signal.pidfd_send_signal(pidfd, signal.SIGSTOP)
+            return f"proceso {pid} CONGELADO (reanudar: kill -CONT {pid})"
+        except (OSError, StopIteration, ValueError) as e:
+            return f"no se pudo congelar: {e}"
+        finally:
+            os.close(pidfd)
 
     def file_changed(self, path: str, now: float | None = None) -> Alert | None:
         now = time.time() if now is None else now
-        try:
-            with open(path, "rb") as fh:
-                head = fh.read(65536)
-        except OSError:
+        got = self._read_head(path)
+        if not got:
             return None
+        head, uid = got
         if not looks_encrypted(path, head):
             return None
-        self.hits.append(now)
-        while self.hits and self.hits[0] < now - self.window:
-            self.hits.popleft()
-        if len(self.hits) < self.threshold or now < self._cooldown:
+        hits = self.hits.setdefault(uid, deque())
+        hits.append(now)
+        while hits and hits[0] < now - self.window:
+            hits.popleft()
+        if len(hits) < self.threshold or now < self._cooldown.get(uid, 0):
             return None
-        self._cooldown = now + 30
-        try:
-            uid = os.stat(path).st_uid
-        except OSError:
-            uid = None
+        self._cooldown[uid] = now + 30
         culprit = next(((pid, exe) for pid, _, exe in self.writers(uid=uid) if exe not in PROTECTED_EXES), None)
         action = "alerta"
         if culprit and self.freeze:
-            try:
-                os.kill(culprit[0], signal.SIGSTOP)
-                action = f"proceso {culprit[0]} CONGELADO (reanudar: kill -CONT {culprit[0]})"
-            except OSError as e:
-                action = f"no se pudo congelar: {e}"
+            action = self._freeze(culprit[0], culprit[1], uid)
         alert = Alert("ransomware", "critical",
-                      f"{len(self.hits)} archivos parecen cifrados en {self.window:.0f} s (último: {path})",
+                      f"{len(hits)} archivos parecen cifrados en {self.window:.0f} s (último: {path})",
                       culprit[0] if culprit else None, culprit[1] if culprit else None, action)
         self.on_alert(alert)
         return alert

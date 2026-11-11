@@ -109,8 +109,13 @@ class PortScanDetector:
 
 
 def _is_public(ip: str) -> bool:
+    """Solo direcciones globales cuentan para el «escaneo de puertos»: un SYN se puede falsificar, y bloquear
+    por eso el router, el NAS o la VPN de la red local sería una denegación de servicio autoinfligida. Los fallos
+    de autenticación (handshake completo, no falsificable) sí se bloquean también en la red local."""
     a = ipaddress.ip_address(ip)
-    return not (a.is_loopback or a.is_unspecified or a.is_multicast)
+    if a.version == 6 and a.ipv4_mapped:
+        a = a.ipv4_mapped
+    return a.is_global
 
 
 def _proc_net_connections() -> list[tuple[str, int, str]]:
@@ -199,24 +204,41 @@ class NetGuard:
 
     # --------------------------------------------------------- fuentes
     def _follow_file(self, path: str) -> None:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            fh.seek(0, os.SEEK_END)
-            inode = os.fstat(fh.fileno()).st_ino
-            while not self._stop.is_set():
-                line = fh.readline()
-                if line:
-                    msg = message_from_syslog(line)
-                    if msg:
-                        self.process_log_line(msg)
-                    continue
-                time.sleep(0.5)
-                try:  # rotación de logs
-                    if os.stat(path).st_ino != inode:
-                        return self._follow_file(path)
-                except FileNotFoundError:
-                    pass
+        first = True
+        while not self._stop.is_set():                # bucle (no recursión) para sobrevivir a las rotaciones
+            try:
+                fh = open(path, "r", encoding="utf-8", errors="replace")
+            except OSError:
+                time.sleep(5)
+                continue
+            with fh:
+                if first:
+                    fh.seek(0, os.SEEK_END)          # al arrancar, solo lo nuevo; tras rotar, desde el principio
+                    first = False
+                inode = os.fstat(fh.fileno()).st_ino
+                while not self._stop.is_set():
+                    line = fh.readline()
+                    if line:
+                        msg = message_from_syslog(line)
+                        if msg:
+                            self.process_log_line(msg)
+                        continue
+                    time.sleep(0.5)
+                    try:
+                        if os.stat(path).st_ino != inode:
+                            break                    # rotado: reabrir
+                    except FileNotFoundError:
+                        pass
 
     def _follow_journald(self) -> None:
+        while not self._stop.is_set():                # si journalctl muere, se relanza (antes el IPS callaba)
+            try:
+                self._follow_journald_once()
+            except Exception:  # noqa: BLE001
+                log.exception("Fallo leyendo journald; reintento en 10 s")
+            self._stop.wait(10)
+
+    def _follow_journald_once(self) -> None:
         proc = subprocess.Popen(
             # _UID=0 lo pone el kernel/journald: un usuario no puede falsificarlo con «logger»
             ["journalctl", "-f", "-n", "0", "-o", "cat", "_UID=0", "_COMM=sshd", "+",
@@ -274,6 +296,12 @@ class NetGuard:
 
     # --------------------------------------------------------- ciclo
     def start(self) -> list[threading.Thread]:
+        try:
+            n = self.fw.restore()
+            if n:
+                log.info("Reinstalados %d bloqueos de IP guardados", n)
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudieron reinstalar los bloqueos guardados")
         for port in self.config.blocked_ports_inbound:
             self.fw.block_inbound_port(int(port))
         targets = [self._watch_connections]

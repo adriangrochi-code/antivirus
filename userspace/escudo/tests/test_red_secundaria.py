@@ -54,3 +54,31 @@ def test_never_with_vpn_or_single_link(monkeypatch):
         mod.apply(n)
         assert not any(a[:2] == ["nft", "-f"] for a, _ in n.calls)
         assert any(a[:4] == ["nft", "delete", "table", "inet"] for a, _ in n.calls)   # limpia lo anterior
+
+
+def test_firewall_restores_saved_blocks_and_reblocks_expired(tmp_path, monkeypatch):
+    import sys
+    import time
+    sys.path.insert(0, str(ROOT / "userspace/escudo"))
+    from escudo import firewall
+    from escudo.config import Config
+    monkeypatch.setattr(firewall, "essential_ips", lambda: {"192.168.1.1"})
+    state = tmp_path / "blocked_ips.json"
+    now = time.time()
+    state.write_text(json.dumps({"203.0.113.5": now + 600, "198.51.100.7": 0, "203.0.113.9": now - 5,
+                                 "192.168.1.1": 0}))
+    cfg = Config()
+    cfg.data_dir, cfg.dry_run_firewall = tmp_path, True
+    fw = firewall.Firewall(cfg)
+    calls = []
+    monkeypatch.setattr(fw, "_run", lambda args, check=True: calls.append(args) or
+                        __import__("subprocess").CompletedProcess(args, 0, "", ""))
+    monkeypatch.setattr(fw, "_ensure_table", lambda: None)
+    assert fw.restore() == 2                                   # vigentes; caducada y lista blanca fuera
+    elems = [" ".join(c) for c in calls if c[:3] == ["nft", "add", "element"]]
+    assert any("203.0.113.5 timeout" in e for e in elems) and any("198.51.100.7 }" in e for e in elems)
+    assert "192.168.1.1" not in json.loads(state.read_text())
+    assert fw.block("203.0.113.9") is True                     # caducada: se vuelve a bloquear
+    from escudo import netguard
+    assert not netguard._is_public("192.168.1.50") and not netguard._is_public("fe80::1")
+    assert netguard._is_public("8.8.8.8")

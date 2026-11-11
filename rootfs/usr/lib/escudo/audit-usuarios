@@ -5,14 +5,18 @@
 set -u
 command -v auditctl >/dev/null || exit 0
 
+# La ruta real (todos los enlaces resueltos) debe ser la misma que la pedida: así ningún componente intermedio
+# (~/.config, ~/.local…) puede ser un enlace a /etc u otra carpeta del sistema.
+real_igual() { [ "$(realpath -e -- "$1" 2>/dev/null)" = "$1" ]; }
+
 vigilar() { # ruta permisos clave
-    if [ -e "$1" ] && [ ! -L "$1" ]; then
+    if [ -e "$1" ] && real_igual "$1"; then
         auditctl -w "$1" -p "$2" -k "$3" 2>/dev/null || true
     fi
 }
 
 getent passwd | while IFS=: read -r _ _ uid _ _ home _; do
-    if [ "$uid" -lt 1000 ] || [ "$uid" -ge 60000 ] || [ ! -d "$home" ] || [ -L "$home" ]; then
+    if [ "$uid" -lt 1000 ] || [ "$uid" -ge 60000 ] || [ ! -d "$home" ] || ! real_igual "$home"; then
         continue
     fi
     for d in .ssh .gnupg .local/share/keyrings; do vigilar "$home/$d" r secretos; done
@@ -24,7 +28,7 @@ getent passwd | while IFS=: read -r _ _ uid _ _ home _; do
     done
     # Ejecutar algo directamente desde Descargas (adjuntos, «cracks»)
     for d in Descargas Downloads; do
-        if [ -d "$home/$d" ] && [ ! -L "$home/$d" ]; then
+        if [ -d "$home/$d" ] && real_igual "$home/$d"; then
             auditctl -a always,exit -F arch=b64 -S execve,execveat -F dir="$home/$d" -k exec_tmp 2>/dev/null || true
         fi
     done
