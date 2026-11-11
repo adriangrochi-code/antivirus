@@ -1,0 +1,82 @@
+# TISMA OS: integración continua.
+# - pruebas: todas las suites (make test) en cada cambio.
+# - comprobaciones: sintaxis de scripts (bash, Python, GRUB), JSON, shellcheck y que todos los paquetes de la ISO
+#   existan en Debian trixie.
+# - iso-minima (manual): compila el kernel mínimo, construye la ISO mínima y la arranca en QEMU.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      iso_minima:
+        description: "Construir y arrancar la ISO mínima (≈1 h)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends python3-pytest python3-numpy python3-yaml \
+            python3-psutil python3-watchdog bubblewrap grub-common
+          # Ubuntu 24.04 restringe los espacios de nombres sin privilegios por AppArmor: bubblewrap (la jaula de
+          # TISMA Code) los necesita en las pruebas
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Pruebas (make test)
+        run: make test
+
+  comprobaciones:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends shellcheck grub-common
+      - name: Scripts de shell (sintaxis y shellcheck nivel error)
+        run: |
+          files=$(find rootfs iso kernel tests -type f -exec grep -l '^#!.*\(bash\|/sh\)' {} +)
+          for f in $files; do bash -n "$f"; done
+          shellcheck -S error $files
+      - name: Python (también los scripts sin extensión de rootfs)
+        run: |
+          python3 -m compileall -q userspace iso kernel
+          for f in $(grep -rl '^#!.*python' rootfs iso kernel); do
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "$f"
+          done
+      - name: JSON
+        run: for f in $(find rootfs -name '*.json'); do python3 -m json.tool "$f" > /dev/null; done
+      - name: Fragmento de GRUB (prueba de arranque del driver gráfico)
+        run: sh rootfs/etc/grub.d/05_tisma_graficos > /tmp/s.cfg && grub-script-check /tmp/s.cfg
+      - name: Paquetes de la ISO en Debian trixie
+        run: python3 iso/check-packages.py
+
+  iso-minima:
+    if: github.event_name == 'workflow_dispatch' && inputs.iso_minima
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias de build
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential bc flex bison libssl-dev libelf-dev libdw-dev dwarves \
+            debhelper debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools librsvg2-bin \
+            rsync cpio zstd qemu-system-x86 busybox-static ovmf
+      - name: Kernel mínimo
+        run: make kernel-minimal
+      - name: ISO mínima
+        run: make iso-minima
+      - name: Arranque en QEMU
+        run: make iso-test
