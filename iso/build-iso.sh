@@ -140,6 +140,10 @@ gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
 chmod 700 "$CHROOT/var/lib/escudo"
 
+# DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
+install -m 644 "$CHROOT/etc/resolv.conf.tisma" "$CHROOT/etc/resolv.conf.final"
+rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
+in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer auditd 2>/dev/null || true
 in_chroot systemctl enable nftables apparmor sddm NetworkManager \
     centinela-firstboot centinela-power centinela-adaptd escudo
 if [[ $WAYDROID == 1 ]]; then in_chroot systemctl disable waydroid-container 2>/dev/null || true; fi
@@ -158,6 +162,8 @@ mkdir -p "$CHROOT/etc/skel/Desktop"
 in_chroot update-initramfs -u -k all
 in_chroot apt-get clean
 rm -rf "$CHROOT"/var/lib/apt/lists/* "$CHROOT"/tmp/* "$CHROOT"/root/.bash_history
+# resolv.conf definitivo al final (durante la build el chroot usa el DNS del anfitrión)
+mv -f "$CHROOT/etc/resolv.conf.final" "$CHROOT/etc/resolv.conf"
 umount_chroot
 
 # ---------------------------------------------------------------- 5. ISO

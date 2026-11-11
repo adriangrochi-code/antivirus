@@ -1,0 +1,17 @@
+[Unit]
+Description=TISMA - actualizar listas de bloqueo de anuncios y rastreadores
+After=network-online.target dnscrypt-proxy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/actualizar-bloqueo
+ExecStartPost=-/usr/bin/systemctl try-restart dnscrypt-proxy.service
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tisma-dns
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+DynamicUser=no

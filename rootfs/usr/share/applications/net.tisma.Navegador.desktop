@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=TISMA Navegador
+GenericName=Navegador web seguro
+Comment=Chromium con protección de privacidad, bloqueo de rastreadores y sandbox propio
+Exec=tisma-sandbox ejecutar navegador %U
+Icon=tisma
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=chromium
+Actions=blindado;privado;
+
+[Desktop Action blindado]
+Name=Modo blindado (sin JIT de JavaScript: menos exploits, algo más lento)
+Exec=tisma-sandbox ejecutar navegador --js-flags=--jitless %U
+
+[Desktop Action privado]
+Name=Ventana privada
+Exec=tisma-sandbox ejecutar navegador --incognito %U

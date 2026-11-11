@@ -1,0 +1,3 @@
+# TISMA OS: DNS local cifrado y filtrado (dnscrypt-proxy)
+nameserver 127.0.2.1
+options edns0 trust-ad

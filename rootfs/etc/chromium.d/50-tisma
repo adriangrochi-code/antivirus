@@ -1,0 +1,2 @@
+# TISMA Navegador: Wayland nativo, aceleración por GPU y protecciones extra de Chromium
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=auto --enable-features=VaapiVideoDecodeLinuxGL,StrictOriginIsolation,PartitionedCookies --disable-features=MediaRouter,OptimizationHints,InterestFeedContentSuggestions --no-pings --no-default-browser-check"

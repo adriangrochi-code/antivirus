@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# tisma-vpn: VPN WireGuard integrada con kill-switch.
+#
+#   tisma-vpn importar <archivo.conf> [nombre]   configuración de tu proveedor o servidor propio
+#   tisma-vpn activar <nombre> [--sin-killswitch] [--lan]
+#   tisma-vpn desactivar <nombre>
+#   tisma-vpn estado
+#
+# Kill-switch (por defecto): con la VPN activa, nftables descarta TODO el tráfico que no vaya por
+# el túnel (salvo el propio túnel, loopback y, con --lan, la red local). Si el túnel se cae, no se
+# filtra nada fuera de él. Al desactivar la VPN se retira la regla.
+set -euo pipefail
+CONF_DIR=/etc/tisma-vpn
+TABLE=(inet tisma_vpn)
+
+need_root() { [[ $EUID -eq 0 ]] || exec pkexec "$0" "$@"; }
+die() { echo "tisma-vpn: $*" >&2; exit 1; }
+valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{0,14}$ ]] || die "nombre inválido (minúsculas, números, - y _; máx. 15)"; }
+
+killswitch_on() { # iface endpoint_ip endpoint_port lan
+    local ifc="$1" ip="$2" port="$3" lan="$4" fam="ip"
+    [[ "$ip" == *:* ]] && fam="ip6"
+    nft delete table "${TABLE[@]}" 2>/dev/null || true
+    nft -f - <<NFT
+table inet tisma_vpn {
+    chain salida {
+        type filter hook output priority filter - 10; policy drop;
+        oif "lo" accept
+        oifname "$ifc" accept
+        $fam daddr $ip udp dport $port accept
+        udp sport 68 udp dport 67 accept
+        $( [[ "$lan" == 1 ]] && echo 'ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } accept' )
+        reject with icmpx type admin-prohibited
+    }
+}
+NFT
+}
+
+cmd="${1:-estado}"
+case "$cmd" in
+importar)
+    need_root "$@"
+    file="${2:?archivo .conf}"; [[ -f "$file" ]] || die "no existe $file"
+    name="${3:-$(basename "$file" .conf | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_\n-' '-' | cut -c1-15)}"
+    valid_name "$name"
+    endpoint="$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*//p' "$file" | head -n1)"
+    [[ -n "$endpoint" ]] || die "la configuración no tiene Endpoint"
+    install -d -m 700 "$CONF_DIR"
+    install -m 600 "$file" "$CONF_DIR/$name.conf"
+    printf '%s\n' "$endpoint" > "$CONF_DIR/$name.endpoint"
+    nmcli connection import type wireguard file "$CONF_DIR/$name.conf" >/dev/null
+    nmcli connection modify "$name" connection.autoconnect no ipv6.method ignore 2>/dev/null || true
+    echo "VPN «$name» importada (servidor $endpoint). Actívala con: tisma-vpn activar $name"
+    ;;
+activar)
+    need_root "$@"
+    name="${2:?nombre}"; valid_name "$name"; shift 2
+    ks=1; lan=0
+    for a in "$@"; do case "$a" in --sin-killswitch) ks=0 ;; --lan) lan=1 ;; *) die "opción desconocida: $a" ;; esac; done
+    endpoint="$(cat "$CONF_DIR/$name.endpoint")"
+    host="${endpoint%:*}"; port="${endpoint##*:}"; host="${host#[}"; host="${host%]}"
+    [[ "$port" =~ ^[0-9]+$ ]] || die "puerto del servidor inválido"
+    ip="$(getent ahosts "$host" | awk 'NR==1{print $1}')"
+    [[ -n "$ip" ]] || die "no se pudo resolver $host"
+    nmcli connection up "$name" >/dev/null
+    if [[ $ks == 1 ]]; then
+        killswitch_on "$name" "$ip" "$port" "$lan"
+        echo "VPN «$name» activa con kill-switch: nada sale fuera del túnel."
+    else
+        echo "VPN «$name» activa (sin kill-switch)."
+    fi
+    ;;
+desactivar)
+    need_root "$@"
+    name="${2:?nombre}"; valid_name "$name"
+    nmcli connection down "$name" >/dev/null 2>&1 || true
+    nft delete table "${TABLE[@]}" 2>/dev/null || true
+    echo "VPN «$name» desactivada."
+    ;;
+estado)
+    nmcli -t -f NAME,TYPE,DEVICE connection show --active 2>/dev/null | awk -F: '$2=="wireguard"{print "Activa: "$1" ("$3")"}'
+    if nft list table "${TABLE[@]}" >/dev/null 2>&1; then echo "Kill-switch: ACTIVO"; else echo "Kill-switch: inactivo"; fi
+    ;;
+*) sed -n '2,11p' "$0"; exit 2 ;;
+esac

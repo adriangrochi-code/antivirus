@@ -1,0 +1,56 @@
+#!/usr/bin/python3 -I
+"""Descarga las listas de bloqueo (anuncios, rastreo, malware), las valida y las instala.
+
+Fuentes: OISD «big» (dominios) y la lista de Hagezi «pro». Solo se aceptan nombres de dominio
+válidos (nada de comandos ni rutas). Si una descarga falla se conserva la lista anterior.
+"""
+import os
+import re
+import sys
+import tempfile
+import urllib.request
+
+SOURCES = ["https://big.oisd.nl/domainswild2",
+           "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt"]
+DEST = "/var/lib/tisma-dns/bloqueo.txt"
+ALLOW = "/etc/tisma-dns/permitidos.txt"           # dominios que el usuario quiere permitir
+DOMAIN = re.compile(r"^(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+MAX = 60 * 1024 * 1024
+
+
+def parse(text: str) -> set:
+    out = set()
+    for line in text.splitlines():
+        d = line.split("#", 1)[0].strip().lower()
+        if d and DOMAIN.match(d):
+            out.add(d.removeprefix("*."))
+    return out
+
+
+def main() -> int:
+    domains = set()
+    for url in SOURCES:
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r:
+                domains |= parse(r.read(MAX).decode("utf-8", "replace"))
+        except OSError as e:
+            print(f"aviso: {url}: {e}", file=sys.stderr)
+    if len(domains) < 10_000:
+        print("Listas incompletas: se conserva la lista anterior", file=sys.stderr)
+        return 1
+    try:
+        domains -= parse(open(ALLOW, encoding="utf-8").read())
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(DEST), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(DEST))
+    with os.fdopen(fd, "w") as fh:
+        fh.write("\n".join(sorted(domains)) + "\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, DEST)
+    print(f"{len(domains)} dominios bloqueados")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

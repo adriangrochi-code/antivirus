@@ -1,0 +1,33 @@
+# TISMA OS — DNS cifrado (DoH/DNSCrypt) con bloqueo de anuncios, rastreadores y malware
+listen_addresses = ['127.0.2.1:53', '[::1]:53']
+# Solo resolutores sin registros, con DNSSEC y sin filtrado propio de la empresa
+server_names = ['quad9-dnscrypt-ip4-nofilter-pri', 'mullvad-doh', 'cloudflare']
+require_dnssec = true
+require_nolog = true
+require_nofilter = false
+ipv6_servers = false
+doh_servers = true
+dnscrypt_servers = true
+lb_strategy = 'p2'
+cache = true
+cache_size = 8192
+cache_min_ttl = 600
+cache_max_ttl = 86400
+# Sin consultas de DNS en claro hacia fuera, nunca
+ignore_system_dns = true
+bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']
+netprobe_timeout = 30
+block_ipv6 = false
+block_unqualified = true
+block_undelegated = true
+
+[blocked_names]
+blocked_names_file = '/var/lib/tisma-dns/bloqueo.txt'
+log_file = '/var/log/dnscrypt-proxy/bloqueados.log'
+
+[sources.public-resolvers]
+urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md',
+        'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
+cache_file = 'public-resolvers.md'
+minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+refresh_delay = 72
