@@ -1,0 +1,8 @@
+[Unit]
+Description=Centinela: confirma (o descarta) la prueba del driver gráfico tras arrancar
+ConditionPathExists=/var/lib/centinela/graficos.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela graficos confirmar
+Nice=10

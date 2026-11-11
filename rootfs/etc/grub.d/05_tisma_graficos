@@ -1,0 +1,20 @@
+#!/bin/sh
+# TISMA: prueba de UN arranque del driver amdgpu para GPU AMD GCN 1/2 (centinela graficos).
+# El estado vive en la partición EFI (GRUB no puede escribir en btrfs). Antes de arrancar a prueba, GRUB lo
+# marca «fallido»: si ese arranque se cuelga, el siguiente vuelve solo al driver anterior. El sistema lo pasa
+# a «ok» cuando comprueba que hay imagen con amdgpu (centinela graficos confirmar).
+set -e
+cat <<'GRUBEOF'
+set tisma_gpu_args=
+if search --no-floppy --file --set=tisma_esp /tisma/grubenv; then
+  load_env -f ($tisma_esp)/tisma/grubenv tisma_gpu
+  if [ "${tisma_gpu}" = "probar" ]; then
+    set tisma_gpu=fallido
+    if save_env -f ($tisma_esp)/tisma/grubenv tisma_gpu; then
+      set tisma_gpu_args="radeon.si_support=0 amdgpu.si_support=1 radeon.cik_support=0 amdgpu.cik_support=1"
+    fi
+  elif [ "${tisma_gpu}" = "ok" ]; then
+    set tisma_gpu_args="radeon.si_support=0 amdgpu.si_support=1 radeon.cik_support=0 amdgpu.cik_support=1"
+  fi
+fi
+GRUBEOF

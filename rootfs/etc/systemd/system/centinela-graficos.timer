@@ -1,0 +1,9 @@
+[Unit]
+Description=Centinela: comprobar el driver gráfico en prueba (90 s después de arrancar, con el escritorio ya visible)
+
+[Timer]
+OnBootSec=90s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

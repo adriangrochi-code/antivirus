@@ -203,7 +203,33 @@ def cmd_setup(args) -> int:
     cmd_bench(args)
     args.dry_run = False
     cmd_plan(args)
-    return cmd_apply(args)
+    rc = cmd_apply(args)
+    try:                                    # gráficos: el mejor driver y capa de traducción para esta GPU
+        from . import graficos
+        for m in graficos.apply(graficos.detect()):
+            print(m)
+    except Exception as e:  # noqa: BLE001 — la adaptación gráfica nunca debe romper la configuración base
+        print(f"Gráficos: no se pudo adaptar ({e})")
+    return rc
+
+
+def cmd_graficos(args) -> int:
+    from . import graficos
+    if args.accion in ("aplicar", "confirmar", "probar", "revertir") and os.geteuid() != 0:
+        print("Necesita permisos de administrador: sudo centinela graficos " + args.accion, file=sys.stderr)
+        return 2
+    if args.accion == "detectar":
+        info = graficos.detect()
+        print(graficos.to_json(info) if args.json else graficos.summarize(info))
+    elif args.accion == "aplicar":
+        print("\n".join(graficos.apply(graficos.detect())))
+    elif args.accion == "confirmar":
+        print(f"Gráficos: {graficos.confirm()}")
+    elif args.accion == "probar":
+        print(graficos.retry())
+    else:
+        print(graficos.revert())
+    return 0
 
 
 def cmd_energia(args) -> int:
@@ -326,6 +352,12 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "adaptd":
             s.add_argument("--interval", type=float, default=3.0)
             s.add_argument("--no-game-boost", action="store_true")
+
+    s = sub.add_parser("graficos", help="mejor driver y capa de traducción (Vulkan/DXVK/WineD3D) para la GPU")
+    s.add_argument("accion", nargs="?", default="detectar",
+                   choices=["detectar", "aplicar", "confirmar", "probar", "revertir"])
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_graficos)
 
     s = sub.add_parser("energia", help="ahorro de energía según cargador/batería, y umbral de carga")
     s.add_argument("modo", choices=["auto", "bateria", "corriente", "umbral"])
