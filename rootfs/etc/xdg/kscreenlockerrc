@@ -1,0 +1,6 @@
+# Pantalla de bloqueo con el fondo de TISMA
+[Greeter]
+WallpaperPlugin=org.kde.image
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file:///usr/share/wallpapers/Centinela/

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bienvenida a TISMA
+GenericName=Primeros pasos
+Comment=Aspecto, aplicaciones a mano, IA local y protección en un minuto
+Exec=tisma-bienvenida
+Icon=tisma
+Categories=System;Settings;
+Keywords=bienvenida;inicio;tema;oscuro;claro;color;perfil;primeros pasos;
+StartupWMClass=tisma-bienvenida

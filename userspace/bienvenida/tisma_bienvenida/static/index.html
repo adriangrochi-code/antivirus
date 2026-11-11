@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bienvenida a TISMA</title>
+<link rel="icon" href="/static/logo.svg">
+<style>
+:root{--acc:#9145E6;--r:16px}
+html[data-tema=oscuro]{--bg:#131216;--bg2:#1C1B20;--card:#232227;--card2:#2B2A30;--line:#34333B;--text:#ECECF0;--dim:#A6A5AE;--faint:#7A7983;--ok:#4CC38A;--shadow:0 20px 60px rgba(0,0,0,.45)}
+html[data-tema=claro]{--bg:#ECEBF1;--bg2:#F4F3F7;--card:#FFFFFF;--card2:#F6F5F9;--line:#E0DFE6;--text:#1F1E24;--dim:#5E5D67;--faint:#8A8992;--ok:#1E9E62;--shadow:0 20px 60px rgba(40,30,70,.12)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.5 "Inter","Noto Sans","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;min-height:100vh;background:radial-gradient(1200px 600px at 20% -10%,color-mix(in srgb,var(--acc) 22%,transparent),transparent 60%),radial-gradient(900px 500px at 110% 110%,color-mix(in srgb,var(--acc) 14%,transparent),transparent 60%),var(--bg);transition:background .3s}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,.opt:focus-visible{outline:3px solid color-mix(in srgb,var(--acc) 70%,white);outline-offset:2px}
+.app{margin:auto;width:min(980px,100% - 32px);min-height:min(640px,100vh - 32px);display:grid;grid-template-columns:230px 1fr;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}
+nav{background:var(--bg2);padding:28px 18px;display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin:0 8px 26px;font-weight:700;letter-spacing:.12em}
+.brand img{width:26px;height:30px}.brand b{color:var(--acc)}
+.step{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;color:var(--dim);font-size:14px;text-align:left}
+.step i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:600;background:var(--card2);border:1px solid var(--line);flex:none}
+.step.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--text)}
+.step.on i{background:var(--acc);border-color:var(--acc);color:#fff}
+.step.done i{background:color-mix(in srgb,var(--acc) 70%,var(--card2));color:#fff;border-color:transparent}
+nav .sp{flex:1}nav .ver{color:var(--faint);font-size:12px;margin:0 8px}
+main{display:flex;flex-direction:column;padding:40px 44px 28px;min-width:0}
+h1:focus,h2:focus{outline:none}
+section{display:none;flex:1;animation:in .35s ease}section.on{display:block}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){section{animation:none}*{transition:none!important}}
+h1{font-size:30px;line-height:1.2;margin:0 0 10px;font-weight:700;letter-spacing:-.01em}
+h2{font-size:24px;margin:0 0 6px;font-weight:700}
+.lead{color:var(--dim);margin:0 0 26px;max-width:560px}
+.hero{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.hero img{width:76px;height:88px;margin-bottom:18px;filter:drop-shadow(0 10px 30px color-mix(in srgb,var(--acc) 45%,transparent))}
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px;width:100%}
+.feat{background:var(--card2);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.feat svg{width:26px;height:26px;color:var(--acc);margin-bottom:8px}.feat b{display:block;margin-bottom:2px}.feat span{color:var(--dim);font-size:13.5px}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+.opt{background:var(--card2);border:2px solid var(--line);border-radius:var(--r);padding:14px;text-align:left;transition:border-color .15s,transform .15s}
+.opt:hover{border-color:color-mix(in srgb,var(--acc) 55%,var(--line));transform:translateY(-1px)}
+.opt.sel{border-color:var(--acc);box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 18%,transparent)}
+.opt b{display:block}.opt span{color:var(--dim);font-size:13.5px}
+.prev{height:120px;border-radius:10px;margin-bottom:12px;position:relative;overflow:hidden;border:1px solid var(--line)}
+.prev.o{background:linear-gradient(160deg,#2a2830,#131216)}.prev.c{background:linear-gradient(160deg,#ffffff,#dddce6)}
+.prev .w{position:absolute;left:14%;top:16%;width:56%;height:52%;border-radius:7px}
+.prev.o .w{background:#2E2D33;box-shadow:0 6px 18px rgba(0,0,0,.5)}.prev.c .w{background:#fff;box-shadow:0 6px 18px rgba(40,30,70,.18)}
+.prev .w::before{content:"";position:absolute;left:0;right:0;top:0;height:14px;border-radius:7px 7px 0 0;background:var(--acc)}
+.prev .bar{position:absolute;left:0;right:0;bottom:0;height:16px}.prev.o .bar{background:#0d0c10}.prev.c .bar{background:#2a2830}
+.sw{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+.dot{width:38px;height:38px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 2px var(--line)}
+.dot.sel{box-shadow:0 0 0 3px var(--text)}
+.ico{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);margin-bottom:10px}
+.ico svg{width:20px;height:20px}
+.panel{background:var(--card2);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:12px 0 4px;font-size:14px}.kv dt{color:var(--dim)}.kv dd{margin:0}
+.list{display:grid;gap:8px}.row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px}
+.row .st{margin-left:auto;font-size:13px;color:var(--dim)}.row .st.ok{color:var(--ok)}
+.chk{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok);flex:none}
+.chk.no{background:var(--card);color:var(--faint)}.chk svg{width:13px;height:13px}
+.tips{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:6px}
+.tips .muted{color:var(--dim);font-size:13.5px;margin-top:6px}.tips .btn{display:block;margin-top:12px;color:var(--text)}
+kbd{font:12px "JetBrains Mono",monospace;background:var(--card);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px}
+footer{display:flex;align-items:center;gap:10px;margin-top:26px}
+footer .sp{flex:1}
+.btn{padding:11px 20px;border-radius:12px;background:var(--card2);border:1px solid var(--line);font-weight:600}
+.btn:hover{border-color:var(--faint)}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 8px 22px color-mix(in srgb,var(--acc) 40%,transparent)}
+.btn.p:hover{filter:brightness(1.08)}
+.btn.s{padding:8px 14px;font-weight:500;font-size:14px}
+.btn[hidden]{display:none}
+.skip{color:var(--faint);font-size:14px;padding:8px}.skip:hover{color:var(--text)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;transition:.25s;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.muted{color:var(--faint);font-size:13px;margin-top:12px}
+@media (max-width:760px){.app{grid-template-columns:1fr}nav{flex-direction:row;padding:12px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+ .brand,nav .sp,nav .ver{display:none}.step span{display:none}main{padding:26px 20px 20px}.feats,.g3,.g2,.tips{grid-template-columns:1fr}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav id="nav">
+    <div class="brand"><img src="/static/logo.svg" alt=""><span>T<b>I</b>SMA</span></div>
+    <button class="step" data-i="0"><i>1</i><span>Bienvenida</span></button>
+    <button class="step" data-i="1"><i>2</i><span>Aspecto</span></button>
+    <button class="step" data-i="2"><i>3</i><span>Tu uso</span></button>
+    <button class="step" data-i="3"><i>4</i><span>IA local</span></button>
+    <button class="step" data-i="4"><i>5</i><span>Protección</span></button>
+    <button class="step" data-i="5"><i>6</i><span>Listo</span></button>
+    <div class="sp"></div><div class="ver">TISMA OS</div>
+  </nav>
+  <main>
+    <section data-s="0" class="on">
+      <div class="hero">
+        <img src="/static/logo.svg" alt="Logo de TISMA">
+        <h1 id="hola">Te damos la bienvenida a TISMA OS</h1>
+        <p class="lead">Un sistema rápido, protegido y con inteligencia artificial que funciona en tu equipo, sin enviar nada a Internet. Lo dejamos a tu gusto en un minuto.</p>
+        <div class="feats">
+          <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><b>Protegido</b><span>Antivirus, cortafuegos y copias automáticas ya activos.</span></div>
+          <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><b>Rápido</b><span>Se adapta solo a tu procesador, memoria y batería.</span></div>
+          <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg><b>IA local</b><span>Un asistente que programa, calcula y diseña contigo.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-s="1">
+      <h2>¿Cómo te gusta?</h2>
+      <p class="lead">Elige claro u oscuro y un color. Se aplica al momento y lo puedes cambiar cuando quieras en Ajustes.</p>
+      <div class="grid g2">
+        <button class="opt" data-modo="oscuro"><div class="prev o"><div class="w"></div><div class="bar"></div></div><b>Oscuro</b><span>Descansa la vista, ideal de noche</span></button>
+        <button class="opt" data-modo="claro"><div class="prev c"><div class="w"></div><div class="bar"></div></div><b>Claro</b><span>Luminoso y nítido, ideal de día</span></button>
+      </div>
+      <div class="sw" id="acentos" role="radiogroup" aria-label="Color de acento"></div>
+    </section>
+
+    <section data-s="2">
+      <h2>¿Para qué vas a usar el equipo?</h2>
+      <p class="lead">Dejamos a mano las aplicaciones que más vas a usar y ajustamos la potencia. Todo lo demás sigue en el menú.</p>
+      <div class="grid g3" id="perfiles"></div>
+    </section>
+
+    <section data-s="3">
+      <h2>Tu inteligencia artificial, en tu equipo</h2>
+      <p class="lead">TISMA Code usa el motor que mejor rinde en tu hardware. Cuanto mejor sea el modelo que descargues, mejores serán los resultados; con uno pequeño también trabaja bien gracias a sus herramientas.</p>
+      <div class="panel">
+        <dl class="kv"><dt>Motor</dt><dd id="iaMotor">—</dd><dt>Memoria</dt><dd id="iaRam">—</dd><dt>Gráfica</dt><dd id="iaGpu">—</dd><dt>Modelos</dt><dd id="iaModelos">—</dd></dl>
+        <p id="iaConsejo" style="margin:14px 0 0"></p>
+      </div>
+      <footer style="margin-top:16px"><button class="btn s" data-abrir="code">Abrir TISMA Code</button></footer>
+    </section>
+
+    <section data-s="4">
+      <h2>Ya estás protegido</h2>
+      <p class="lead">Todo esto viene activado. No tienes que hacer nada; si algo necesita tu atención, te avisará una notificación.</p>
+      <div class="list" id="seg"></div>
+    </section>
+
+    <section data-s="5">
+      <h2>¡Todo listo!</h2>
+      <p class="lead">Unos atajos para empezar:</p>
+      <div class="tips">
+        <div class="panel"><b>Menú de aplicaciones</b><div class="muted">Pulsa <kbd>Super</kbd> (la tecla del logo) y escribe lo que buscas.</div></div>
+        <div class="panel"><b>Instalar aplicaciones</b><div class="muted">La Tienda tiene miles, con un clic. <button class="btn s" data-abrir="tienda">Abrir la Tienda</button></div></div>
+        <div class="panel"><b>Ventanas lado a lado</b><div class="muted">Arrastra una ventana a un borde, o <kbd>Super</kbd> + <kbd>←</kbd> / <kbd>→</kbd>.</div></div>
+        <div class="panel"><b>Rendimiento y batería</b><div class="muted">Temperatura, perfiles y ahorro desde el icono de la bandeja. <button class="btn s" data-abrir="rendimiento">Abrir Rendimiento</button></div></div>
+      </div>
+    </section>
+
+    <footer>
+      <button class="skip" id="saltar">Omitir</button>
+      <div class="sp"></div>
+      <button class="btn" id="atras" hidden>Atrás</button>
+      <button class="btn p" id="sig">Empezar</button>
+    </footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const api = async (path, body) => {
+  const r = await fetch(path, {method: body ? "POST" : "GET", headers: {"X-Token": TOKEN, "Content-Type": "application/json"},
+                               body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+let toastT; const toast = m => { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 2600); };
+const ICONOS = {
+  diario: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  estudio: '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h6"/>',
+  ingenieria: '<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 22V12M21 7l-9 5-9-5"/>',
+  programacion: '<path d="M8 8l-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/>',
+  juegos: '<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15 12h.01M18 13h.01"/>'};
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
+let paso = 0, st = {};
+const N = 6;
+
+function ir(i) {
+  paso = Math.max(0, Math.min(N - 1, i));
+  $$("section").forEach(s => s.classList.toggle("on", +s.dataset.s === paso));
+  $$(".step").forEach(s => { const k = +s.dataset.i; s.classList.toggle("on", k === paso); s.classList.toggle("done", k < paso);
+                             s.setAttribute("aria-current", k === paso ? "step" : "false"); });
+  $("#atras").hidden = paso === 0;
+  $("#sig").textContent = paso === 0 ? "Empezar" : paso === N - 1 ? "Empezar a usar TISMA" : "Siguiente";
+  $("#saltar").hidden = paso === N - 1;
+  if (paso === 3) cargarIA();
+  if (paso === 4) cargarSeg();
+  const h = $(`section[data-s="${paso}"] h1, section[data-s="${paso}"] h2`); if (h) { h.tabIndex = -1; h.focus({preventScroll: true}); }
+}
+function pintarTema() {
+  document.documentElement.dataset.tema = st.tema;
+  document.documentElement.style.setProperty("--acc", st.acentos[st.acento]);
+  $$(".opt[data-modo]").forEach(b => { b.classList.toggle("sel", b.dataset.modo === st.tema); b.setAttribute("aria-pressed", b.dataset.modo === st.tema); });
+  $$(".dot").forEach(d => { d.classList.toggle("sel", d.dataset.a === st.acento); d.setAttribute("aria-checked", d.dataset.a === st.acento); });
+}
+let temaT;
+function aplicarTema() {
+  pintarTema();
+  clearTimeout(temaT);                      // varios clics seguidos: se aplica solo el último
+  temaT = setTimeout(async () => { try { await api("/api/tema", {modo: st.tema, acento: st.acento}); toast("Aspecto aplicado"); }
+                                   catch (e) { toast("No se pudo aplicar: " + e.message); } }, 350);
+}
+async function cargarIA() {
+  try {
+    const r = await api("/api/ia");
+    $("#iaMotor").textContent = r.motor; $("#iaMotor").title = r.motivo || "";
+    $("#iaRam").textContent = r.ram_gb ? r.ram_gb + " GB" : "—"; $("#iaGpu").textContent = r.gpu || "—";
+    $("#iaModelos").textContent = r.modelos ? `${r.modelos} descargado(s)${r.recomendado ? " · usará " + r.recomendado : ""}` : "ninguno todavía: descárgalo desde TISMA Code";
+    $("#iaConsejo").textContent = r.consejo || r.motivo || "";
+  } catch (e) { $("#iaConsejo").textContent = "No se pudo leer el estado de la IA."; }
+}
+async function cargarSeg() {
+  try {
+    const r = await api("/api/seguridad");
+    $("#seg").innerHTML = r.servicios.map(s => `<div class="row"><span class="chk ${s.activo ? "" : "no"}">${s.activo ? CHECK : ""}</span>${esc(s.nombre)}<span class="st ${s.activo ? "ok" : ""}">${s.activo ? "Activo" : "No disponible"}</span></div>`).join("");
+  } catch (e) { $("#seg").textContent = "No se pudo leer el estado."; }
+}
+async function terminar() {
+  try { await api("/api/listo", {}); } catch (e) {}
+  document.body.innerHTML = '<div style="margin:auto;text-align:center;color:var(--dim)">Disfruta de TISMA. Ya puedes cerrar esta ventana.</div>';
+  setTimeout(() => window.close(), 600);
+}
+
+(async () => {
+  st = await api("/api/estado");
+  if (st.usuario) $("#hola").textContent = `Hola, ${st.usuario}. Te damos la bienvenida a TISMA OS`;
+  $("#acentos").innerHTML = Object.entries(st.acentos).map(([k, v]) =>
+    `<button class="dot" role="radio" data-a="${esc(k)}" style="background:${esc(v)}" aria-label="${esc(k)}" title="${esc(k)}"></button>`).join("");
+  $("#perfiles").innerHTML = Object.entries(st.perfiles).map(([k, p]) =>
+    `<button class="opt" data-perfil="${esc(k)}"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONOS[k] || ""}</svg></div><b>${esc(p.nombre)}</b><span>${esc(p.desc)}</span></button>`).join("");
+  pintarTema();
+  $$(".opt[data-perfil]").forEach(b => b.classList.toggle("sel", b.dataset.perfil === st.perfil));
+  $$(".opt[data-modo]").forEach(b => b.onclick = () => { st.tema = b.dataset.modo; aplicarTema(); });
+  $$(".dot").forEach(d => d.onclick = () => { st.acento = d.dataset.a; aplicarTema(); });
+  $$(".opt[data-perfil]").forEach(b => b.onclick = async () => {
+    $$(".opt[data-perfil]").forEach(x => x.classList.toggle("sel", x === b));
+    try { const r = await api("/api/perfil", {perfil: b.dataset.perfil}); st.perfil = b.dataset.perfil;
+          toast(r.ok ? "Barra de tareas preparada" : "Perfil guardado (la barra se actualiza al reiniciar la sesión)"); }
+    catch (e) { toast("No se pudo aplicar: " + e.message); }
+  });
+  $$("[data-abrir]").forEach(b => b.onclick = async () => { try { await api("/api/abrir", {app: b.dataset.abrir}); toast("Abriendo…"); } catch (e) { toast(e.message); } });
+  $$(".step").forEach(s => s.onclick = () => ir(+s.dataset.i));
+  $("#sig").onclick = () => paso === N - 1 ? terminar() : ir(paso + 1);
+  $("#atras").onclick = () => ir(paso - 1);
+  $("#saltar").onclick = terminar;
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" && !e.target.closest(".sw")) ir(paso + 1);
+    if (e.key === "ArrowLeft" && !e.target.closest(".sw")) ir(paso - 1);
+  });
+  ir(0);
+})();
+</script>
+</body>
+</html>

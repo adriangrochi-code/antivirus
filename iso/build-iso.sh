@@ -165,6 +165,7 @@ rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/py
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
 # Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
 if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
@@ -243,6 +244,9 @@ mkdir -p "$CHROOT/etc/skel/Desktop"
     sed 's/^Name=.*/Name=Instalar TISMA OS/; s/^Icon=.*/Icon=tisma/' \
         "$CHROOT/usr/share/applications/install-debian.desktop" > "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
 
+# Pantalla de arranque con el logo (el tema lo genera make-branding.py a partir de «spinner»)
+in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/tisma ] && plymouth-set-default-theme tisma' \
+    || log "AVISO: sin tema de arranque TISMA"
 in_chroot update-initramfs -u -k all
 in_chroot apt-get clean
 rm -f "$BUILD_CA_APT" "$CHROOT/etc/ssl/tisma-build-ca.crt"      # la CA de la build nunca va en la imagen

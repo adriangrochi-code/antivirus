@@ -33,6 +33,15 @@ gstreamer1.0-plugins-ugly gstreamer1.0-libav mesa-va-drivers intel-media-va-driv
 cups printer-driver-all hplip print-manager sane-utils skanpage
 fonts-liberation2 fonts-dejavu fonts-crosextra-carlito fonts-crosextra-caladea fonts-noto-cjk
 7zip unar
+# --- Aspecto: arranque con logo, iconos y tipografía modernos ---
+plymouth plymouth-themes papirus-icon-theme fonts-inter fonts-jetbrains-mono fonts-noto-color-emoji
+# --- Más aplicaciones de uso común: vídeo, grabación, audio, descargas, PDF, escritorio remoto, cámara ---
+kdenlive obs-studio audacity qbittorrent pdfarranger krdc krfb kamoso kolourpaint kclock kweather
+skrooge kalk merkuro font-manager
+# --- Accesibilidad ---
+orca kmag kmousetool
+# --- Privacidad y cifrado: claves GPG con interfaz, quitar metadatos, limpiar rastros, Tor ---
+kleopatra mat2 metadata-cleaner bleachbit torbrowser-launcher
 # --- Diseño ---
 gimp inkscape krita blender
 firefox-esr firefox-esr-l10n-es-es

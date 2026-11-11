@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bienvenida a TISMA
+Comment=Primer inicio de sesión: aspecto, aplicaciones e IA local
+Exec=tisma-bienvenida --si-primera-vez
+Icon=tisma
+NoDisplay=true
+X-KDE-autostart-phase=2

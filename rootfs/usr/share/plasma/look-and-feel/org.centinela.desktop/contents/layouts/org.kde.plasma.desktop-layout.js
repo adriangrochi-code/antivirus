@@ -1,10 +1,10 @@
-// Centinela: escritorio estilo Windows 7 modernizado.
-// Barra inferior: inicio | iconos anclados (superbar) | bandeja | reloj | mostrar escritorio
+// TISMA: barra inferior clásica (inicio | iconos anclados | bandeja | reloj | mostrar escritorio), flotante y
+// redondeada como en Plasma 6. Pocos iconos anclados: lo demás está en el menú; la Bienvenida los ajusta a tu uso.
 
 var panel = new Panel;
 panel.location = "bottom";
 panel.height = Math.round(gridUnit * 2.6);
-try { panel.floating = false; } catch (e) {}
+try { panel.floating = true; } catch (e) {}
 try { panel.hiding = "none"; } catch (e) {}
 
 var start = panel.addWidget("org.kde.plasma.kickoff");
@@ -16,14 +16,11 @@ var tasks = panel.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];
 tasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
-    "applications:firefox-esr.desktop",
-    "applications:org.kde.konsole.desktop",
-    "applications:net.tisma.Tisma.desktop",
+    "applications:net.tisma.Navegador.desktop",
+    "applications:libreoffice-startcenter.desktop",
     "applications:net.tisma.Code.desktop",
-    "applications:strata.desktop",
-    "applications:freecad.desktop",
-    "applications:steam.desktop",
-    "applications:org.kde.discover.desktop"
+    "applications:net.tisma.Tisma.desktop",
+    "applications:tisma-tienda.desktop"
 ]);
 // Vista previa de ventanas al pasar el ratón (como Aero Peek)
 tasks.writeConfig("showToolTips", "true");

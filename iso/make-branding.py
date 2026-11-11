@@ -49,6 +49,23 @@ def main(branding: Path, root: Path) -> None:
         svg(branding / "logo.svg", d / "tisma.png", size)
     (icons / "scalable/apps").mkdir(parents=True, exist_ok=True)
     (icons / "scalable/apps/tisma.svg").write_bytes((branding / "logo.svg").read_bytes())
+    # Plymouth (pantalla de arranque): el tema «spinner» de Debian (dos pasos: también pide la clave de LUKS
+    # y muestra los mensajes) con el logo de TISMA y su fondo grafito
+    spinner = root / "usr/share/plymouth/themes/spinner"
+    if spinner.is_dir():
+        ply = root / "usr/share/plymouth/themes/tisma"
+        ply.mkdir(parents=True, exist_ok=True)
+        for f in spinner.glob("*.png"):
+            (ply / f.name).write_bytes(f.read_bytes())
+        svg(branding / "logo.svg", ply / "watermark.png", 150)
+        (ply / "tisma.plymouth").write_text(
+            "[Plymouth Theme]\nName=TISMA\nDescription=Logo de TISMA OS sobre grafito\nModuleName=two-step\n\n"
+            "[two-step]\nFont=Noto Sans 12\nTitleFont=Noto Sans Light 26\nImageDir=/usr/share/plymouth/themes/tisma\n"
+            "DialogHorizontalAlignment=.5\nDialogVerticalAlignment=.70\nTitleHorizontalAlignment=.5\n"
+            "TitleVerticalAlignment=.62\nHorizontalAlignment=.5\nVerticalAlignment=.72\n"
+            "WatermarkHorizontalAlignment=.5\nWatermarkVerticalAlignment=.42\nTransition=none\n"
+            "TransitionDuration=0.0\nBackgroundStartColor=0x232227\nBackgroundEndColor=0x131216\n\n"
+            "[boot-up]\nUseEndAnimation=false\n\n[shutdown]\nUseEndAnimation=false\n\n[reboot]\nUseEndAnimation=false\n")
     # SDDM (pantalla de inicio de sesión)
     sddm = root / "usr/share/sddm/themes/breeze"
     sddm.mkdir(parents=True, exist_ok=True)
