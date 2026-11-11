@@ -80,6 +80,8 @@ def cmd_protect(cfg: Config, args) -> int:
     else:
         logging.getLogger("escudo").warning("Sin acceso a auditd: el vigilante de comportamiento funciona "
                                             "solo con el detector de ransomware")
+    # Procesos que corren desde memoria o con su programa borrado (malware «sin archivo»): cada 30 s
+    threading.Thread(target=behavior.vigilar_procesos, args=(stop,), daemon=True, name="sin-archivo").start()
     gate = None
     if not args.no_detonar and sys.platform.startswith("linux"):
         from .primera_ejecucion import Gate

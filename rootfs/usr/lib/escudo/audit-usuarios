@@ -36,4 +36,9 @@ getent passwd | while IFS=: read -r _ _ uid _ _ home _; do
              .bash_profile .zshrc .pam_environment; do
         vigilar "$home/$d" wa persistencia
     done
+    # Puerta trasera por SSH: añadir una clave a authorized_keys (escrituras en ~/.ssh; Escudo solo avisa de
+    # authorized_keys, rc, environment y config, no de known_hosts)
+    vigilar "$home/.ssh" wa ssh_claves
 done
+# root: también su ~/.ssh (si existe)
+if real_igual /root; then vigilar /root/.ssh wa ssh_claves; fi

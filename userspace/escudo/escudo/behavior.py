@@ -46,7 +46,17 @@ PERSISTENCE_WRITERS = {"/usr/bin/crontab", "/usr/bin/systemctl", "/usr/bin/dpkg"
                        "/usr/bin/kwriteconfig6", "/usr/bin/systemsettings", "/usr/bin/visudo"}
 
 SEVERITY = {"exec_tmp": "medium", "secretos": "high", "persistencia": "medium", "ldpreload": "high",
-            "ptrace": "medium", "modulos": "high", "navegador_secretos": "high", "ransomware": "critical"}
+            "ptrace": "medium", "modulos": "high", "navegador_secretos": "high", "ransomware": "critical",
+            "ebpf": "high", "ssh_claves": "high", "sin_archivo": "high", "binario_borrado": "medium"}
+# Quien carga módulos del kernel legítimamente (udev al conectar hardware, el arranque): sin esta lista CADA
+# carga normal era una alerta grave, y las alertas que siempre suenan acaban ignorándose
+MODULE_LOADERS = {"/usr/bin/kmod", "/usr/lib/systemd/systemd-udevd", "/usr/lib/systemd/systemd-modules-load",
+                  "/usr/lib/systemd/systemd"}
+# Programas eBPF legítimos: systemd (filtros de cgroups y de red) y los planificadores sched_ext
+BPF_LOADERS = {"/usr/lib/systemd/systemd", "/usr/local/bin/scx_lavd", "/usr/local/bin/scx_bpfland",
+               "/usr/lib/systemd/systemd-networkd", "/usr/lib/systemd/systemd-resolved"}
+SSH_PERSISTENCIA = re.compile(r"/\.ssh/(authorized_keys2?|rc|environment|config)$")
+AUID_NINGUNO = "4294967295"           # sin sesión de usuario detrás (servicios del sistema)
 
 
 @dataclass
@@ -123,6 +133,20 @@ def evaluate(records: list[dict]) -> Alert | None:
         if exe in PERSISTENCE_WRITERS:
             return None
         return Alert("persistencia", SEVERITY[key], f"{exe} modificó {target}", pid, exe)
+    if key == "modulos" and exe in MODULE_LOADERS:
+        return None
+    if key == "ptrace" and exe == "/usr/bin/strace" and sc.get("auid") == AUID_NINGUNO:
+        return None                       # el análisis de muestras de Escudo (no lo lanzó ningún usuario)
+    if key == "ebpf":
+        if exe in BPF_LOADERS:
+            return None
+        return Alert("ebpf", SEVERITY["ebpf"], f"{exe} cargó un programa eBPF en el kernel (técnica de los "
+                     "rootkits modernos para ocultarse)", pid, exe)
+    if key == "ssh_claves":
+        if not SSH_PERSISTENCIA.search(target):
+            return None                   # known_hosts y demás: el uso normal de ssh
+        return Alert("ssh_claves", SEVERITY["ssh_claves"], f"{exe} modificó {target} (quien añada una clave ahí "
+                     "puede entrar por SSH sin contraseña)", pid, exe)
     if key in ("exec_tmp", "ldpreload", "ptrace", "modulos"):
         detail = {"exec_tmp": f"se ejecutó {exe} desde una carpeta temporal o de descargas",
                   "ldpreload": f"{exe} modificó /etc/ld.so.preload",
@@ -132,6 +156,52 @@ def evaluate(records: list[dict]) -> Alert | None:
             detail += " (bloqueado por Yama)"
         return Alert(key, SEVERITY[key], detail, pid, exe)
     return None
+
+
+# ---------------------------------------------------------------- procesos sin archivo
+ZONAS_USUARIO = ("/tmp/", "/var/tmp/", "/dev/shm/", "/home/", "/run/user/", "/root/")
+
+
+def procesos_sin_archivo(proc: str = "/proc", vistos: set | None = None) -> list[Alert]:
+    """Procesos que se ejecutan desde MEMORIA (/memfd:…) o cuyo programa se borró de una carpeta de usuario tras
+    lanzarlo: lo que hace el malware «sin archivo» para que no quede nada en el disco que analizar (Elastic lo
+    describe como la señal delatora del rootkit VoidLink, 2026). No cuentan los entornos de contenedores (runc y
+    crun se copian a memoria a propósito) ni los programas del sistema sustituidos por una actualización."""
+    vistos = vistos if vistos is not None else set()
+    out = []
+    try:
+        pids = [d for d in os.listdir(proc) if d.isdigit()]
+    except OSError:
+        return out
+    for pid in pids:
+        try:
+            exe = os.readlink(f"{proc}/{pid}/exe")
+        except OSError:
+            continue                      # hilos del kernel, procesos que ya terminaron, sin permiso
+        if (pid, exe) in vistos:
+            continue
+        alerta = None
+        if exe.startswith("/memfd:"):
+            if not re.match(r"/memfd:(runc|crun)(?![a-z])", exe):
+                alerta = Alert("sin_archivo", SEVERITY["sin_archivo"], f"el proceso {pid} ejecuta un programa que "
+                               f"solo existe en memoria ({exe}): técnica de malware sin archivo", int(pid), exe)
+        elif exe.endswith(" (deleted)"):
+            real = exe[:-len(" (deleted)")]
+            if real.startswith(ZONAS_USUARIO) and not os.path.exists(real):
+                alerta = Alert("binario_borrado", SEVERITY["binario_borrado"], f"el proceso {pid} sigue en marcha "
+                               f"pero su programa ({real}) se borró después de lanzarlo", int(pid), real)
+        if alerta:
+            vistos.add((pid, exe))
+            out.append(alerta)
+    return out
+
+
+def vigilar_procesos(stop: threading.Event, intervalo: float = 30.0, on_alert=None) -> None:
+    on_alert = on_alert or emit
+    vistos: set = set()
+    while not stop.wait(intervalo):
+        for a in procesos_sin_archivo(vistos=vistos):
+            on_alert(a)
 
 
 def follow(path: str, stop: threading.Event, timeout: float = 30.0):

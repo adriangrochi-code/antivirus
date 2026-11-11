@@ -121,3 +121,39 @@ def test_ransomware_appended_extension_and_stl(tmp_path):
     malo = tmp_path / "pieza2.stl"
     malo.write_bytes(cifrado)
     assert behavior.looks_encrypted(str(malo), cifrado)               # antes: un .stl nunca podía marcarse
+
+
+def _ev(exe, key, name="", auid="1000", serial="9"):
+    log = (f'type=SYSCALL msg=audit(1.0:{serial}): arch=c000003e syscall=1 success=yes pid=77 auid={auid} '
+           f'uid=0 exe="{exe}" key="{key}"\n')
+    if name:
+        log += f'type=PATH msg=audit(1.0:{serial}): item=0 name="{name}" nametype=CREATE\n'
+    return behavior.evaluate(behavior.group_events(log.splitlines())[serial])
+
+
+def test_new_detections_and_less_noise():
+    assert _ev("/usr/bin/kmod", "modulos") is None                      # udev/kmod cargando drivers: normal
+    assert _ev("/tmp/rk", "modulos").severity == "high"
+    assert _ev("/usr/bin/strace", "ptrace", auid="4294967295") is None  # el propio análisis de Escudo
+    assert _ev("/usr/bin/strace", "ptrace", auid="1000").kind == "ptrace"
+    assert _ev("/usr/lib/systemd/systemd", "ebpf") is None
+    a = _ev("/dev/shm/.x", "ebpf")
+    assert a.kind == "ebpf" and a.severity == "high" and "rootkit" in a.detail
+    assert _ev("/usr/bin/ssh", "ssh_claves", "/home/ana/.ssh/known_hosts") is None
+    b = _ev("/tmp/x", "ssh_claves", "/home/ana/.ssh/authorized_keys")
+    assert b.kind == "ssh_claves" and b.severity == "high"
+
+
+def test_fileless_and_deleted_processes(tmp_path):
+    proc = tmp_path / "proc"
+    casos = {"10": "/memfd:carga (deleted)", "11": "/memfd:runc_cloned:/proc/self/exe (deleted)",
+             "12": "/tmp/.x (deleted)", "13": "/usr/bin/firefox (deleted)", "14": "/usr/bin/bash"}
+    for pid, exe in casos.items():
+        (proc / pid).mkdir(parents=True)
+        os.symlink(exe, proc / pid / "exe")
+    vistos = set()
+    al = {a.pid: a for a in behavior.procesos_sin_archivo(str(proc), vistos)}
+    assert set(al) == {10, 12}                                     # runc, actualizaciones y normales: no
+    assert al[10].kind == "sin_archivo" and al[10].severity == "high"
+    assert al[12].kind == "binario_borrado"
+    assert behavior.procesos_sin_archivo(str(proc), vistos) == []  # no se repite
