@@ -116,9 +116,23 @@ def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: lis
 class Session:
     def __init__(self, workspace: str, endpoint: str, model: str, llm=chat_completion,
                  context_tokens: int = 32768, models: list[review.ModelSpec] | None = None,
-                 target_tps: float = 0.0, auto_verify: bool = True, kb_dir=None):
+                 target_tps: float = 0.0, auto_verify: bool = True, kb_dir=None, especialistas=None):
         self.ws = tools.Workspace(workspace)
         self.llm = llm
+        self.events: "queue.Queue[dict]" = queue.Queue()
+        # Modelos especialistas (varios modelos a la vez, uno por tarea): ~/.config/tisma-code/especialistas.json
+        self.especialistas = especialistas
+        if self.especialistas is None:
+            try:
+                from .especialistas import Pool
+                self.especialistas = Pool(llm)
+            except Exception as e:  # noqa: BLE001 (configuración no válida: se avisa y se sigue sin ellos)
+                self.emit("info", message=f"Especialistas desactivados: {e}")
+        self.schemas = list(tools.TOOL_SCHEMAS)
+        if self.especialistas and self.especialistas.specs:
+            from .especialistas import SCHEMAS as ESP_SCHEMAS
+            self.schemas += ESP_SCHEMAS
+        self.tool_names = {t["function"]["name"] for t in self.schemas}
         self.context_tokens = context_tokens
         self.target_tps = target_tps
         self.auto_verify = auto_verify
@@ -130,8 +144,8 @@ class Session:
         # así el motor reutiliza su caché KV y cada paso solo procesa lo nuevo.
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT +
                                       f"\n\nCarpeta del proyecto: {self.ws.root}" +
-                                      self._checks_hint() + harness.project_memory(self.ws.root)}]
-        self.events: "queue.Queue[dict]" = queue.Queue()
+                                      self._checks_hint() + harness.project_memory(self.ws.root) +
+                                      (self.especialistas.describe() if self.especialistas else "")}]
         self.always_allow: set[str] = set()
         self.todos: list[dict] = []
         self._mapped = False
@@ -150,10 +164,17 @@ class Session:
         self.hope = None
         if HopeTools is not None:
             try:
-                self.hope = HopeTools(self.kb.dir / "hope", chat=self._plain_chat,
+                self.hope = HopeTools(self.kb.dir / "hope", chat=self._role_chat("hope"),
                                       endpoint=self.current.endpoint, model=self.current.model)
             except Exception as e:  # noqa: BLE001
                 self.emit("info", message=f"Herramientas de Hope no disponibles: {e}")
+
+    def _role_chat(self, role: str):
+        """Cliente de chat para una tarea interna: el especialista asignado a ese rol, o el modelo principal."""
+        name = (self.especialistas.roles.get(role) if self.especialistas else None)
+        if not name:
+            return self._plain_chat
+        return lambda messages, temperature=0.2: self.especialistas.chat(name, messages)
 
     def _plain_chat(self, messages: list, temperature: float = 0.2) -> str:
         msg, usage = self.llm(self.current.endpoint, self.current.model, messages, None)
@@ -257,6 +278,8 @@ class Session:
                 extra += f"\n\nMapa del repositorio (símbolos principales):\n{rmap}"
             except Exception:  # noqa: BLE001
                 pass
+        if self.especialistas:
+            extra += self.especialistas.hint(text)
         self.messages.append({"role": "user", "content": text + harness.hypothesis_note(text) + extra})
         self._evidence = set()
         if experience:
@@ -393,7 +416,11 @@ class Session:
         if not middle:
             return
         self.emit("info", message="Contexto casi lleno: resumiendo la conversación anterior…")
-        summary = self._call_llm(harness.compaction_prompt(middle), None).get("content") or ""
+        role = self.especialistas.roles.get("compactar") if self.especialistas else None
+        if role:
+            summary = self.especialistas.chat(role, harness.compaction_prompt(middle))
+        else:
+            summary = self._call_llm(harness.compaction_prompt(middle), None).get("content") or ""
         self.messages = ([self.messages[0],
                           {"role": "user", "content": "Resumen de lo hecho hasta ahora:\n" + summary},
                           {"role": "assistant", "content": "Entendido, continúo desde ahí."}]
@@ -408,12 +435,12 @@ class Session:
                 return ""
             self._maybe_compact()
             self.emit("thinking", model=self.current.name)
-            msg = self._call_llm(self.messages, tools.TOOL_SCHEMAS)
+            msg = self._call_llm(self.messages, self.schemas)
             self.stats["steps"] += 1
             content = msg.get("content") or ""
             calls = msg.get("tool_calls") or []
             if not calls and content:
-                calls = harness.extract_text_tool_calls(content, tools.TOOL_NAMES)
+                calls = harness.extract_text_tool_calls(content, self.tool_names)
                 if calls:
                     self.stats["repaired_calls"] += len(calls)
                     content = harness._TOOL_TAG.sub("", content).strip()
@@ -456,9 +483,9 @@ class Session:
             self.emit("tool", id=cid, tool=name, args=args or {}, result=tools._clip(result, 4000), ok=ok)
             return {"role": "tool", "tool_call_id": cid, "content": result}
 
-        if name not in tools.TOOL_NAMES:
+        if name not in self.tool_names:
             return reply(f"Error: la herramienta '{name}' no existe. Disponibles: "
-                         f"{', '.join(sorted(tools.TOOL_NAMES))}.", False)
+                         f"{', '.join(sorted(self.tool_names))}.", False)
         args, err = harness.normalize_arguments(fn.get("arguments"))
         if err:
             return reply("Error: " + err, False)
@@ -526,6 +553,15 @@ class Session:
                 return reply(tools._clip(self.rea.call(tool, targs), 12000), True, args)
             except Exception as e:  # noqa: BLE001 (MCPError, ausencia de REA…)
                 return reply(f"Error en REA: {e}", False, args)
+        if name == "especialista_buscar":
+            return reply(self.especialistas.search(str(args.get("consulta", ""))), True, args)
+        if name == "especialista":
+            try:
+                self.emit("info", message=f"Consultando al especialista {args.get('nombre')}…")
+                return reply(tools._clip(self.especialistas.ask(str(args.get("nombre", "")),
+                                                                str(args.get("entrada", ""))), 12000), True, args)
+            except Exception as e:  # noqa: BLE001 (SpecialistError, LLMError, servidor no disponible…)
+                return reply(f"Error del especialista: {e}", False, args)
         if name == "craft_guia":
             from .craft import guide as craft_guide
             return reply(craft_guide(str(args.get("tema", ""))), True, args)
