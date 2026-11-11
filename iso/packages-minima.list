@@ -2,6 +2,9 @@
 # Sin escritorio ni aplicaciones: comprueba initramfs, DNS, firewall, servicios y protecciones en QEMU.
 systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
 live-boot live-config live-config-systemd initramfs-tools
+# user-setup: live-config lo usa para crear el usuario de la sesión del USB. Es solo «Recommends» de live-config y
+# la build instala sin recomendados: en la preview 5 faltaba, no había usuario y la pantalla se quedaba negra
+user-setup
 network-manager wpasupplicant iw rfkill wireless-regdb
 zstd lz4 curl ca-certificates gnupg pciutils usbutils dmidecode
 grub-efi-amd64-bin grub-pc-bin efibootmgr

@@ -7,6 +7,9 @@
 # --- Base y sesión live ---
 systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
 live-boot live-config live-config-systemd initramfs-tools
+# user-setup: live-config lo usa para crear el usuario de la sesión del USB. Es solo «Recommends» de live-config y
+# la build instala sin recomendados: en la preview 5 faltaba, no había usuario y la pantalla se quedaba negra
+user-setup
 network-manager wpasupplicant iw bluez rfkill wireless-regdb
 zstd lz4 curl ca-certificates gnupg pciutils usbutils lshw dmidecode
 # --- Secure Boot: shim (Microsoft) + GRUB y kernel firmados por Debian; mokutil para la clave TISMA ---

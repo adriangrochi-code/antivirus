@@ -3,6 +3,9 @@
 [Unit]
 Description=Centinela: reaplicar los ajustes que ganaron en las comparaciones A/B
 ConditionPathExists=/var/lib/centinela/comparar/decisiones.json
+# En la fase 2, como centinela-power (que va tras el escritorio). Antes colgaba de multi-user.target: con
+# After=centinela-power formaba un ciclo (multi-user → reaplicar → power → graphical → multi-user) y systemd
+# borraba trabajos al azar para romperlo (visto en la preview 5)
 After=centinela-power.service
 
 [Service]
@@ -10,4 +13,4 @@ Type=oneshot
 ExecStart=/usr/bin/centinela comparar reaplicar
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=tisma-fase2.target
