@@ -1,0 +1,11 @@
+[Unit]
+Description=Centinela - aplicar perfil de potencia y ajustes al arrancar
+After=centinela-firstboot.service systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

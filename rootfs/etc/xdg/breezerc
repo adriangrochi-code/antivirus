@@ -1,0 +1,8 @@
+[Common]
+OutlineCloseButton=false
+ShadowSize=ShadowLarge
+ShadowStrength=200
+
+[Style]
+MenuOpacity=80
+ToolBarDrawItemSeparator=false

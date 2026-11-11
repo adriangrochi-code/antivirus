@@ -1,0 +1,38 @@
+# ===== TISMA OS: paquetes de la imagen (Debian trixie) =====
+# Los paquetes que no existan en el repositorio se omiten con un aviso.
+
+# --- Base y sesión live ---
+systemd-sysv dbus sudo locales console-setup keyboard-configuration tzdata
+live-boot live-config live-config-systemd initramfs-tools
+network-manager wpasupplicant iw bluez rfkill
+zstd lz4 curl ca-certificates gnupg pciutils usbutils lshw dmidecode
+# --- Instalador gráfico ---
+calamares calamares-settings-debian grub-efi-amd64-bin grub-pc-bin efibootmgr os-prober
+# --- Seguridad ---
+apparmor apparmor-profiles apparmor-profiles-extra apparmor-utils nftables
+unattended-upgrades fwupd
+# --- Rendimiento adaptativo ---
+systemd-zram-generator python3 cpupower-gui
+# --- Escritorio KDE Plasma 6 ---
+kde-plasma-desktop sddm sddm-theme-breeze plasma-nm plasma-pa plasma-systemmonitor
+konsole dolphin ark kate okular gwenview spectacle kcalc
+firefox-esr firefox-esr-l10n-es-es
+plasma-discover plasma-discover-backend-flatpak flatpak
+breeze-gtk-theme kde-config-gtk-style xdg-desktop-portal-kde
+fonts-noto-core fonts-noto-color-emoji
+pipewire pipewire-pulse wireplumber
+# --- Gráficos y firmware ---
+mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 libglx-mesa0:i386
+vulkan-tools mesa-utils
+firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics
+firmware-iwlwifi firmware-realtek firmware-atheros firmware-mediatek firmware-sof-signed
+intel-microcode amd64-microcode
+# --- Programas de Windows: Wine + Proton (Steam) ---
+wine wine32:i386 wine64 fonts-wine winetricks steam-installer
+# --- Programas de Android: Waydroid (desde repo.waydro.id) ---
+lxc python3-gbinder
+# --- Herramientas de seguridad ---
+clamav clamav-freshclam rkhunter chkrootkit lynis aide auditd usbguard
+opensnitch python3-opensnitch-ui keepassxc nmap
+# --- Tisma engine (laminador): dependencias de ejecución ---
+libgl1 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libssl3t64 unzip git

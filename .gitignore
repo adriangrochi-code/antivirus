@@ -1,0 +1,8 @@
+build/
+__pycache__/
+*.pyc
+.pytest_cache/
+userspace/centinela/build/
+*.iso
+*.deb
+userspace/tisma-code/vendor/

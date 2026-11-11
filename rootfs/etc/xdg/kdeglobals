@@ -1,0 +1,10 @@
+[General]
+ColorScheme=CentinelaAero
+AccentColor=145,69,230
+
+[KDE]
+LookAndFeelPackage=org.centinela.desktop
+SingleClick=false
+
+[Icons]
+Theme=breeze-dark

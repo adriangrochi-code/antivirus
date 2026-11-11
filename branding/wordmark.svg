@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 120" width="640" height="120">
+  <g font-family="Montserrat, 'Noto Sans', sans-serif" font-weight="500" font-size="78" fill="#E6E6EA" text-anchor="middle">
+    <text x="40" y="82">T</text>
+    <text x="170" y="82" fill="#9145E6">I</text>
+    <text x="300" y="82">S</text>
+    <text x="440" y="82">M</text>
+  </g>
+  <!-- La "A" de TISMA es una lambda sin travesaño -->
+  <path d="M560 82 L590 18 L620 82" fill="none" stroke="#E6E6EA" stroke-width="9" stroke-linejoin="miter"/>
+  <path d="M220 110 H420" stroke="#9145E6" stroke-width="4"/>
+</svg>

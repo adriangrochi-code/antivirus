@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# centinela-apps: activa la compatibilidad con programas de Windows y Android.
+#
+#   centinela-apps windows   Steam (Proton), Bottles y Heroic (Proton fuera de Steam)
+#   centinela-apps android   Waydroid: descarga la imagen de Android y la inicializa
+#   centinela-apps estado    muestra qué está instalado
+set -euo pipefail
+
+need_root() { [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"; }
+
+flatpak_ready() {
+    flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+}
+
+case "${1:-estado}" in
+windows)
+    need_root "$@"
+    flatpak_ready
+    # Bottles: programas de Windows en "botellas" aisladas (cada una en su sandbox)
+    # Heroic: tiendas Epic/GOG/Amazon usando Proton (umu) fuera de Steam
+    flatpak install -y --system flathub com.usebottles.bottles com.heroicgameslauncher.hgl
+    echo "Steam ya viene instalado: actívalo en Steam > Ajustes > Compatibilidad > Steam Play (Proton)."
+    echo "Bottles y Heroic instalados. Los .exe se abren con doble clic mediante Wine."
+    ;;
+android)
+    need_root "$@"
+    command -v waydroid >/dev/null || { echo "Waydroid no está instalado"; exit 1; }
+    [[ -e /dev/binderfs ]] || mount -t binder binder /dev/binderfs 2>/dev/null || true
+    # Imagen LineageOS. Con GAPPS=1 incluye Google Play.
+    if [[ "${GAPPS:-0}" == 1 ]]; then waydroid init -s GAPPS -f; else waydroid init -f; fi
+    systemctl enable --now waydroid-container.service
+    echo "Android listo: abre 'Waydroid' desde el menú. Instala APKs con: waydroid app install app.apk"
+    ;;
+estado)
+    printf 'Wine:      %s\n' "$(wine --version 2>/dev/null || echo no instalado)"
+    printf 'Steam:     %s\n' "$(command -v steam >/dev/null && echo instalado || echo no instalado)"
+    printf 'NTSYNC:    %s\n' "$([[ -e /dev/ntsync ]] && echo activo || echo 'no cargado (modprobe ntsync)')"
+    printf 'Waydroid:  %s\n' "$(waydroid status 2>/dev/null | head -n1 || echo no instalado)"
+    printf 'binderfs:  %s\n' "$(grep -q binder /proc/filesystems && echo soportado || echo NO soportado)"
+    flatpak list --app --columns=application 2>/dev/null | grep -E 'bottles|heroic' || true
+    ;;
+*) sed -n '2,7p' "$0"; exit 2 ;;
+esac

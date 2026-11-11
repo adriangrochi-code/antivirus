@@ -1,0 +1,45 @@
+# TISMA OS — tema de GRUB (fondo y logo se generan en la build)
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#1C1B20"
+terminal-box: "terminal_*.png"
+
++ image {
+    left = 50%-56
+    top = 12%
+    width = 112
+    height = 130
+    file = "logo.png"
+}
+
++ image {
+    left = 50%-160
+    top = 14%+150
+    width = 320
+    height = 60
+    file = "wordmark.png"
+}
+
++ boot_menu {
+    left = 30%
+    top = 40%
+    width = 40%
+    height = 36%
+    item_color = "#A0A0A8"
+    selected_item_color = "#FFFFFF"
+    item_height = 32
+    item_padding = 12
+    item_spacing = 6
+    selected_item_pixmap_style = "select_*.png"
+    scrollbar = false
+}
+
++ label {
+    left = 0
+    top = 88%
+    width = 100%
+    align = "center"
+    id = "__timeout__"
+    text = "Arrancando en %d s"
+    color = "#A866F2"
+}

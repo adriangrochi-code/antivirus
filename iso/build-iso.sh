@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Construye la ISO live/instalable de TISMA OS.
+#
+#   1. debootstrap de Debian (trixie) en build/chroot
+#   2. paquetes (KDE Plasma, Wine/Proton, Waydroid, firmware, seguridad)
+#   3. kernel propio (build/kernel-debs, generado por kernel/build-kernel.sh)
+#   4. capa del sistema (rootfs/), herramientas centinela/escudo y marca TISMA
+#   5. squashfs + GRUB (BIOS y UEFI) → ISO híbrida (USB y DVD)
+#
+# Variables: BUILD_DIR, DEBIAN_SUITE, DEBIAN_MIRROR, ISO_NAME, SKIP_PACKAGES=1 (pruebas)
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(dirname "$HERE")"
+BUILD_DIR="${BUILD_DIR:-$REPO/build}"
+SUITE="${DEBIAN_SUITE:-trixie}"
+MIRROR="${DEBIAN_MIRROR:-http://deb.debian.org/debian}"
+CHROOT="$BUILD_DIR/chroot"
+ISODIR="$BUILD_DIR/iso"
+ISO_NAME="${ISO_NAME:-tisma-os-$(date +%Y%m%d)-amd64.iso}"
+
+log() { printf '\033[1;35m[iso]\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m[iso] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "Ejecutar como root (debootstrap y chroot lo requieren)"
+for t in debootstrap mksquashfs xorriso grub-mkrescue rsvg-convert gcc; do
+    command -v "$t" >/dev/null || die "Falta la herramienta: $t (ver README, sección Requisitos)"
+done
+compgen -G "$BUILD_DIR/kernel-debs/linux-image-*.deb" >/dev/null \
+    || die "No hay kernel compilado en $BUILD_DIR/kernel-debs (make kernel)"
+
+in_chroot() { chroot "$CHROOT" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+                  LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive "$@"; }
+
+MOUNTS=()
+mount_chroot() {
+    for fs in proc sys dev dev/pts run; do
+        mkdir -p "$CHROOT/$fs"
+        mount --bind "/$fs" "$CHROOT/$fs"
+        MOUNTS=("$CHROOT/$fs" "${MOUNTS[@]}")
+    done
+}
+umount_chroot() {
+    for m in "${MOUNTS[@]}"; do umount -lf "$m" 2>/dev/null || true; done
+    MOUNTS=()
+}
+trap umount_chroot EXIT
+
+# ---------------------------------------------------------------- 1. base
+if [[ ! -f "$CHROOT/.base-ok" ]]; then
+    log "debootstrap $SUITE"
+    rm -rf "$CHROOT"
+    debootstrap --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
+        --include=ca-certificates,curl,gnupg "$SUITE" "$CHROOT" "$MIRROR"
+    touch "$CHROOT/.base-ok"
+fi
+mount_chroot
+
+cat > "$CHROOT/etc/apt/sources.list" <<EOF
+deb $MIRROR $SUITE main contrib non-free non-free-firmware
+deb $MIRROR $SUITE-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security $SUITE-security main contrib non-free non-free-firmware
+EOF
+echo "tisma" > "$CHROOT/etc/hostname"
+in_chroot dpkg --add-architecture i386
+
+# Waydroid (Android) desde su repositorio oficial firmado
+if curl -fsSL --retry 3 https://repo.waydro.id/waydroid.gpg -o "$CHROOT/usr/share/keyrings/waydroid.gpg"; then
+    echo "deb [signed-by=/usr/share/keyrings/waydroid.gpg] https://repo.waydro.id/ $SUITE main" \
+        > "$CHROOT/etc/apt/sources.list.d/waydroid.list"
+    WAYDROID=1
+else
+    log "AVISO: no se pudo acceder a repo.waydro.id; la ISO saldrá sin Waydroid"
+    WAYDROID=0
+fi
+in_chroot apt-get update -q
+
+# ---------------------------------------------------------------- 2. paquetes
+if [[ "${SKIP_PACKAGES:-0}" != 1 && ! -f "$CHROOT/.packages-ok" ]]; then
+    # Licencia de Steam aceptada de antemano (si no, apt se queda esperando)
+    in_chroot sh -c 'echo "steam steam/question select I AGREE" | debconf-set-selections
+                     echo "steam steam/license note \"\"" | debconf-set-selections
+                     echo "locales locales/default_environment_locale select es_ES.UTF-8" | debconf-set-selections
+                     echo "locales locales/locales_to_be_generated multiselect es_ES.UTF-8 UTF-8, en_US.UTF-8 UTF-8" | debconf-set-selections'
+    mapfile -t wanted < <(sed 's/#.*//' "$HERE/packages.list" | tr -s ' \t' '\n' | sed '/^$/d')
+    [[ $WAYDROID == 1 ]] && wanted+=(waydroid)
+    pkgs=()
+    for p in "${wanted[@]}"; do
+        if in_chroot apt-cache show "$p" >/dev/null 2>&1; then pkgs+=("$p")
+        else log "AVISO: paquete no disponible, se omite: $p"; fi
+    done
+    log "Instalando ${#pkgs[@]} paquetes"
+    in_chroot apt-get install -y -q --no-install-recommends "${pkgs[@]}"
+    # Recomendados solo del escritorio (traducciones, iconos, applets)
+    in_chroot apt-get install -y -q kde-plasma-desktop
+    touch "$CHROOT/.packages-ok"
+fi
+
+# ---------------------------------------------------------------- 3. kernel
+log "Instalando kernel TISMA"
+rm -rf "$CHROOT/tmp/kernel-debs" && mkdir -p "$CHROOT/tmp/kernel-debs"
+cp "$BUILD_DIR"/kernel-debs/linux-image-*.deb "$CHROOT/tmp/kernel-debs/"
+find "$CHROOT/tmp/kernel-debs" -name '*-dbg_*' -delete
+in_chroot sh -c 'dpkg -i /tmp/kernel-debs/*.deb'
+# Fuera los kernels genéricos de Debian si alguno entró como dependencia
+# shellcheck disable=SC2016  # ${Package} es formato de dpkg-query, no de bash
+mapfile -t debian_kernels < <(in_chroot dpkg-query -W -f='${Package}\n' 'linux-image-*' 2>/dev/null \
+                               | grep -v centinela | grep -v -- '-dbg' || true)
+if ((${#debian_kernels[@]})); then in_chroot apt-get purge -y -q "${debian_kernels[@]}"; fi
+rm -rf "$CHROOT/tmp/kernel-debs"
+
+# ---------------------------------------------------------------- 4. capa del sistema
+log "Aplicando capa del sistema y marca TISMA"
+rsync -a --chown=root:root "$REPO/rootfs/" "$CHROOT/"
+python3 "$HERE/make-branding.py" "$REPO/branding" "$CHROOT"
+
+LIB="$CHROOT/usr/lib/centinela"
+mkdir -p "$LIB/python" "$LIB/kernel"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/python/"
+rsync -a "$REPO/kernel/" "$LIB/kernel/"
+# Binario estático: funciona igual en el kernel genérico y en el kernel a medida
+gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
+mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
+chmod 700 "$CHROOT/var/lib/escudo"
+
+in_chroot systemctl enable nftables apparmor sddm NetworkManager \
+    centinela-firstboot centinela-power centinela-adaptd escudo
+if [[ $WAYDROID == 1 ]]; then in_chroot systemctl disable waydroid-container 2>/dev/null || true; fi
+in_chroot systemctl set-default graphical.target
+# Actualizaciones de seguridad automáticas
+cat > "$CHROOT/etc/apt/apt.conf.d/20auto-upgrades" <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+# Lanzador del instalador en el escritorio live
+mkdir -p "$CHROOT/etc/skel/Desktop"
+[[ -f "$CHROOT/usr/share/applications/install-debian.desktop" ]] && \
+    sed 's/^Name=.*/Name=Instalar TISMA OS/; s/^Icon=.*/Icon=tisma/' \
+        "$CHROOT/usr/share/applications/install-debian.desktop" > "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
+
+in_chroot update-initramfs -u -k all
+in_chroot apt-get clean
+rm -rf "$CHROOT"/var/lib/apt/lists/* "$CHROOT"/tmp/* "$CHROOT"/root/.bash_history
+umount_chroot
+
+# ---------------------------------------------------------------- 5. ISO
+log "Creando squashfs (zstd)"
+rm -rf "$ISODIR" && mkdir -p "$ISODIR/live" "$ISODIR/boot/grub"
+mksquashfs "$CHROOT" "$ISODIR/live/filesystem.squashfs" -comp zstd -Xcompression-level 19 \
+    -b 1M -noappend -e boot/efi -e .base-ok -e .packages-ok -quiet
+KVER="$(find "$CHROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -printf '%f\n' | sort -V | tail -n1 | sed 's/^vmlinuz-//')"
+cp "$CHROOT/boot/vmlinuz-$KVER" "$ISODIR/live/vmlinuz"
+cp "$CHROOT/boot/initrd.img-$KVER" "$ISODIR/live/initrd.img"
+cp -r "$CHROOT/boot/grub/themes" "$ISODIR/boot/grub/"
+
+LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es timezone=Europe/Madrid hostname=tisma username=tisma"
+SEC="lsm=landlock,lockdown,yama,integrity,apparmor,bpf lockdown=integrity init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 randomize_kstack_offset=on slab_nomerge vsyscall=none iommu.strict=1"
+cat > "$ISODIR/boot/grub/grub.cfg" <<EOF
+insmod all_video
+insmod gfxterm
+insmod png
+set gfxmode=auto
+terminal_output gfxterm
+set theme=/boot/grub/themes/centinela/theme.txt
+set timeout=8
+
+menuentry "Probar TISMA OS" {
+    linux /live/vmlinuz $LIVE $SEC
+    initrd /live/initrd.img
+}
+menuentry "Probar TISMA OS (gráficos básicos)" {
+    linux /live/vmlinuz $LIVE $SEC nomodeset
+    initrd /live/initrd.img
+}
+menuentry "Probar TISMA OS en RAM (más rápido, requiere 8 GB)" {
+    linux /live/vmlinuz $LIVE $SEC toram
+    initrd /live/initrd.img
+}
+EOF
+log "Generando ISO híbrida BIOS+UEFI"
+grub-mkrescue -o "$BUILD_DIR/$ISO_NAME" "$ISODIR" -- -volid TISMA_OS 2>&1 | tail -n 3
+( cd "$BUILD_DIR" && sha256sum "$ISO_NAME" > "$ISO_NAME.sha256" )
+log "Listo: $BUILD_DIR/$ISO_NAME ($(du -h "$BUILD_DIR/$ISO_NAME" | cut -f1))"

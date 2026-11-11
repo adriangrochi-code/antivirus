@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# tisma-seguridad: herramientas de seguridad de TISMA OS en un solo comando.
+#
+#   tisma-seguridad auditoria   revisa la configuración del sistema (Lynis) y da recomendaciones
+#   tisma-seguridad rootkits    busca rootkits (rkhunter + chkrootkit)
+#   tisma-seguridad integridad  primera vez: crea la base de AIDE; después: detecta archivos alterados
+#   tisma-seguridad virus [dir] analiza con Escudo y con ClamAV (dos motores)
+#   tisma-seguridad usb         solo permite los USB conectados ahora (bloquea BadUSB)
+#   tisma-seguridad red         muestra puertos abiertos e IPs bloqueadas por Escudo
+#   tisma-seguridad todo        auditoría + rootkits + integridad + virus en /home
+set -euo pipefail
+[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
+LOGDIR=/var/log/tisma-seguridad
+mkdir -p "$LOGDIR" && chmod 700 "$LOGDIR"
+stamp="$(date +%Y%m%d-%H%M%S)"
+h() { printf '\n\033[1;35m== %s ==\033[0m\n' "$*"; }
+
+auditoria() {
+    h "Auditoría del sistema (Lynis)"
+    lynis audit system --quick --no-colors --report-file "$LOGDIR/lynis-$stamp.dat" \
+        | tee "$LOGDIR/lynis-$stamp.log" | grep -E "Hardening index|Warning|Suggestion" | head -n 40
+    echo "Informe completo: $LOGDIR/lynis-$stamp.log"
+}
+rootkits() {
+    h "Búsqueda de rootkits"
+    rkhunter --update --nocolors >/dev/null 2>&1 || true
+    rkhunter --check --sk --rwo --nocolors | tee "$LOGDIR/rkhunter-$stamp.log" || true
+    chkrootkit -q | tee "$LOGDIR/chkrootkit-$stamp.log" || true
+}
+integridad() {
+    h "Integridad de archivos (AIDE)"
+    if [[ ! -f /var/lib/aide/aide.db ]]; then
+        echo "Creando la base de referencia (solo la primera vez, tarda unos minutos)…"
+        aideinit -y -f
+    else
+        aide --config /etc/aide/aide.conf --check | tee "$LOGDIR/aide-$stamp.log" || \
+            echo "⚠ Hay archivos del sistema modificados: revisa $LOGDIR/aide-$stamp.log"
+    fi
+}
+virus() {
+    local target="${1:-/home}"
+    h "Análisis de virus en $target"
+    freshclam --quiet || echo "(no se pudieron actualizar las firmas de ClamAV)"
+    escudo scan "$target" || true
+    clamscan -r -i --exclude-dir='^/proc|^/sys|^/dev' "$target" | tee "$LOGDIR/clamav-$stamp.log" || true
+}
+usb() {
+    h "Protección USB (USBGuard)"
+    echo "Se permitirán SOLO los dispositivos USB conectados ahora mismo:"
+    lsusb
+    read -r -p "¿Continuar? [s/N] " ok
+    [[ "$ok" =~ ^[sS]$ ]] || exit 0
+    usbguard generate-policy > /etc/usbguard/rules.conf
+    chmod 600 /etc/usbguard/rules.conf
+    systemctl enable --now usbguard
+    echo "Listo. Para autorizar un USB nuevo: usbguard list-devices / usbguard allow-device <id>"
+}
+red() {
+    h "Puertos en escucha"
+    ss -tulpn
+    h "IPs bloqueadas por Escudo"
+    nft list set inet centinela bloqueadas4 2>/dev/null || true
+    nft list set inet centinela bloqueadas6 2>/dev/null || true
+}
+
+case "${1:-}" in
+    auditoria) auditoria ;;
+    rootkits) rootkits ;;
+    integridad) integridad ;;
+    virus) virus "${2:-/home}" ;;
+    usb) usb ;;
+    red) red ;;
+    todo) auditoria; rootkits; integridad; virus /home ;;
+    *) sed -n '2,11p' "$0"; exit 2 ;;
+esac

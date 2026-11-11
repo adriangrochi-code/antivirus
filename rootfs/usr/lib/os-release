@@ -1,0 +1,9 @@
+PRETTY_NAME="TISMA OS 0.1"
+NAME="TISMA OS"
+VERSION_ID="0.1"
+VERSION="0.1"
+ID=tisma
+ID_LIKE=debian
+HOME_URL="https://github.com/adriangrochi-code/antivirus"
+ANSI_COLOR="1;35"
+LOGO=tisma

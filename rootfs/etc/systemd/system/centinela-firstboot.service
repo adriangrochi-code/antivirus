@@ -1,0 +1,17 @@
+[Unit]
+Description=Centinela - medir el hardware y adaptar el sistema (primer arranque)
+ConditionPathExists=!/var/lib/centinela/plan-applied
+# En la sesión live no se mide (centinela-power aplica un plan sin benchmarks)
+ConditionKernelCommandLine=!boot=live
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela setup --quick
+ExecStartPost=/usr/bin/touch /var/lib/centinela/plan-applied
+TimeoutStartSec=300
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

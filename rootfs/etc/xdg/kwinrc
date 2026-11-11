@@ -1,0 +1,31 @@
+# Efectos estilo Aero: cristal desenfocado, translucidez, transiciones suaves
+[Plugins]
+blurEnabled=true
+contrastEnabled=true
+translucencyEnabled=true
+wobblywindowsEnabled=false
+magiclampEnabled=false
+squashEnabled=true
+overviewEnabled=true
+
+[Effect-blur]
+BlurStrength=12
+NoiseStrength=3
+
+[Effect-translucency]
+MoveResize=85
+Inactive=100
+Menus=92
+DropdownMenus=92
+PopupMenus=92
+ComboboxPopups=92
+
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnRight=IAX
+
+[Windows]
+# Aero Snap: arrastrar al borde para acoplar
+ElectricBorderMaximize=true
+ElectricBorderTiling=true

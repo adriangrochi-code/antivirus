@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [{ "Name": "TISMA OS" }],
+        "Category": "",
+        "Description": "Oscuro grafito y violeta con cristal Aero y barra de tareas clásica",
+        "Id": "org.centinela.desktop",
+        "License": "GPL-2.0+",
+        "Name": "TISMA Aero",
+        "Version": "0.1"
+    },
+    "X-Plasma-APIVersion": "2"
+}

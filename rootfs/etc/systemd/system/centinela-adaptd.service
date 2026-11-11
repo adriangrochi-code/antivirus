@@ -1,0 +1,31 @@
+[Unit]
+Description=Centinela adaptd - adaptación del sistema al hardware en tiempo real
+After=systemd-sysctl.service centinela-firstboot.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/centinela adaptd
+Restart=on-failure
+RestartSec=5
+Nice=-5
+# Sandbox: solo necesita escribir en /proc/sys y /sys (lista blanca interna)
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
