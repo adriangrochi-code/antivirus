@@ -1,5 +1,6 @@
 # TISMA OS: construye la ISO en GitHub y la publica como release (para descargarla desde GitHub).
-# Se lanza a mano: Actions → «ISO» → Run workflow. Tarda ~1,5–3 h.
+# Se lanza a mano (Actions → «ISO» → Run workflow, cuando este archivo esté en main) o con un commit cuyo
+# mensaje lleve «[iso]» (en cualquier rama). Tarda ~1,5–3 h.
 # - Sin Hope: su repositorio es privado y este es público; una release la vería cualquiera.
 # - Secure Boot: con los secretos TISMA_SB_KEY y TISMA_SB_CERT (iso/crear-clave-secureboot.sh) el kernel TISMA
 #   sale firmado; sin ellos arranca el kernel firmado de Debian (Secure Boot funciona igual).
@@ -7,6 +8,7 @@
 name: ISO
 
 on:
+  push:
   workflow_dispatch:
     inputs:
       etiqueta:
@@ -27,11 +29,15 @@ concurrency:
 
 jobs:
   iso:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[iso]')
     runs-on: ubuntu-24.04
+    env:
+      ETIQUETA: ${{ inputs.etiqueta || format('v0.9-preview{0}', github.run_number) }}
     timeout-minutes: 330
     steps:
       - name: Liberar espacio en el runner
         run: |
+          [[ "$ETIQUETA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Etiqueta no válida: $ETIQUETA"; exit 1; }
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
             /usr/share/swift /usr/local/.ghcup
           df -h /
@@ -65,8 +71,7 @@ jobs:
           fi
       - name: ISO
         env:
-          SIN_COMPILAR: ${{ inputs.compilar && '0' || '1' }}
-          ETIQUETA: ${{ inputs.etiqueta }}
+          SIN_COMPILAR: ${{ (github.event_name == 'push' || inputs.compilar) && '0' || '1' }}
         run: |
           # HOPE_SRC apunta a una ruta inexistente: la build sigue sin Hope (privado) a propósito
           sudo env BUILD_DIR="$PWD/build" TISMA_SIN_COMPILAR="$SIN_COMPILAR" TISMA_BORRAR_CHROOT=1 \
@@ -74,8 +79,6 @@ jobs:
             TISMA_SB_KEY="${TISMA_SB_KEY:-}" TISMA_SB_CERT="${TISMA_SB_CERT:-}" ./iso/build-iso.sh
           rm -f "$RUNNER_TEMP/sb.key"
       - name: Preparar archivos (partes si pasa de 2 GiB)
-        env:
-          ETIQUETA: ${{ inputs.etiqueta }}
         run: |
           [[ "$ETIQUETA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Etiqueta no válida"; exit 1; }
           sudo chown -R "$USER" build
@@ -97,7 +100,6 @@ jobs:
       - name: Publicar release
         env:
           GH_TOKEN: ${{ github.token }}
-          ETIQUETA: ${{ inputs.etiqueta }}
         run: |
           {
             echo "Versión de prueba de TISMA OS construida por GitHub Actions desde ${GITHUB_SHA::7}."
