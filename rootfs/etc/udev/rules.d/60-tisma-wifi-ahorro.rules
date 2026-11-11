@@ -1,0 +1,2 @@
+# Wi-Fi sin modo ahorro con el cargador conectado (ver /usr/lib/tisma/wifi-ahorro)
+ACTION=="add|change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="/usr/lib/tisma/wifi-ahorro"

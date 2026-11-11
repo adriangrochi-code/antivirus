@@ -9,10 +9,16 @@ ipv6_servers = false
 doh_servers = true
 dnscrypt_servers = true
 lb_strategy = 'p2'
+# DoH sobre HTTP/3 (QUIC): conexiones más rápidas y sin bloqueo de cabeza de línea; si la red bloquea UDP 443,
+# se usa HTTP/2 automáticamente.
+http3 = true
 cache = true
 cache_size = 8192
 cache_min_ttl = 600
 cache_max_ttl = 86400
+# Respuestas «no existe» en caché poco tiempo: los rastreadores bloqueados no se vuelven a consultar enseguida.
+cache_neg_min_ttl = 60
+cache_neg_max_ttl = 600
 # Sin consultas de DNS en claro hacia fuera, nunca
 ignore_system_dns = true
 bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']

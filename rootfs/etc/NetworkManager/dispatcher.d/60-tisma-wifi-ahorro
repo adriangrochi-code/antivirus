@@ -1,0 +1,4 @@
+#!/bin/sh
+# Al conectar una interfaz Wi-Fi, aplicar el modo de ahorro según la alimentación.
+[ "$2" = "up" ] && exec /usr/lib/tisma/wifi-ahorro
+exit 0

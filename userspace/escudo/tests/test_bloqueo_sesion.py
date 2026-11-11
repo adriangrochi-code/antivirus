@@ -78,3 +78,19 @@ def test_config_and_shipped_files(tmp_path):
     for svc in ("ssh", "NetworkManager", "polkit"):
         d = (ROOT / f"rootfs/etc/systemd/system/{svc}.service.d/60-tisma-hardened-malloc.conf").read_text()
         assert "LD_PRELOAD=/usr/lib/libhardened_malloc-light.so" in d
+
+
+def test_network_tuning_shipped():
+    sc = {}
+    for f in (ROOT / "rootfs/etc/sysctl.d").glob("*.conf"):
+        for line in f.read_text().splitlines():
+            if line.strip() and not line.startswith("#"):
+                k, v = (x.strip() for x in line.split("=", 1))
+                assert k not in sc, f"{k} definido dos veces"
+                sc[k] = v
+    assert sc["net.ipv4.tcp_congestion_control"] == "bbr" and sc["net.core.default_qdisc"] == "fq"
+    assert sc["net.ipv4.tcp_timestamps"] == "1" and sc["net.ipv4.tcp_slow_start_after_idle"] == "0"
+    assert int(sc["net.ipv4.tcp_rmem"].split()[2]) <= int(sc["net.core.rmem_max"])
+    frag = (ROOT / "kernel/fragments/70-red.config").read_text()
+    assert "CONFIG_TCP_CONG_BBR=y" in frag and "CONFIG_NET_SCH_FQ=y" in frag
+    assert "http3 = true" in (ROOT / "rootfs/etc/dnscrypt-proxy/dnscrypt-proxy.toml").read_text()
