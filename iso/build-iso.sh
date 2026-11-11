@@ -118,7 +118,18 @@ LIB="$CHROOT/usr/lib/centinela"
 mkdir -p "$LIB/python" "$LIB/kernel"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
+# Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
+if "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
+    rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
+else
+    log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
+fi
+# Aplicaciones: Tisma engine (laminador) y Strata (IA local)
+"$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-latest}" \
+    || log "AVISO: no se pudo instalar Tisma engine"
+"$HERE/components/strata.sh" "$CHROOT" || log "AVISO: no se pudo instalar Strata"
 # Binario estático: funciona igual en el kernel genérico y en el kernel a medida
 gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"

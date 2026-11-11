@@ -18,6 +18,10 @@ tasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
     "applications:firefox-esr.desktop",
     "applications:org.kde.konsole.desktop",
+    "applications:net.tisma.Tisma.desktop",
+    "applications:net.tisma.Code.desktop",
+    "applications:strata.desktop",
+    "applications:freecad.desktop",
     "applications:steam.desktop",
     "applications:org.kde.discover.desktop"
 ]);

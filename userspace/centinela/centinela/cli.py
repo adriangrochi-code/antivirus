@@ -101,6 +101,12 @@ def cmd_build_kernel(args) -> int:
                HW_FRAGMENT=os.path.join(ap.ETC, "centinela/hardware.config"),
                BUILTIN_MODULES=os.path.join(ap.ETC, "centinela/builtin-modules.txt"),
                BUILD_DIR=args.build_dir)
+    import shutil
+    if not all(shutil.which(t) for t in ("gcc", "make", "flex", "bison", "dpkg-buildpackage", "pahole")):
+        print("Instalando las herramientas de compilación del kernel…")
+        subprocess.run(["apt-get", "install", "-y", "build-essential", "bc", "flex", "bison", "libssl-dev",
+                        "libelf-dev", "libdw-dev", "dwarves", "debhelper", "rsync", "cpio", "curl", "zstd"],
+                       check=True)
     print("Compilando el kernel a medida (puede tardar entre 15 y 60 minutos)…")
     r = subprocess.run([KERNEL_SCRIPT], env=env)
     if r.returncode != 0:
@@ -108,10 +114,33 @@ def cmd_build_kernel(args) -> int:
     debs = [os.path.join(args.build_dir, "kernel-debs", f)
             for f in os.listdir(os.path.join(args.build_dir, "kernel-debs"))
             if f.endswith(".deb") and "-dbg" not in f and "tailored" in f]
+    if args.firmar_dkms:
+        setup_dkms_signing(os.path.join(args.build_dir, f"linux-{os.environ.get('KERNEL_VERSION', '6.18.63')}"))
     if args.install and debs:
         subprocess.run(["dpkg", "-i", *debs], check=True)
         print("Kernel instalado. El kernel genérico sigue disponible en 'Opciones avanzadas' de GRUB.")
     return 0
+
+
+KEYS_DIR = "/var/lib/centinela/keys"
+
+
+def setup_dkms_signing(src: str) -> None:
+    """Conserva la clave de firma del kernel a medida para que DKMS firme módulos externos
+    (p. ej. el driver de NVIDIA, necesario para CUDA/Strata). Compromiso de seguridad: con
+    esta clave en disco, root puede firmar módulos; sin ella, ningún módulo externo carga."""
+    import shutil
+    key, crt = os.path.join(src, "certs/signing_key.pem"), os.path.join(src, "certs/signing_key.x509")
+    if not (os.path.exists(key) and os.path.exists(crt)):
+        raise ValueError(f"No está la clave de firma de la build en {src}/certs")
+    os.makedirs(KEYS_DIR, mode=0o700, exist_ok=True)
+    shutil.copy(key, os.path.join(KEYS_DIR, "signing_key.pem"))
+    shutil.copy(crt, os.path.join(KEYS_DIR, "signing_key.x509"))
+    os.chmod(os.path.join(KEYS_DIR, "signing_key.pem"), 0o600)
+    os.makedirs("/etc/dkms/framework.conf.d", exist_ok=True)
+    with open("/etc/dkms/framework.conf.d/tisma.conf", "w", encoding="utf-8") as fh:
+        fh.write(f"mok_signing_key={KEYS_DIR}/signing_key.pem\nmok_certificate={KEYS_DIR}/signing_key.x509\n")
+    print("DKMS firmará los módulos externos con la clave de este kernel.")
 
 
 def cmd_setup(args) -> int:
@@ -159,6 +188,8 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "build-kernel":
             s.add_argument("--build-dir", default="/var/cache/centinela/kernel")
             s.add_argument("--install", action="store_true")
+            s.add_argument("--firmar-dkms", action="store_true",
+                           help="conservar la clave de firma para módulos DKMS (NVIDIA/CUDA)")
         if name == "adaptd":
             s.add_argument("--interval", type=float, default=3.0)
             s.add_argument("--no-game-boost", action="store_true")

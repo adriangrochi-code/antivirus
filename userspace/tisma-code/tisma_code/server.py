@@ -64,6 +64,16 @@ class App:
 APP: App
 
 
+def git_branch(p: Path) -> str | None:
+    """Rama actual si la carpeta es un repositorio git (sin ejecutar git)."""
+    head = p / ".git" / "HEAD"
+    try:
+        ref = head.read_text().strip()
+    except OSError:
+        return None
+    return ref.rsplit("/", 1)[-1] if ref.startswith("ref:") else ref[:8]
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TismaCode/0.1"
 
@@ -80,8 +90,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass                     # el navegador cerró la conexión (p. ej. al recargar)
 
     def _authorized(self) -> bool:
         host = self.headers.get("Host", "")
@@ -114,13 +127,23 @@ class Handler(BaseHTTPRequestHandler):
                 s = APP.session
                 return self._send(200, {"config": APP.config, "hardware": APP.hw,
                                         "workspace": str(s.ws.root) if s else None,
+                                        "git": git_branch(s.ws.root) if s else None,
                                         "seq": len(APP.log), "server_model": APP.server.model})
             if url.path == "/api/dirs":
                 base = Path(q.get("path") or Path.home()).expanduser().resolve()
                 dirs = sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
-                return self._send(200, {"path": str(base), "parent": str(base.parent), "dirs": dirs[:500]})
+                return self._send(200, {"path": str(base), "parent": str(base.parent), "dirs": dirs[:500],
+                                        "git": git_branch(base)})
             if url.path == "/api/events":
                 return self._send(200, APP.events_since(int(q.get("since", 0))))
+            if url.path == "/api/docs":
+                if not APP.session:
+                    return self._send(200, {"recent": [], "results": []})
+                d = APP.session.docs
+                return self._send(200, {"library": str(d.library), "project": str(d.project_dir),
+                                        "recent": d.recent(), "results": d.search(q["q"]) if q.get("q") else []})
+            if url.path == "/api/docs/read":
+                return self._send(200, {"text": APP.session.docs.read(q["ref"])})
             if url.path == "/api/models/search":
                 return self._send(200, models.search(q.get("q", "")))
             if url.path == "/api/models/files":
@@ -152,6 +175,12 @@ class Handler(BaseHTTPRequestHandler):
                 APP.config["recent"] = [ws] + [r for r in APP.config["recent"] if r != ws][:7]
                 APP.save_config()
                 return self._send(200, {"workspace": str(s.ws.root)})
+            if url.path == "/api/model":
+                APP.config.update({k: b[k] for k in ("endpoint", "model") if b.get(k)})
+                APP.save_config()
+                if APP.session:
+                    APP.session.endpoint, APP.session.model = APP.config["endpoint"], APP.config["model"]
+                return self._send(200, {"ok": True})
             if url.path == "/api/message":
                 if not APP.session:
                     return self._send(400, {"error": "Elige primero una carpeta de proyecto"})
@@ -164,6 +193,12 @@ class Handler(BaseHTTPRequestHandler):
                 if APP.session:
                     APP.session.cancel()
                 return self._send(200, {"ok": True})
+            if url.path in ("/api/council", "/api/hope/tool"):
+                if not APP.session or not APP.session.hope:
+                    return self._send(400, {"error": "Abre un proyecto (las herramientas de Hope necesitan una sesión)"})
+                if url.path == "/api/hope/tool":
+                    return self._send(200, {"result": APP.session.hope.run(b["nombre"], b["entrada"])})
+                return self._send(200, APP.session.hope.council(b["problema"], b.get("tema") or "general"))
             if url.path == "/api/models/download":
                 return self._send(200, {"key": APP.downloads.start(b["id"], b["file"])})
             if url.path == "/api/models/serve":

@@ -19,7 +19,7 @@ from pathlib import Path
 from . import harness
 
 MAX_OUTPUT = 20_000
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
+SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
 NEEDS_APPROVAL = {"write_file", "edit_file", "run_command"}
 
 
@@ -227,7 +227,9 @@ HOPE_SCHEMAS = [
             "problema": {"type": "string"}, "tema": {"type": "string"}}}}},
 ]
 
-TOOL_SCHEMAS = BASE_SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + HOPE_SCHEMAS
+from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
+
+TOOL_SCHEMAS = BASE_SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + HOPE_SCHEMAS + DOC_SCHEMAS
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 

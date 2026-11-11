@@ -64,12 +64,12 @@ def fit(size_bytes: int, hw: dict, context_overhead: float = 1.2) -> dict:
         where, label = "gpu", "Cabe entero en la GPU (rápido)"
     elif vram and need_mb <= vram * 0.92 + ram * 0.6:
         where, label = "mixto", "GPU + RAM (velocidad media)"
-    elif need_mb <= ram * 0.7:
+    elif need_mb <= ram * 0.85:
         where, label = "cpu", "Solo CPU/RAM (lento)"
     else:
         where, label = "no", "No cabe en este equipo"
     est = None
-    if where == "cpu" and hw.get("ram_bandwidth_gbs"):
+    if where in ("cpu", "mixto") and hw.get("ram_bandwidth_gbs"):
         # La generación está limitada por leer todos los pesos en cada token
         est = round(hw["ram_bandwidth_gbs"] / (size_bytes / 1e9), 1)
     return {"where": where, "label": label, "need_mb": round(need_mb), "tokens_s_estimate": est}

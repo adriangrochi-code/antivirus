@@ -111,3 +111,23 @@ def test_hope_critic_on_calculations(project, tmp_path_factory):
     verifies = [e for e in events if e["type"] == "verify"]
     assert verifies[0]["ok"] is False and verifies[-1]["ok"] is True
     assert any(e["type"] == "tool" and e["tool"] == "hope" and "42" in e["result"] for e in events)
+
+
+def test_docs_tools_in_agent(project, tmp_path_factory, monkeypatch):
+    lib = tmp_path_factory.mktemp("lib")
+    (lib / "manual.md").write_text("# Manual\n\nEl factor de potencia del motor es 0,85.\n")
+    monkeypatch.setattr("tisma_code.docs.LIBRARY", lib)
+    import tisma_code.agent as ag
+    orig = ag.DocSpace
+    monkeypatch.setattr(ag, "DocSpace", lambda root, idx: orig(root, idx, library=lib))
+    script = [{"content": "", "tool_calls": [call("docs_buscar", consulta="factor de potencia")]},
+              {"content": "", "tool_calls": [call("docs_guardar", tipo="descubrimiento", titulo="FP del motor",
+                                                  contenido="Es 0,85 según el manual.")]},
+              {"content": "Anotado."}]
+    s, _, events = run_session(project, script, tmp_path_factory)
+    tools_ev = [e for e in events if e["type"] == "tool"]
+    assert tools_ev[0]["ok"] and "manual.md" in tools_ev[0]["result"]
+    saved = [e for e in events if e["type"] == "doc_saved"]
+    assert saved and saved[0]["doc_kind"] == "descubrimiento"
+    assert not [e for e in events if e["type"] == "error"]
+    assert list((project / ".tisma" / "descubrimientos").glob("*.md"))

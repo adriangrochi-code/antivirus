@@ -36,3 +36,10 @@ clamav clamav-freshclam rkhunter chkrootkit lynis aide auditd usbguard
 opensnitch python3-opensnitch-ui keepassxc nmap
 # --- Tisma engine (laminador): dependencias de ejecución ---
 libgl1 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libssl3t64 unzip git
+# --- Ingeniería y ciencia ---
+freecad kicad openscad librecad gmsh calculix-ccx ngspice qucs-s
+octave gnuplot wxmaxima r-base-core
+python3-numpy python3-scipy python3-matplotlib python3-sympy python3-pandas python3-pint
+python3-z3 python3-yaml python3-pil jupyter-notebook python3-pytest
+# --- TISMA Code (IA local para programar) ---
+bubblewrap llama.cpp

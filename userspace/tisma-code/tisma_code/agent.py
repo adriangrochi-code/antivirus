@@ -23,6 +23,7 @@ import urllib.request
 import uuid
 
 from . import harness, memory, review, tools
+from .docs import DocSpace
 
 try:                                     # Hope es opcional: sin vendor/ el agente funciona igual
     from .hope_bridge import HopeTools, tool_help
@@ -40,6 +41,9 @@ Cómo trabajas:
 4b. Para cálculos, unidades o problemas de ingeniería/ciencia usa la herramienta hope (exacta) o consejo
     (varios agentes + verificación); nunca calcules de memoria. Escribe los cálculos como «Paso n: … = …»
     y termina con «Resultado: …»: un crítico revisa cada paso.
+4c. Antes de investigar desde cero, busca con docs_buscar en los documentos locales (manuales del usuario
+    y lo que tú mismo guardaste antes). Cuando descubras algo útil (cómo funciona una parte, la causa de un
+    error) guárdalo con docs_guardar para la próxima vez.
 5. El usuario aprueba cada escritura y cada comando. Si deniega, no insistas: pregunta o propone otra vía.
 6. Los comandos corren aislados, sin red y sin acceso fuera del proyecto.
 7. Sé conciso. Al terminar, resume qué cambiaste y cómo comprobarlo.
@@ -106,6 +110,7 @@ class Session:
         self._busy = threading.Lock()
         self._cancel = threading.Event()
         self._originals: dict[str, str] = {}     # archivos tocados en la tarea → contenido previo
+        self.docs = DocSpace(self.ws.root, self.kb.dir)
         self.hope = None
         if HopeTools is not None:
             try:
@@ -185,6 +190,10 @@ class Session:
         except LLMError as e:
             self.emit("error", message=str(e))
             self.kb.log({"event": "error", "task": text, "error": str(e)})
+        except Exception as e:  # noqa: BLE001 — un fallo interno nunca debe dejar la sesión colgada
+            import traceback
+            self.emit("error", message=f"Error interno de TISMA Code: {type(e).__name__}: {e}")
+            self.kb.log({"event": "internal_error", "task": text, "trace": traceback.format_exc()})
         finally:
             self._busy.release()
             self.emit("idle", stats=self.stats)
@@ -270,6 +279,13 @@ class Session:
             self.kb.feedback(used_ids, bool(verified))
         if verified is not None:
             self.kb.record_model(self.current.name, bool(verified))
+        if verified and files:
+            try:                      # nota legible de la mejora verificada en <proyecto>/.tisma/mejoras
+                self.docs.save("mejora", task[:80], f"## Pedido\n{task}\n\n## Resultado\n{summary or '—'}\n\n"
+                               f"## Archivos\n" + "\n".join(f"- `{f}`" for f in files) +
+                               f"\n\n## Diff\n```diff\n{self.diff()[:6000]}\n```", ["verificado"])
+            except (OSError, ValueError):
+                pass
         if verified:
             self.stats["verified_tasks"] += 1
             self.kb.save_episode(task, self.messages[:1] + self.messages[start:], self.current.model)
@@ -380,6 +396,21 @@ class Session:
                 return reply(txt, r["verdict"] == "ok", args)
             except Exception as e:  # noqa: BLE001
                 return reply(f"Error en Hope: {e}", False, args)
+        if name in ("docs_buscar", "docs_leer", "docs_guardar"):
+            try:
+                if name == "docs_buscar":
+                    hits = self.docs.search(str(args.get("consulta", "")))
+                    out = "\n\n".join(f"[{h['ref']}#{h['part']}] {h['title']}\n{h['snippet']}" for h in hits)
+                    return reply(out or "Sin resultados en los documentos locales.", True, args)
+                if name == "docs_leer":
+                    part = args.get("part")
+                    return reply(self.docs.read(str(args["ref"]), int(part) if part is not None else None), True, args)
+                ref = self.docs.save(str(args["tipo"]), str(args["titulo"]), str(args["contenido"]),
+                                     [str(t) for t in args.get("etiquetas", [])])
+                self.emit("doc_saved", ref=ref, doc_kind=args["tipo"], title=args["titulo"])
+                return reply(f"Guardado en {ref}", True, args)
+            except (KeyError, ValueError, OSError) as e:
+                return reply(f"Error: {e}", False, args)
         if name == "update_todos":
             self.todos = [t for t in args.get("todos", []) if isinstance(t, dict)]
             self.emit("todos", todos=self.todos)
