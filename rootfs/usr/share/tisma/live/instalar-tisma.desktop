@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Instalar TISMA OS
+Comment=Instala TISMA OS en este equipo
+Exec=calamares-install-debian
+Icon=tisma
+Terminal=false
+Categories=Qt;System;
+StartupWMClass=calamares
+StartupNotify=true

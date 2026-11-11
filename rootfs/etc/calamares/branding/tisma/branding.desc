@@ -3,7 +3,8 @@
 componentName:   tisma
 welcomeStyleCalamares: true
 welcomeExpandingLogo: true
-windowExpanding: normal
+# Pantalla completa, como el instalador de Windows (se sale con «Cancelar» para probar el sistema)
+windowExpanding: fullscreen
 windowSize: 900px,620px
 windowPlacement: center
 strings:

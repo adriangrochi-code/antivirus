@@ -13,6 +13,8 @@ zstd lz4 curl ca-certificates gnupg pciutils usbutils lshw dmidecode
 shim-signed shim-helpers-amd64-signed grub-efi-amd64-signed mokutil sbsigntool linux-image-amd64
 # --- Instalador gráfico ---
 calamares calamares-settings-debian grub-efi-amd64-bin grub-pc-bin efibootmgr os-prober
+# Abrir el disco cifrado al arrancar (sin esto, una instalación cifrada no arranca)
+cryptsetup cryptsetup-initramfs
 # --- Seguridad ---
 apparmor apparmor-profiles apparmor-profiles-extra apparmor-utils nftables
 unattended-upgrades fwupd

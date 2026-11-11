@@ -1,0 +1,16 @@
+[Unit]
+Description=TISMA - el instalador del USB se abre sin pedir contraseña (solo en la sesión live)
+ConditionKernelCommandLine=boot=live
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service polkit.service
+
+[Service]
+Type=oneshot
+# La regla se crea en la memoria del USB live (nunca en el sistema instalado: el instalador copia la imagen, no la
+# sesión). En la sesión live el usuario «tisma» ya es administrador sin contraseña: no da ningún permiso nuevo.
+ExecStart=/usr/bin/install -D -m 644 /usr/share/tisma/live/49-tisma-live-instalador.rules /etc/polkit-1/rules.d/49-tisma-live-instalador.rules
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

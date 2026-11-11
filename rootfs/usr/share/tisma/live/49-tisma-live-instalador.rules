@@ -1,0 +1,8 @@
+// TISMA (solo sesión live; lo copia tisma-live-instalador.service): el instalador se abre sin pedir contraseña.
+// En la sesión live el usuario «tisma» ya es administrador sin contraseña: no añade ningún permiso.
+polkit.addRule(function(action, subject) {
+    if (action.id == "com.github.calamares.calamares.pkexec.run" &&
+        subject.user == "tisma" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

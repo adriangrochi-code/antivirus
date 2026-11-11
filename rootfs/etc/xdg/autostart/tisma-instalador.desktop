@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar TISMA OS
+Comment=Abre el instalador al entrar en la sesión del USB
+Exec=/usr/lib/tisma/instalador-auto
+NoDisplay=true
+X-KDE-autostart-phase=2
+OnlyShowIn=KDE;

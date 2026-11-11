@@ -77,7 +77,32 @@ def test_installer_encrypts_by_default():
     import yaml
     p = yaml.safe_load((ROOT / "etc/calamares/modules/partition.conf").read_text())
     assert p["preCheckEncryption"] is True and p["enableLuksAutomatedPartitioning"] is True
-    assert p["luksGeneration"] == "luks1"                          # GRUB descifra /boot
+    # /boot aparte SIN cifrar (la contraseña la pide la pantalla de arranque, con el teclado bien) y el resto LUKS2
+    assert p["luksGeneration"] == "luks2"
+    capas = {c["mountPoint"]: c for c in p["partitionLayout"]}
+    assert capas["/boot"]["noEncrypt"] is True and capas["/boot"]["filesystem"] == "ext4"
+    assert not capas["/"].get("noEncrypt") and capas["/"]["filesystem"] == "btrfs"
+    # Como Windows: borrar el disco preseleccionado, sin particionado manual
+    assert p["initialPartitioningChoice"] == "erase" and p["allowManualPartitioning"] is False
+    # Sin cryptsetup-initramfs un sistema cifrado no abre el disco al arrancar (faltaba en la preview 5)
+    pk = (ROOT.parent / "iso/packages.list").read_text().split()
+    assert "cryptsetup-initramfs" in pk
+
+
+def test_installer_pages_like_windows():
+    import yaml
+    st = yaml.safe_load((ROOT / "etc/calamares/settings.conf").read_text())
+    show = st["sequence"][0]["show"]
+    assert show == ["welcome", "partition", "users", "summary"]     # sin región ni teclado
+    ex = st["sequence"][1]["exec"]
+    assert "shellprocess@region" in ex and ex.index("shellprocess@region") < ex.index("users")
+    assert not {"locale", "keyboard", "localecfg"} & set(ex)
+    u = yaml.safe_load((ROOT / "etc/calamares/modules/users.conf").read_text())
+    assert u["setRootPassword"] is False and u["doAutologin"] is False
+    assert u["passwordRequirements"]["minLength"] >= 8 and u["sudoersGroup"] == "sudo"
+    assert yaml.safe_load((ROOT / "etc/calamares/modules/finished.conf").read_text())["restartNowMode"] == "always"
+    r = yaml.safe_load((ROOT / "etc/calamares/modules/shellprocess-region.conf").read_text())
+    assert r["dontChroot"] is True and any("instalar-region ${ROOT}" in c for c in r["script"])
 
 
 def test_dns_blocks_malware_with_live_resolvers():

@@ -311,6 +311,15 @@ chmod 700 "$CHROOT/var/lib/escudo"
 # DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
 install -m 644 "$CHROOT/etc/resolv.conf.tisma" "$CHROOT/etc/resolv.conf.final"
 in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
+# Lista de servidores DNS firmada DENTRO de la imagen: sin ella, dnscrypt-proxy necesita descargarla al arrancar y,
+# sin red todavía (wifi sin conectar), se cerraba y dejaba el equipo sin DNS (preview 5). Va con su firma
+# (minisign_key de dnscrypt-proxy.toml): si alguien la manipulara, dnscrypt-proxy la rechaza.
+install -d "$CHROOT/var/cache/dnscrypt-proxy"
+for f in public-resolvers.md public-resolvers.md.minisig; do
+    curl -fsSL --retry 3 -o "$CHROOT/var/cache/dnscrypt-proxy/$f" \
+        "https://download.dnscrypt.info/resolvers-list/v3/$f" || log "AVISO: no se pudo descargar $f"
+done
+in_chroot chown -R _dnscrypt-proxy: /var/cache/dnscrypt-proxy 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
@@ -368,11 +377,14 @@ cat > "$CHROOT/etc/apt/apt.conf.d/20auto-upgrades" <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
-# Lanzador del instalador en el escritorio live
-mkdir -p "$CHROOT/etc/skel/Desktop"
-[[ -f "$CHROOT/usr/share/applications/install-debian.desktop" ]] && \
-    sed 's/^Name=.*/Name=Instalar TISMA OS/; s/^Icon=.*/Icon=tisma/' \
-        "$CHROOT/usr/share/applications/install-debian.desktop" > "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
+# Lanzador del instalador en el escritorio live (el instalador lo quita del sistema instalado: shellprocess@region).
+# Antes se copiaba de install-debian.desktop, que en trixie se llama calamares-install-debian.desktop: la preview 5
+# no tenía icono para instalar. Ejecutable: si no, Plasma pregunta si abrirlo o ejecutarlo.
+install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
+[[ -f "$CHROOT/usr/bin/calamares-install-debian" ]] || die "falta calamares-install-debian (el instalador no se abriría)"
+# El instalador se abre solo en la sesión del USB y sin pedir contraseña; si el arranque se queda sin pantalla de
+# inicio, el vigía muestra por qué
+in_chroot systemctl enable tisma-live-instalador.service tisma-vigia-arranque.service 2>/dev/null || true
 
 # Secure Boot: el kernel TISMA se firma con la clave propia (MOK) si se proporciona; su certificado va en el
 # sistema para registrarlo con «tisma-secureboot activar». Sin clave, con Secure Boot arranca el de Debian.
@@ -392,6 +404,9 @@ in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/s
     || log "AVISO: sin tema de arranque TISMA"
 in_chroot update-initramfs -u -k all
 in_chroot apt-get clean
+# Cachés del sistema (ldconfig, catálogo del registro, hwdb) ya al día: sin estas marcas systemd las regeneraba en
+# CADA arranque del USB (ldconfig: 88 s en QEMU) porque /usr parecía más nuevo que /etc
+touch "$CHROOT/etc/.updated" "$CHROOT/var/.updated"
 rm -f "$BUILD_CA_APT" "$CHROOT/etc/ssl/tisma-build-ca.crt"      # la CA de la build nunca va en la imagen
 rm -rf "$CHROOT"/var/lib/apt/lists/* "$CHROOT"/tmp/* "$CHROOT"/root/.bash_history
 # resolv.conf definitivo al final (durante la build el chroot usa el DNS del anfitrión)
@@ -434,35 +449,58 @@ LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es 
 SEC="$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash \(.*\)"$/\1/p' "$REPO/rootfs/etc/default/grub.d/50-centinela.cfg")"
 [[ "$SEC" == *lockdown=integrity* ]] || die "no se pudieron leer los parámetros de seguridad de 50-centinela.cfg"
 SEC="$SEC ia32_emulation=0 vdso32=0"
-cat > "$ISODIR/boot/grub/grub.cfg" <<EOF
+# Menú del USB como el DVD de Windows: no se ve; arranca directo al instalador. Si el equipo YA tiene TISMA instalado
+# (marca /tisma-instalado en su partición de arranque: el USB se quedó puesto tras instalar), arranca el sistema
+# instalado. Esc durante los 3 s muestra las opciones (probar sin instalar, gráficos básicos, diagnóstico…).
+# El arranque silencioso ya viene en SEC (50-centinela.cfg); el modo diagnóstico lo quita para ver los mensajes
+SILENCIO="loglevel=3 rd.udev.log_level=3 systemd.show_status=false"
+[[ "$SEC" == *"$SILENCIO"* ]] || die "50-centinela.cfg ya no trae los parámetros de arranque silencioso"
+DIAG="${LIVE/ quiet splash/} ${SEC/$SILENCIO /}"
+cat > "$ISODIR/boot/grub/grub.cfg" <<FINMENU
 insmod all_video
 insmod gfxterm
 insmod png
 set gfxmode=auto
 terminal_output gfxterm
 set theme=/boot/grub/themes/centinela/theme.txt
-set timeout=8
-
-menuentry "Probar TISMA OS" {
+set timeout_style=hidden
+set timeout=3
+set default=instalar
+if search --no-floppy --set=instalado --file /tisma-instalado; then
+    set default=disco
+    menuentry "Arrancar TISMA OS (instalado en este equipo)" --id disco {
+        set root=\$instalado
+        configfile /grub/grub.cfg
+    }
+fi
+menuentry "Instalar TISMA OS" --id instalar {
     linux /live/vmlinuz $LIVE $SEC
     initrd /live/initrd.img
 }
-menuentry "Probar TISMA OS (gráficos básicos)" {
+menuentry "Probar TISMA OS sin instalar" {
+    linux /live/vmlinuz $LIVE $SEC tisma.probar
+    initrd /live/initrd.img
+}
+menuentry "Instalar TISMA OS (gráficos básicos)" {
     linux /live/vmlinuz $LIVE $SEC nomodeset
     initrd /live/initrd.img
 }
 menuentry "Probar TISMA OS en RAM (más rápido, requiere 8 GB)" {
-    linux /live/vmlinuz $LIVE $SEC toram
+    linux /live/vmlinuz $LIVE $SEC toram tisma.probar
     initrd /live/initrd.img
 }
-EOF
+menuentry "Modo diagnóstico (mensajes del arranque visibles; consola de rescate en Ctrl+Alt+F9)" {
+    linux /live/vmlinuz $DIAG tisma.diagnostico systemd.debug_shell=tty9
+    initrd /live/initrd.img
+}
+FINMENU
 if [[ -f "$ISODIR/live/vmlinuz-tisma" ]]; then
-    cat >> "$ISODIR/boot/grub/grub.cfg" <<EOF
+    cat >> "$ISODIR/boot/grub/grub.cfg" <<FINMENU
 menuentry "Probar TISMA OS con el kernel TISMA (requiere Secure Boot desactivado o su clave registrada)" {
-    linux /live/vmlinuz-tisma $LIVE $SEC
+    linux /live/vmlinuz-tisma $LIVE $SEC tisma.probar
     initrd /live/initrd-tisma.img
 }
-EOF
+FINMENU
 fi
 if [[ "${TISMA_BORRAR_CHROOT:-0}" == 1 ]]; then
     # Solo si no queda NADA montado dentro (si no, borrar el chroot destrozaría /proc, /dev… del anfitrión)

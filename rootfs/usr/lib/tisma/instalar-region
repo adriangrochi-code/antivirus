@@ -1,0 +1,152 @@
+#!/usr/bin/python3 -I
+"""instalar-region: hora, formatos y teclado del sistema instalado sin preguntar (como Windows).
+
+  instalar-region <raíz del sistema instalado>      (lo lanza el instalador, con el disco ya copiado)
+
+* Zona horaria: la del lugar desde donde se instala, con el servicio de geolocalización que Calamares usa por
+  defecto (geoip.kde.org; solo ve la IP pública, máximo 5 s). Sin red: la de la sesión live.
+* Formatos (fechas, moneda, decimales): español del país de esa zona horaria si glibc lo tiene; si no, es_ES.
+* Teclado: EL MISMO de la sesión live, que es en el que se acaban de escribir las contraseñas. Adivinarlo por el
+  país podría cambiar dónde están @, #, ñ… y dejar a alguien sin poder entrar. Se cambia en Preferencias.
+La respuesta de la red se trata como hostil: solo se acepta una zona que exista en el propio sistema.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.request
+
+GEOIP = "https://geoip.kde.org/v1/calamares"
+ZONA_RX = re.compile(r"[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){1,2}")
+HISPANOS = {"ES", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU", "BO", "DO", "HN", "PY", "SV", "NI",
+            "CR", "PA", "UY", "PR", "US", "GQ"}
+
+
+def zona_geoip(abrir=urllib.request.urlopen) -> str | None:
+    try:
+        with abrir(GEOIP, timeout=5) as r:
+            datos = json.loads(r.read(4096).decode("utf-8", "replace"))
+        zona = datos.get("time_zone") if isinstance(datos, dict) else None
+        return zona if isinstance(zona, str) else None
+    except Exception:  # noqa: BLE001 — sin red, DNS caído, respuesta rara: se usa la de la sesión
+        return None
+
+
+def zona_valida(raiz: str, zona: str | None) -> bool:
+    if not zona or not ZONA_RX.fullmatch(zona) or ".." in zona:
+        return False
+    p = os.path.join(raiz, "usr/share/zoneinfo", zona)
+    real = os.path.realpath(p)
+    return os.path.isfile(real) and real.startswith(os.path.realpath(os.path.join(raiz, "usr/share/zoneinfo")) + "/")
+
+
+def zona_actual(etc: str = "/etc") -> str | None:
+    try:
+        return open(os.path.join(etc, "timezone"), encoding="utf-8").read().strip() or None
+    except OSError:
+        pass
+    try:
+        destino = os.readlink(os.path.join(etc, "localtime"))
+        return destino.split("zoneinfo/", 1)[1] if "zoneinfo/" in destino else None
+    except OSError:
+        return None
+
+
+def pais_de(raiz: str, zona: str) -> str | None:
+    """País de una zona horaria según zone.tab del propio sistema."""
+    for nombre in ("zone.tab", "zone1970.tab"):
+        try:
+            for linea in open(os.path.join(raiz, "usr/share/zoneinfo", nombre), encoding="utf-8"):
+                c = linea.split("\t")
+                if len(c) >= 3 and not linea.startswith("#") and c[2].strip() == zona:
+                    return c[0].split(",")[0]
+        except OSError:
+            continue
+    return None
+
+
+def locale_para(raiz: str, pais: str | None) -> str:
+    if pais in HISPANOS:
+        candidato = f"es_{pais}.UTF-8"
+        try:
+            soportados = open(os.path.join(raiz, "usr/share/i18n/SUPPORTED"), encoding="utf-8").read().split("\n")
+        except OSError:
+            soportados = []
+        if any(l.split(" ")[0] == candidato for l in soportados):
+            return candidato
+    return "es_ES.UTF-8"
+
+
+def escribir(ruta: str, texto: str) -> None:
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    tmp = ruta + ".tisma-tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(texto)
+    os.replace(tmp, ruta)
+
+
+def aplicar(raiz: str, zona: str, loc: str, teclado: str, run=subprocess.run) -> None:
+    # Zona horaria
+    escribir(os.path.join(raiz, "etc/timezone"), zona + "\n")
+    lt = os.path.join(raiz, "etc/localtime")
+    if os.path.lexists(lt):
+        os.unlink(lt)
+    os.symlink(f"/usr/share/zoneinfo/{zona}", lt)
+    # Formatos: se generan es_ES (base), el del país y en_US (programas que lo esperan)
+    gen = os.path.join(raiz, "etc/locale.gen")
+    try:
+        lineas = open(gen, encoding="utf-8").read().split("\n")
+    except OSError:
+        lineas = []
+    quiero = {"es_ES.UTF-8 UTF-8", f"{loc} UTF-8", "en_US.UTF-8 UTF-8"}
+    nuevas, vistas = [], set()
+    for l in lineas:
+        limpio = l.lstrip("# ").strip()
+        if limpio in quiero:
+            nuevas.append(limpio)
+            vistas.add(limpio)
+        else:
+            nuevas.append(l)
+    nuevas += sorted(quiero - vistas)
+    escribir(gen, "\n".join(nuevas).rstrip("\n") + "\n")
+    idioma = loc.split(".")[0]
+    escribir(os.path.join(raiz, "etc/default/locale"), f"LANG={loc}\nLANGUAGE={idioma}:es\n")
+    run(["chroot", raiz, "locale-gen"], capture_output=True)
+    # Teclado: el de la sesión (consola, X11/Wayland y la pantalla que pide la contraseña del disco)
+    escribir(os.path.join(raiz, "etc/default/keyboard"), teclado)
+    capa = re.search(r'^XKBLAYOUT="?([^"\n]*)', teclado, re.M)
+    variante = re.search(r'^XKBVARIANT="?([^"\n]*)', teclado, re.M)
+    escribir(os.path.join(raiz, "etc/X11/xorg.conf.d/00-keyboard.conf"),
+             'Section "InputClass"\n    Identifier "system-keyboard"\n    MatchIsKeyboard "on"\n'
+             f'    Option "XkbLayout" "{capa.group(1) if capa else "es"}"\n'
+             f'    Option "XkbVariant" "{variante.group(1) if variante else ""}"\nEndSection\n')
+    escribir(os.path.join(raiz, "etc/initramfs-tools/conf.d/tisma-teclado"),
+             "# La contraseña del disco se escribe con el teclado del sistema, no con el inglés\nKEYMAP=y\n")
+
+
+def main(argv: list[str], abrir=urllib.request.urlopen, run=subprocess.run, etc: str = "/etc") -> int:
+    if len(argv) != 1 or not os.path.isdir(argv[0]):
+        print(__doc__, file=sys.stderr)
+        return 2
+    raiz = argv[0]
+    zona = zona_geoip(abrir)
+    origen = "ubicación"
+    if not zona_valida(raiz, zona):
+        zona, origen = zona_actual(etc), "sesión"
+    if not zona_valida(raiz, zona):
+        zona, origen = "Etc/UTC", "por defecto"
+    loc = locale_para(raiz, pais_de(raiz, zona))
+    try:
+        teclado = open(os.path.join(etc, "default/keyboard"), encoding="utf-8").read()
+    except OSError:
+        teclado = 'XKBMODEL="pc105"\nXKBLAYOUT="es"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n'
+    aplicar(raiz, zona, loc, teclado, run)
+    print(f"Zona horaria {zona} ({origen}), formatos {loc}, teclado de la sesión")
+    return 0
+
+
+if __name__ == "__main__" and os.environ.get("TISMA_TEST") != "1":
+    sys.exit(main(sys.argv[1:]))

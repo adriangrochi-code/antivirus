@@ -1,0 +1,10 @@
+#!/bin/sh
+# Sesión del USB de TISMA: abre el instalador directamente, como al arrancar el DVD de Windows.
+# Solo en la sesión live, y no si se eligió «Probar sin instalar» o «Modo diagnóstico» en el menú del USB.
+# Cerrarlo («Cancelar») deja el escritorio para probar el sistema; el icono del escritorio lo vuelve a abrir.
+grep -qw "boot=live" /proc/cmdline || exit 0
+grep -qwE "tisma\.probar|tisma\.diagnostico" /proc/cmdline && exit 0
+[ -e "${XDG_RUNTIME_DIR:-/tmp}/tisma-instalador-abierto" ] && exit 0
+touch "${XDG_RUNTIME_DIR:-/tmp}/tisma-instalador-abierto"
+sleep 2     # que el escritorio termine de dibujarse
+exec /usr/bin/calamares-install-debian

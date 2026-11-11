@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - si el arranque no llega a la pantalla de inicio, mostrar por qué
+
+[Service]
+# simple (no oneshot): no retrasa el arranque mientras espera
+Type=simple
+ExecStart=/usr/lib/tisma/vigia-arranque
+
+[Install]
+WantedBy=multi-user.target
