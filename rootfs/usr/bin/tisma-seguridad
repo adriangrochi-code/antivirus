@@ -10,6 +10,7 @@
 #   tisma-seguridad suid        lista programas SUID/SGID (posibles escaladas de privilegios)
 #   tisma-seguridad todo        auditoría + rootkits + integridad + virus en /home
 #   tisma-seguridad estricto [on|off]  nivel GrapheneOS: ptrace solo root y lockdown «confidentiality»
+#   tisma-seguridad windows [disco]    revisa y limpia un Windows apagado (XP, Vista, 7, 8…) desde TISMA
 set -euo pipefail
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 LOGDIR=/var/log/tisma-seguridad
@@ -100,6 +101,18 @@ TXT
     echo "Activado. Estado: $(cat /sys/kernel/security/lockdown 2>/dev/null)"
 }
 
+windows() {
+    h "Revisar Windows (XP, Vista, 7, 8, 8.1…) desde TISMA"
+    echo "Windows está apagado: el malware no puede esconderse ni defenderse mientras se revisa."
+    local rc=0
+    escudo windows "$@" || rc=$?
+    if [[ $rc -eq 1 && " $* " != *" --limpiar "* && -t 0 ]]; then
+        echo
+        read -r -p "¿Limpiar lo grave? (se guarda una copia del registro y los archivos van a C:\TISMA-Cuarentena) [s/N] " ok
+        [[ "$ok" =~ ^[sS]$ ]] && escudo windows "$@" --limpiar || true
+    fi
+}
+
 case "${1:-}" in
     auditoria) auditoria ;;
     rootkits) rootkits ;;
@@ -110,5 +123,6 @@ case "${1:-}" in
     suid) suid ;;
     todo) auditoria; rootkits; integridad; virus /home ;;
     estricto) estricto "${2:-on}" ;;
+    windows) shift; windows "$@" ;;
     *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

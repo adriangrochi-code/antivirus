@@ -9,6 +9,7 @@ import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 
 from .config import Config
 from .firewall import Firewall
@@ -135,7 +136,7 @@ def cmd_permitir(cfg: Config, args) -> int:
 
 
 def cmd_quarantine(cfg: Config, args) -> int:
-    q = Quarantine(cfg.quarantine_dir)
+    q = Quarantine(Path(args.dir) if args.dir else cfg.quarantine_dir)
     if args.action == "list":
         for m in q.list():
             print(f"{m['id']}  {m['time']}  {m['threat']:<35} {m['original_path']}")
@@ -200,6 +201,106 @@ def cmd_analyze(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_windows(cfg: Config, args) -> int:
+    """Analiza (y con --limpiar, limpia) un Windows apagado: una carpeta ya montada, una partición o, sin
+    argumentos, todas las particiones NTFS del equipo."""
+    import stat as _stat
+    import time as _time
+    from . import windows as W
+
+    def aviso(m):
+        if not args.json:
+            print(m, flush=True)
+
+    objetivos = []           # (raiz, dispositivo, montado_por_nosotros)
+    if args.objetivo and os.path.isdir(args.objetivo):
+        objetivos.append((args.objetivo, None, False))
+    elif args.objetivo:
+        try:
+            if not _stat.S_ISBLK(os.stat(args.objetivo).st_mode):
+                raise ValueError(f"{args.objetivo}: no es una carpeta ni una partición")
+        except FileNotFoundError:
+            raise ValueError(f"{args.objetivo}: no existe")
+        objetivos.append((None, args.objetivo, True))
+    else:
+        for p in W.particiones():
+            if (p.get("fstype") or "").lower() == "bitlocker":
+                aviso(f"{p['name']}: cifrada con BitLocker. Desbloquéala con «sudo cryptsetup bitlkOpen "
+                      f"{p['name']} win» (contraseña o clave de recuperación) y analiza /dev/mapper/win")
+            elif p.get("mountpoint"):
+                objetivos.append((p["mountpoint"], p["name"], False))
+            else:
+                objetivos.append((None, p["name"], True))
+        if not objetivos:
+            aviso("No hay particiones NTFS (Windows) en este equipo.")
+            return 0
+    if any(nuestro for _r, _d, nuestro in objetivos) and os.geteuid() != 0:
+        print("Montar el disco de Windows necesita permisos de administrador: sudo escudo windows …",
+              file=sys.stderr)
+        return 2
+    scanner = Scanner(cfg)
+    resultados, peor, errores = [], 0, 0
+    for raiz, disp, nuestro in objetivos:
+        montado = None
+        try:
+            if nuestro:
+                raiz = montado = W.montar(disp)
+            try:
+                w = W.Windows(raiz)
+            except FileNotFoundError:
+                if args.objetivo:
+                    raise
+                continue                     # partición de datos, no de sistema
+            aviso(f"\nAnalizando {w.producto} en {disp or raiz}…")
+            a = W.Analisis(w, scanner, log=aviso if args.verbose else None)
+            hall = a.ejecutar(completo=args.completo, sin_archivos=args.sin_archivos)
+            r = {"windows": w.producto, "version": w.version, "raiz": raiz, "dispositivo": disp,
+                 "avisos": w.avisos, "hallazgos": [W.asdict(h) for h in hall]}
+            if not args.json:
+                print(W.informe(w, hall, todo=args.todo))
+            niveles = ("high", "medium") if args.tambien_medias else ("high",)
+            if args.limpiar and any(h.gravedad in niveles for h in hall):
+                if nuestro:                   # volver a montar con escritura solo para limpiar
+                    W.desmontar(raiz)
+                    montado = None
+                    raiz = montado = W.montar(disp, escritura=True)
+                    w = W.Windows(raiz)
+                    hall = W.Analisis(w, scanner).ejecutar(completo=args.completo, sin_archivos=args.sin_archivos)
+                elif not os.access(raiz, os.W_OK):
+                    raise OSError(f"{raiz} está montado en solo lectura: no se puede limpiar")
+                aviso("\nLimpiando…")
+                hecho = W.limpiar(w, hall, niveles, log=aviso)
+                r["limpieza"] = hecho
+                destino = os.path.join(w.raiz, "TISMA-Cuarentena")
+                os.makedirs(destino, exist_ok=True)
+                with open(os.path.join(destino, f"informe-{_time.strftime('%Y%m%d-%H%M%S')}.txt"), "w",
+                          encoding="utf-8-sig", newline="\r\n") as fh:
+                    fh.write(W.informe(w, hall, todo=True) + "\n\nLimpieza:\n" +
+                             "\n".join([*(f"cuarentena: {x['ruta']}" for x in hecho["archivos"]),
+                                         *hecho["registro"], *(f"ERROR: {e}" for e in hecho["errores"])]))
+                aviso(f"{len(hecho['archivos'])} archivos en cuarentena, {len(hecho['registro'])} cambios en el "
+                      f"registro, {len(hecho['errores'])} errores.\nCopia del registro: {hecho['copias']}\n"
+                      f"Informe y cuarentena en el disco de Windows: {w.unidad}\\TISMA-Cuarentena "
+                      f"(restaurar: escudo quarantine restore <id> --dir {destino})")
+                for e in hecho["errores"]:
+                    aviso(f"  ERROR: {e}")
+            elif args.limpiar:
+                aviso("Nada que limpiar.")
+            resultados.append(r)
+            peor = max([peor] + [W.ORDEN[h.gravedad] for h in hall])
+        except OSError as e:
+            errores += 1
+            print(f"{disp or raiz}: {e}", file=sys.stderr)
+        finally:
+            if montado:
+                W.desmontar(montado)
+    if args.json:
+        print(json.dumps(resultados, ensure_ascii=False, indent=2))
+    if not resultados and not errores:
+        aviso("No se encontró ninguna instalación de Windows.")
+    return 1 if peor >= W.ORDEN["medium"] else (2 if errores else 0)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="escudo", description="Antivirus e IPS de Centinela OS")
     p.add_argument("-c", "--config")
@@ -234,6 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("action", choices=["list", "restore", "delete", "purge"])
     s.add_argument("id", nargs="?")
     s.add_argument("--dest")
+    s.add_argument("--dir", help="otra cuarentena (p. ej. la de un disco de Windows: …/TISMA-Cuarentena)")
     s.set_defaults(func=cmd_quarantine)
 
     s = sub.add_parser("firewall", help="Bloquear/desbloquear IPs")
@@ -249,6 +351,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--name", default="Malware.Custom")
     s.add_argument("--severity", default="medium", choices=["low", "medium", "high"])
     s.set_defaults(func=cmd_signatures)
+    s = sub.add_parser("windows", help="Analizar y limpiar un Windows apagado (XP, Vista, 7, 8…) desde TISMA")
+    s.add_argument("objetivo", nargs="?", help="carpeta montada o partición (/dev/sda2); sin nada: todas")
+    s.add_argument("--limpiar", action="store_true", help="desactivar lo grave (cuarentena + registro)")
+    s.add_argument("--tambien-medias", action="store_true", help="con --limpiar: también lo sospechoso")
+    s.add_argument("--completo", action="store_true", help="escanear el disco entero (más lento)")
+    s.add_argument("--sin-archivos", action="store_true", help="solo inicio automático y configuración")
+    s.add_argument("--todo", action="store_true", help="listar también las entradas de inicio normales")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_windows)
+
     s = sub.add_parser("analizar", help="Informe de un archivo sospechoso (YARA, ML, capa)")
     s.add_argument("path")
     s.add_argument("--json", action="store_true")

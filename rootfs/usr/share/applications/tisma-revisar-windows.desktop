@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Revisar Windows
+Comment=Busca y limpia virus de un Windows apagado (XP, Vista, 7, 8…) desde TISMA
+Exec=sh -c 'tisma-seguridad windows; echo; read -p "Pulsa Intro para cerrar" x'
+Icon=security-high
+Terminal=true
+Categories=System;Security;
+Keywords=windows;virus;antivirus;rescate;limpiar;malware;escudo;

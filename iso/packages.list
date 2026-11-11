@@ -16,6 +16,8 @@ calamares calamares-settings-debian grub-efi-amd64-bin grub-pc-bin efibootmgr os
 # --- Seguridad ---
 apparmor apparmor-profiles apparmor-profiles-extra apparmor-utils nftables
 unattended-upgrades fwupd
+# Leer y limpiar discos de Windows (escudo windows) y discos externos NTFS
+ntfs-3g
 # --- Rendimiento adaptativo ---
 systemd-zram-generator python3 cpupower-gui
 # --- Memoria y copias de seguridad ---
