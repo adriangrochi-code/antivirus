@@ -1,0 +1,12 @@
+# Actualiza las apps Flatpak (Flathub) del sistema y quita los entornos que ya nadie usa. Sustituye al
+# notificador de Discover, que no instalaba nada solo. Con el equipo libre (60-tisma-equipo-libre.conf).
+[Unit]
+Description=TISMA - actualizar las apps Flatpak
+ConditionPathExists=/var/lib/flatpak/repo
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flatpak update --system --noninteractive -y
+ExecStart=/usr/bin/flatpak uninstall --system --unused --noninteractive -y

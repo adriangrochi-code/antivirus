@@ -16,6 +16,16 @@ ni para equipos con datos importantes sin copia.**
   recompresión, compresión anticipada de la memoria de las apps en segundo plano, planificador por disco,
   ahorro de energía sin perder funciones, compatibilidad gráfica (GPU AMD GCN 1/2 con Vulkan, WineD3D/Lavapipe
   en GPU sin Vulkan), TRIM a través del cifrado y aviso de desgaste del SSD.
+- **Ajustes medidos, no supuestos**: `sudo centinela comparar probar <ajuste>` activa un ajuste, mide en rondas
+  A-B-B-A con una prueba estadística y solo lo deja si gana en ESE equipo (`centinela comparar lista`). Con
+  varios kernels instalados, cada arranque se mide solo y `centinela comparar kernels` dice cuál rinde más.
+- **Modo IA**: mientras TISMA Code genera con el motor local, el escritorio quita los efectos que releen la
+  pantalla, Baloo se pausa y el sistema detiene KSM, la compactación y la recompresión de memoria, para dejarle
+  a la IA el ancho de banda (clave en equipos con gráfica integrada). Medible con
+  `centinela comparar probar modo-ia --modelo X.gguf`; si en tu equipo empeora, se apaga solo.
+- **Mantenimiento con el equipo libre**: análisis de rootkits, auditoría, scrub, TRIM, copias externas y
+  actualizaciones de Flatpak esperan a que el equipo esté enchufado y sin uso (sin saltarse: tras 12 h se hacen
+  igual si la batería lo permite).
 - **IA local (TISMA Code)**: agente de programación, cálculo, CAD y simulación con el motor que mejor rinde en
   tu equipo (Strata o llama.cpp), herramientas por kits, cuaderno de trabajo y reinicio limpio del contexto
   para modelos pequeños, herramientas de ingeniería con plantillas y comprobación de resultados.
