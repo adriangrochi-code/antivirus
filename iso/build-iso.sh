@@ -145,7 +145,7 @@ chmod 700 "$CHROOT/var/lib/escudo"
 # DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
 install -m 644 "$CHROOT/etc/resolv.conf.tisma" "$CHROOT/etc/resolv.conf.final"
 rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
-in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer auditd 2>/dev/null || true
+in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
 in_chroot systemctl enable nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer \
     centinela-power centinela-adaptd escudo
 # Arranque escalonado: lo no esencial sale de multi-user.target y lo lanza la fase 2

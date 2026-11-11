@@ -8,7 +8,7 @@ import time
 
 PATH = "/run/escudo/alertas.jsonl"
 ICON = {"critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
-TITLE = {"ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
+TITLE = {"kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}

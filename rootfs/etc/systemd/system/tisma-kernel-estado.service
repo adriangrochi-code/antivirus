@@ -1,0 +1,14 @@
+[Unit]
+Description=TISMA - comprobar si hay parches de seguridad del kernel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/kernel-estado
+ProtectSystem=strict
+ReadWritePaths=/run/escudo
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+CapabilityBoundingSet=

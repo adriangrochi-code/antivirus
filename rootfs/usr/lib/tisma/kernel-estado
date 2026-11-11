@@ -1,0 +1,13 @@
+#!/bin/sh
+# Compara el kernel en uso con el último parche de su rama LTS; si hay uno nuevo, avisa al
+# escritorio (vía las alertas de Escudo). La vía de entrada nº1 es explotar fallos sin parchear.
+set -eu
+running="$(uname -r | cut -d- -f1)"
+branch="$(echo "$running" | cut -d. -f1-2)"
+latest="$(/usr/lib/centinela/kernel/latest-lts.sh "$branch" 2>/dev/null || true)"
+[ -n "$latest" ] || exit 0
+if [ "$latest" != "$running" ]; then
+    mkdir -p /run/escudo
+    printf '{"kind":"kernel","severity":"high","detail":"Hay un parche de seguridad del kernel: %s (usas %s)","action":"Actualiza con: sudo centinela build-kernel --install"}\n' \
+        "$latest" "$running" >> /run/escudo/alertas.jsonl
+fi

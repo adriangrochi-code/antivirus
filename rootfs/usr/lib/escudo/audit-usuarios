@@ -17,6 +17,17 @@ getent passwd | while IFS=: read -r _ _ uid _ _ home _; do
     fi
     for d in .ssh .gnupg .local/share/keyrings; do vigilar "$home/$d" r secretos; done
     for d in .config/chromium .mozilla/firefox; do vigilar "$home/$d" r navegador; done
+    # Objetivos habituales de los ladrones de información: carteras, mensajería y claves locales
+    for d in .electrum .bitcoin/wallets .config/Exodus .config/discord ".local/share/TelegramDesktop/tdata" \
+             .config/tisma-code .aws .config/gcloud .kube .docker; do
+        vigilar "$home/$d" r secretos
+    done
+    # Ejecutar algo directamente desde Descargas (adjuntos, «cracks»)
+    for d in Descargas Downloads; do
+        if [ -d "$home/$d" ] && [ ! -L "$home/$d" ]; then
+            auditctl -a always,exit -F arch=b64 -S execve,execveat -F dir="$home/$d" -k exec_tmp 2>/dev/null || true
+        fi
+    done
     for d in .config/autostart .config/systemd/user .local/share/systemd/user .bashrc .profile \
              .bash_profile .zshrc .pam_environment; do
         vigilar "$home/$d" wa persistencia

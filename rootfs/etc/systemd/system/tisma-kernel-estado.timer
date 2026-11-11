@@ -1,0 +1,11 @@
+[Unit]
+Description=TISMA - parches del kernel (diario)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
