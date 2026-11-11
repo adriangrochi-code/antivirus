@@ -1,6 +1,13 @@
 #!/bin/sh
 # Recomprime con el algoritmo secundario (zstd) las páginas de zram que no se han tocado desde la última
 # ejecución, y vuelve a marcarlas todas. Las páginas pequeñas (ya bien comprimidas) no se tocan.
+# Modo IA: si la IA local está generando (arriendo fresco en /run/user/*/tisma-modo-ia), esta pasada se salta:
+# recomprimir lee y escribe mucha memoria y le quitaría ancho de banda. La siguiente pasada (15 min) lo hace.
+ahora=$(date +%s)
+for f in /run/user/*/tisma-modo-ia; do
+    [ -f "$f" ] || continue
+    if [ $((ahora - $(stat -c %Y "$f" 2>/dev/null || echo 0))) -lt 45 ]; then exit 0; fi
+done
 for z in /sys/block/zram*; do
     [ -w "$z/recompress" ] || continue
     grep -q '\[' "$z/recomp_algorithm" 2>/dev/null || continue     # sin algoritmo secundario configurado

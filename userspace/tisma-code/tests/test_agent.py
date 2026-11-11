@@ -141,3 +141,28 @@ def test_docs_tools_in_agent(project, tmp_path_factory, monkeypatch):
     assert saved and saved[0]["doc_kind"] == "descubrimiento"
     assert not [e for e in events if e["type"] == "error"]
     assert list((project / ".tisma" / "descubrimientos").glob("*.md"))
+
+
+def test_modo_ia_only_for_local_engine(monkeypatch):
+    assert agent._es_local("http://127.0.0.1:8080/v1") and agent._es_local("http://localhost:1234/v1")
+    assert not agent._es_local("https://api.ejemplo.com/v1")
+    usado = []
+
+    class M:
+        def __enter__(self):
+            usado.append("in")
+
+        def __exit__(self, *a):
+            usado.append("out")
+    monkeypatch.setattr(agent, "modo_ia", lambda: M())
+    monkeypatch.setattr(agent, "_chat_completion", lambda *a, **k: ({"content": "ok"}, {}))
+    agent.chat_completion("https://api.ejemplo.com/v1", "m", [], None)
+    assert usado == []                                        # motor remoto: el ancho de banda local no importa
+    agent.chat_completion("http://127.0.0.1:8080/v1", "m", [], None)
+    assert usado == ["in", "out"]
+
+
+def test_modo_ia_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(agent, "_MODO_IA", None)
+    monkeypatch.setenv("TISMA_MODO_IA", "0")
+    assert agent.modo_ia() is False

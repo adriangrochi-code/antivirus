@@ -170,6 +170,7 @@ class Ajuste:
     restaurar: Callable[[dict], None]
     disponible: Callable[[], str | None] = lambda: None          # None = disponible; si no, el motivo
     pruebas: list[str] = field(default_factory=lambda: ["memoria", "planificador", "ia"])
+    persistente: bool = True      # False: el ajuste es dinámico (Modo IA): se mide, pero nunca «se deja puesto»
 
 
 THP = "/sys/kernel/mm/transparent_hugepage"
@@ -201,7 +202,78 @@ def _scx_disponible() -> str | None:
     return None
 
 
+def _sesion_grafica() -> tuple[str, int] | None:
+    """(usuario, uid) de la sesión gráfica activa, para tocar su escritorio (KWin, Baloo) por su D-Bus."""
+    r = subprocess.run(["loginctl", "list-sessions", "--no-legend"], capture_output=True, text=True, timeout=10)
+    for line in r.stdout.splitlines():
+        sid = line.split()[0] if line.split() else ""
+        p = subprocess.run(["loginctl", "show-session", sid, "-p", "Type", "-p", "Active", "-p", "Name", "-p", "User"],
+                           capture_output=True, text=True, timeout=10).stdout
+        d = dict(x.split("=", 1) for x in p.splitlines() if "=" in x)
+        if d.get("Active") == "yes" and d.get("Type") in ("wayland", "x11") and d.get("User", "").isdigit():
+            return d.get("Name", ""), int(d["User"])
+    return None
+
+
+def _run_como(usuario: str, uid: int) -> Callable:
+    def run(argv, **kw):
+        env = ["env", f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus", f"XDG_RUNTIME_DIR=/run/user/{uid}"]
+        return subprocess.run(["runuser", "-u", usuario, "--", *env, *argv], **kw)
+    return run
+
+
+class _ModoIAAjuste:
+    """El Modo IA completo (sistema + escritorio del usuario + arriendo), para medirlo con A/B."""
+    def __init__(self):
+        from . import modo_ia
+        self.m = modo_ia
+        self.sistema = modo_ia.Sistema()
+
+    def guardar(self) -> dict:
+        return {}
+
+    def aplicar(self) -> None:
+        self.sistema.pausar()
+        ses = _sesion_grafica()
+        self._run = _run_como(*ses) if ses else None
+        self._cambios = self.m.sesion_entrar(self._run) if self._run else {}
+        self._arriendo = self.m.arriendo(ses[1]) if ses else None
+        if self._arriendo:
+            try:
+                open(self._arriendo, "a").close()
+                os.utime(self._arriendo)
+            except OSError:
+                self._arriendo = None
+
+    def restaurar(self, _s: dict) -> None:
+        self.sistema.reanudar()
+        if getattr(self, "_run", None):
+            self.m.sesion_salir(self._cambios, self._run)
+            self._run = None
+        if getattr(self, "_arriendo", None):
+            try:
+                os.unlink(self._arriendo)
+            except OSError:
+                pass
+            self._arriendo = None
+
+
+_MODO = None
+
+
+def _modo() -> _ModoIAAjuste:
+    global _MODO
+    if _MODO is None:
+        _MODO = _ModoIAAjuste()
+    return _MODO
+
+
 AJUSTES: dict[str, Ajuste] = {
+    "modo-ia": Ajuste(
+        "modo-ia", "Modo IA: mientras la IA genera, sin efectos pesados de KWin (desenfoque, contraste), Baloo en "
+        "pausa y sin escaneo de KSM ni compactación de memoria. Mídelo con --modelo: es para la IA.",
+        lambda: _modo().guardar(), lambda: _modo().aplicar(), lambda s: _modo().restaurar(s),
+        pruebas=["memoria", "ia"], persistente=False),
     "thp-siempre": Ajuste(
         "thp-siempre", "Páginas grandes (THP) para toda la memoria de los programas, no solo la que las pide. "
         "Menos fallos de la caché de traducción (TLB): puede acelerar la IA con el modelo cargado en RAM.",
@@ -288,7 +360,7 @@ def ejecutar(ajuste: Ajuste, rondas: int = 4, ctx: dict | None = None, dejar: bo
                         muestras[lado].setdefault(k, []).append(v)
                 progreso(f"Ronda {i + 1}/{rondas}: medido {'con' if lado == 'B' else 'sin'} «{ajuste.id}»")
         filas, ver = comparar_muestras(muestras["A"], muestras["B"])
-        queda = dejar and ver == "mejor"
+        queda = dejar and ver == "mejor" and ajuste.persistente
         if queda:
             ajuste.aplicar()
     finally:
@@ -310,6 +382,7 @@ def _guardar_resultado(res: dict) -> None:
     fd, tmp = tempfile.mkstemp(dir=ESTADO)
     with os.fdopen(fd, "w") as fh:
         json.dump(dec, fh, ensure_ascii=False, indent=1)
+    os.chmod(tmp, 0o644)                  # TISMA Code (como el usuario) lee el veredicto del Modo IA
     os.replace(tmp, dec_path)
 
 
@@ -321,12 +394,17 @@ def _leer_json(path: str) -> dict:
         return {}
 
 
+def veredicto_guardado(ajuste: str) -> str | None:
+    """Lo que dijo la última comparación de un ajuste (lo usa TISMA Code para apagar el Modo IA si empeora)."""
+    return _leer_json(os.path.join(ESTADO, "decisiones.json")).get(ajuste, {}).get("veredicto")
+
+
 def reaplicar(progreso: Callable[[str], None] = print) -> list[str]:
     """En cada arranque: vuelve a aplicar los ajustes que ganaron (los de sysfs se pierden al reiniciar)."""
     hechos = []
     for aid, d in _leer_json(os.path.join(ESTADO, "decisiones.json")).items():
         aj = AJUSTES.get(aid)
-        if not aj or not d.get("aplicado") or aj.disponible():
+        if not aj or not aj.persistente or not d.get("aplicado") or aj.disponible():
             continue
         try:
             aj.aplicar()

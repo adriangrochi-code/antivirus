@@ -149,7 +149,9 @@ class AdaptDaemon:
         self.state = "normal"
         self._stop = threading.Event()
         from .memoria import Compactor
+        from .modo_ia import Sistema
         self.compactor = Compactor()
+        self.modo_ia = Sistema()
         self._ticks = 0
         self.total_mb = mem_available_mb()
         for line in (sysfs.read("/proc/meminfo", "") or "").splitlines():
@@ -221,7 +223,16 @@ class AdaptDaemon:
         avail = mem_available_mb()
         self.mem.update(avail)
         self._ticks += 1
-        if self._ticks % 20 == 0:                 # cada ~minuto: comprimir la memoria fría de apps sin usar
+        # Modo IA: con la IA local generando, ni KSM ni la compactación le quitan ancho de banda de memoria
+        from . import modo_ia
+        ia = modo_ia.activo()
+        if ia and not self.modo_ia.pausado:
+            log.info("Modo IA: la IA local está generando; pausadas la compactación y el escaneo de KSM")
+            self.modo_ia.pausar()
+        elif not ia and self.modo_ia.pausado:
+            log.info("Modo IA terminado: se reanuda el mantenimiento de memoria")
+            self.modo_ia.reanudar()
+        if self._ticks % 20 == 0 and not ia:      # cada ~minuto: comprimir la memoria fría de apps sin usar
             try:
                 self.compactor.step(avail, self.total_mb)
             except Exception:  # noqa: BLE001 — una pasada fallida no detiene la adaptación
@@ -240,4 +251,5 @@ class AdaptDaemon:
             except Exception:  # noqa: BLE001 — el demonio nunca debe morir
                 log.exception("Error en ciclo de adaptación")
             self._stop.wait(self.interval)
+        self.modo_ia.reanudar()
         self.enter("normal", ["apagando"])

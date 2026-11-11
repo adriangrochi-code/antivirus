@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import queue
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -117,8 +119,46 @@ def _check_local_owner(endpoint: str) -> None:
     _OWNER_OK[port] = time.monotonic()
 
 
+_MODO_IA = None
+
+
+def modo_ia():
+    """Modo IA (centinela.modo_ia): mientras el motor LOCAL genera, el escritorio y el sistema le ceden el ancho
+    de banda de memoria. TISMA_MODO_IA=0 lo desactiva. Sin Centinela instalado no hace nada."""
+    global _MODO_IA
+    if _MODO_IA is None:
+        _MODO_IA = False
+        if os.environ.get("TISMA_MODO_IA", "1") != "0":
+            try:
+                from centinela.comparar import veredicto_guardado
+                from centinela.modo_ia import Generando
+                if veredicto_guardado("modo-ia") == "peor":
+                    return _MODO_IA           # medido en este equipo con «centinela comparar»: empeora, no se usa
+                _MODO_IA = Generando()
+                _MODO_IA.recuperar()          # si la última vez se cerró a mitad, el escritorio vuelve a estar como antes
+                import atexit
+                atexit.register(_MODO_IA.cerrar)   # al salir, sin esperar la retención
+            except Exception:  # noqa: BLE001 (sin Centinela o sin sesión: se sigue sin modo IA)
+                _MODO_IA = False
+    return _MODO_IA
+
+
+def _es_local(endpoint: str) -> bool:
+    host = urllib.parse.urlparse(endpoint).hostname or ""
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
 def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
                     api_key: str = "local", timeout: int = 900, extra: dict | None = None) -> tuple[dict, dict]:
+    m = modo_ia() if _es_local(endpoint) else None
+    if not m:
+        return _chat_completion(endpoint, model, messages, tool_schemas, api_key, timeout, extra)
+    with m:
+        return _chat_completion(endpoint, model, messages, tool_schemas, api_key, timeout, extra)
+
+
+def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
+                     api_key: str = "local", timeout: int = 900, extra: dict | None = None) -> tuple[dict, dict]:
     _check_local_owner(endpoint)
     body = {"model": model, "messages": messages, "temperature": 0.2, "top_p": 0.9}
     body.update(extra or {})       # p. ej. sin «pensamiento» para resúmenes (Strata y llama.cpp con --jinja)
