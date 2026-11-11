@@ -1,0 +1,12 @@
+{
+  "nombre": "kicad",
+  "descripcion": "KiCad: SIN red; Documentos",
+  "exec": "/usr/bin/kicad",
+  "red": false,
+  "gpu": true,
+  "x11": true,
+  "rw": [
+    "~/Documentos"
+  ],
+  "escritorio": "org.kicad.kicad"
+}

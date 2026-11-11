@@ -1,0 +1,14 @@
+{
+  "nombre": "wine",
+  "descripcion": "Programas de Windows (Wine): SIN red, cada uno ve solo su carpeta",
+  "exec": "/usr/bin/wine",
+  "red": false,
+  "gpu": true,
+  "audio": true,
+  "mandos": true,
+  "x11": true,
+  "rw": [
+    "~/Descargas/Windows"
+  ],
+  "escritorio": "wine"
+}

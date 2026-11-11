@@ -95,9 +95,29 @@ def cmd_signatures(cfg: Config, args) -> int:
     elif args.action == "add-pattern":
         db.add_pattern(args.name, args.value, args.severity)
     elif args.action == "info":
-        print(f"{len(db.hashes)} hashes, {len(db.patterns)} patrones")
+        sc = Scanner(cfg)
+        print(f"{len(db.hashes)} hashes, {len(db.patterns)} patrones, "
+              f"YARA: {'sí' if sc.yara.available() else 'no'}, ML EMBER2024: {'sí' if sc.ml.available() else 'no'}")
+        return 0
+    elif args.action == "yara-actualizar":
+        from .yara_engine import YaraEngine
+        print(f"{YaraEngine(cfg.data_dir / 'yara').update()} archivos de reglas YARA instalados")
+        return 0
+    elif args.action == "modelos-descargar":
+        from .ml import download_models
+        print("Modelos verificados: " + ", ".join(download_models(cfg.data_dir / "modelos")))
         return 0
     db.save()
+    return 0
+
+
+def cmd_analyze(cfg: Config, args) -> int:
+    from . import analyze
+    import json as _json
+    r = analyze.report(args.path, Scanner(cfg))
+    print(_json.dumps(r, indent=2, ensure_ascii=False) if args.json else analyze.summary(r))
+    if args.explicar:
+        print("\nExplicación (modelo local):\n" + analyze.explain(r, args.endpoint))
     return 0
 
 
@@ -130,12 +150,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_firewall)
 
     s = sub.add_parser("signatures", help="Gestionar firmas")
-    s.add_argument("action", choices=["info", "import", "add-hash", "add-pattern"])
+    s.add_argument("action", choices=["info", "import", "add-hash", "add-pattern", "yara-actualizar", "modelos-descargar"])
     s.add_argument("value", nargs="?", help="hash o regex")
     s.add_argument("--source", help="archivo o URL con hashes SHA-256")
     s.add_argument("--name", default="Malware.Custom")
     s.add_argument("--severity", default="medium", choices=["low", "medium", "high"])
     s.set_defaults(func=cmd_signatures)
+    s = sub.add_parser("analizar", help="Informe de un archivo sospechoso (YARA, ML, capa)")
+    s.add_argument("path")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--explicar", action="store_true", help="explicación con el modelo local")
+    s.add_argument("--endpoint", default="http://127.0.0.1:8080/v1")
+    s.set_defaults(func=cmd_analyze)
     return p
 
 

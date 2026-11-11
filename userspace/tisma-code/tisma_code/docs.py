@@ -53,6 +53,10 @@ def _fts_query(text: str) -> str:
 class DocSpace:
     def __init__(self, project: Path, index_dir: Path, library: Path = LIBRARY):
         self.project_dir = project / ".tisma"
+        # Un repositorio podría traer .tisma como enlace a ~ para leer o escribir fuera del proyecto
+        if self.project_dir.is_symlink() or (self.project_dir.exists() and
+                                             project.resolve() not in self.project_dir.resolve().parents):
+            raise ValueError(".tisma del proyecto es un enlace simbólico: por seguridad no se usa")
         self.library = library
         for d in [self.library, *(self.project_dir / k for k in KINDS.values())]:
             d.mkdir(parents=True, exist_ok=True)
@@ -83,7 +87,7 @@ class DocSpace:
                     dirnames[:] = [d for d in dirnames if not d.startswith(".")]
                     for f in files:
                         p = Path(dirpath) / f
-                        if p.suffix.lower() not in TEXT_EXT | {".pdf"}:
+                        if p.suffix.lower() not in TEXT_EXT | {".pdf"} or p.is_symlink():
                             continue
                         try:
                             st = p.stat()
@@ -148,7 +152,7 @@ class DocSpace:
         if root is None or not rel:
             raise ValueError("Referencia inválida: usa «biblioteca:ruta» o «proyecto:ruta»")
         p = (root / rel).resolve()
-        if root.resolve() not in p.parents:
+        if root.resolve() not in p.parents or (root / rel).is_symlink():
             raise ValueError("Ruta fuera del espacio de documentos")
         return p
 

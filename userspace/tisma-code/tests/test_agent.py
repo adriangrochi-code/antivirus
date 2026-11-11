@@ -39,7 +39,7 @@ def project(tmp_path):
 def run_session(project, script, tmp_path_factory, **kw):
     llm = FakeLLM(script)
     s = agent.Session(str(project), "http://x/v1", "m", llm=llm, kb_dir=tmp_path_factory.mktemp("kb"), **kw)
-    s.always_allow |= {"write_file", "edit_file", "run_command"}
+    s.always_allow |= {"write_file", "edit_file", "run_command", "verify"}
     s.send("Arregla la función suma")
     events = []
     while not s.events.empty():

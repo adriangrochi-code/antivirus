@@ -1,0 +1,12 @@
+{
+  "nombre": "imagenes",
+  "descripcion": "Gwenview: SIN red, imágenes en solo lectura",
+  "exec": "/usr/bin/gwenview",
+  "red": false,
+  "gpu": true,
+  "ro": [
+    "~/Imágenes",
+    "~/Descargas"
+  ],
+  "escritorio": "org.kde.gwenview"
+}

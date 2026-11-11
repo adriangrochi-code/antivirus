@@ -1,0 +1,20 @@
+{
+  "nombre": "navegador",
+  "descripcion": "TISMA Navegador (Chromium): red y GPU; solo ve Descargas",
+  "exec": "/usr/bin/chromium",
+  "red": true,
+  "gpu": true,
+  "audio": true,
+  "camara": false,
+  "rw": [
+    "~/Descargas"
+  ],
+  "dbus_talk": [
+    "org.freedesktop.Notifications",
+    "org.mpris.MediaPlayer2.*"
+  ],
+  "dbus_own": [
+    "org.mpris.MediaPlayer2.chromium.*"
+  ],
+  "escritorio": "chromium"
+}

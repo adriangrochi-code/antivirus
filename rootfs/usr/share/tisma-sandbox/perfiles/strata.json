@@ -1,0 +1,13 @@
+{
+  "nombre": "strata",
+  "descripcion": "Strata (IA local): red para descargar modelos, GPU",
+  "exec": "/opt/strata/Strata.AppImage",
+  "red": true,
+  "gpu": true,
+  "audio": false,
+  "x11": true,
+  "env": {
+    "APPIMAGE_EXTRACT_AND_RUN": "1"
+  },
+  "escritorio": "strata"
+}

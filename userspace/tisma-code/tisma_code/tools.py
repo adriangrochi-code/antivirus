@@ -18,19 +18,9 @@ from pathlib import Path
 
 from . import harness
 
-MAX_OUTPUT = 20_000
+from .base import MAX_OUTPUT, ToolError, _clip  # noqa: F401 (reexportados)
 SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
-NEEDS_APPROVAL = {"write_file", "edit_file", "run_command"}
-
-
-class ToolError(Exception):
-    pass
-
-
-def _clip(text: str, limit: int = MAX_OUTPUT) -> str:
-    if len(text) <= limit:
-        return text
-    return text[: limit // 2] + f"\n… [{len(text) - limit} caracteres omitidos] …\n" + text[-limit // 2:]
+NEEDS_APPROVAL = {"write_file", "edit_file", "run_command", "formatear", "verify"}
 
 
 class Workspace:
@@ -38,6 +28,12 @@ class Workspace:
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise ToolError(f"No es una carpeta: {self.root}")
+        home = Path.home().resolve()
+        if self.root in (Path("/"), home) or self.root in home.parents or \
+                any(self.root == home / d or (home / d) in self.root.parents
+                    for d in (".ssh", ".gnupg", ".config", ".local", ".mozilla", ".cache")):
+            raise ToolError("Por seguridad no se puede abrir como proyecto la carpeta personal completa, "
+                            "la raíz ni carpetas de configuración: elige la carpeta del proyecto")
         self.allow_network = False
 
     def resolve(self, path: str) -> Path:
@@ -77,7 +73,7 @@ class Workspace:
         p = self.resolve(path)
         if not p.is_file():
             raise ToolError(f"No existe el archivo: {path}")
-        text = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        text = p.read_text(encoding="utf-8", errors="replace").splitlines()  # resolve() ya validó el destino
         start = max(offset, 1)
         chunk = text[start - 1: start - 1 + limit]
         out = "\n".join(f"{i:>5}\t{line}" for i, line in enumerate(chunk, start))
@@ -97,6 +93,8 @@ class Workspace:
                 if not fnmatch.fnmatch(f, glob):
                     continue
                 p = Path(dirpath) / f
+                if p.is_symlink():
+                    continue
                 try:
                     if p.stat().st_size > 2_000_000:
                         continue
@@ -153,18 +151,25 @@ class Workspace:
                                             f"a/{path}", f"b/{path}")) or "(sin cambios)"
 
     def sandbox_argv(self, command: str) -> list[str]:
+        """bubblewrap: sistema de solo lectura, $HOME y /run ocultos (sin D-Bus, gpg-agent, systemd
+        de usuario…), entorno limpio, .git de solo lectura (no se pueden plantar hooks ni fsmonitor),
+        sin red salvo permiso, sin capacidades. Sin bubblewrap no se ejecuta nada."""
         bwrap = shutil.which("bwrap")
         if not bwrap:
-            return ["bash", "-o", "pipefail", "-c", command]
-        argv = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-                "--bind", str(self.root), str(self.root), "--chdir", str(self.root),
-                "--unshare-all", "--die-with-parent", "--new-session"]
+            raise ToolError("bubblewrap no está instalado: por seguridad no se ejecutan comandos sin aislamiento")
+        home, root = str(Path.home()), str(self.root)
+        argv = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                "--tmpfs", "/tmp", "--tmpfs", "/run", "--tmpfs", "/var/tmp", "--tmpfs", home,
+                "--bind", root, root]
+        git = self.root / ".git"
+        if git.exists() and not git.is_symlink():
+            argv += ["--ro-bind", str(git), str(git)]
+        argv += ["--chdir", root, "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+                 "--clearenv", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", home,
+                 "--setenv", "LANG", os.environ.get("LANG", "C.UTF-8"), "--setenv", "TERM", "dumb",
+                 "--setenv", "TMPDIR", "/tmp", "--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
         if self.allow_network:
-            argv.append("--share-net")
-        # El directorio personal queda oculto salvo la carpeta del proyecto
-        home = Path.home()
-        if home != self.root and home not in self.root.parents:
-            argv[argv.index("--bind"):argv.index("--bind")] = ["--tmpfs", str(home)]
+            argv += ["--share-net", "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve"]
         return argv + ["bash", "-o", "pipefail", "-c", command]
 
     def run_command(self, command: str, timeout: int = 120) -> str:
@@ -227,9 +232,11 @@ HOPE_SCHEMAS = [
             "problema": {"type": "string"}, "tema": {"type": "string"}}}}},
 ]
 
+from . import devtools  # noqa: E402  (importa Workspace/ToolError ya definidos arriba)
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
 
-TOOL_SCHEMAS = BASE_SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + HOPE_SCHEMAS + DOC_SCHEMAS
+TOOL_SCHEMAS = (BASE_SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA]
+                + HOPE_SCHEMAS + DOC_SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -239,7 +246,26 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
     if name == "read_file":
         return ws.read_file(args["path"], int(args.get("offset", 1)), int(args.get("limit", 400)))
     if name == "search":
+        if devtools.have("rg"):
+            return devtools.rg_search(ws, args["pattern"], args.get("glob", "*"))
         return ws.search(args["pattern"], args.get("glob", "*"))
+    if name == "mapa_repo":
+        return devtools.repo_map(ws)
+    if name == "simbolo":
+        return devtools.find_symbol(ws, str(args["nombre"]))
+    if name == "diagnosticos":
+        rutas = [str(r) for r in args.get("rutas") or []]
+        if not rutas:
+            raise ToolError("Indica las rutas a revisar")
+        return devtools.format_diagnostics(devtools.diagnostics(ws, rutas, bool(args.get("completo"))))
+    if name == "formatear":
+        p, old, new = devtools.formatted(ws, args["path"])
+        if old == new:
+            return "El archivo ya tenía el formato correcto."
+        p.write_text(new, encoding="utf-8")
+        return f"Formateado {ws.rel(p)}"
+    if name == "git":
+        return devtools.git(ws, str(args["subcomando"]), args.get("args") or [])
     if name == "write_file":
         return ws.write_file(args["path"], args["content"])
     if name == "edit_file":
@@ -261,7 +287,14 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
         return ws.preview_write(args["path"], args["content"])
     if name == "edit_file":
         return ws.preview_edit(args["path"], args["old"], args["new"])
+    if name == "verify":
+        checks = harness.detect_checks(ws.root)
+        return ("Ejecutará el código de pruebas del proyecto (aislado, sin red):\n" +
+                "\n".join(f"$ {c}" for c in checks)) if checks else "No hay comprobaciones detectadas"
+    if name == "formatear":
+        _, old, new = devtools.formatted(ws, args["path"])
+        return ws._diff(args["path"], old, new)
     if name == "run_command":
         net = "con red" if ws.allow_network else "sin red"
-        return f"$ {args['command']}\n(aislado con bubblewrap, {net})"
+        return f"$ {args['command']}\n(aislado con bubblewrap: solo ve el proyecto, {net}, .git de solo lectura)"
     return ""

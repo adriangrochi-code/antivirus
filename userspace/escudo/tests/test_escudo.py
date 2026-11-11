@@ -54,3 +54,54 @@ def test_whitelist_and_injection_safe(tmp_path):
         raise AssertionError("debería rechazar la IP")
     except ValueError:
         pass
+
+
+def test_ml_layer_is_low_alone_and_high_when_corroborated(tmp_path, monkeypatch):
+    from escudo import ml
+    c = cfg(tmp_path)
+    sc = Scanner(c)
+    sc.ml.libs_ok = True
+    monkeypatch.setattr(sc.ml, "score", lambda data: ("PE", 0.995))
+    exe = tmp_path / "app.exe"
+    exe.write_bytes(b"MZ" + b"\0" * 200)
+    dets = sc.scan_file(str(exe))
+    assert [d.severity for d in dets if d.method == "ml"] == ["low"]           # solo: no cuarentena
+    bad = tmp_path / "factura.pdf.exe"
+    bad.write_bytes(b"MZ" + b"\0" * 200)
+    dets = sc.scan_file(str(bad))
+    assert any(d.method == "ml" and d.severity == "high" for d in dets)        # corroborado por heurística
+    assert ml.file_kind(b"\x7fELF....") == "ELF" and ml.file_kind(b"%PDF-1.7") == "PDF"
+
+
+def test_model_hash_mismatch_is_refused(tmp_path):
+    from escudo import ml
+    d = tmp_path / "modelos"
+    d.mkdir()
+    (d / ml.MODELS["PE"][0]).write_bytes(b"modelo manipulado")
+    eng = ml.MLEngine(d)
+    eng.libs_ok = True
+    import sys, types
+    sys.modules.setdefault("lightgbm", types.SimpleNamespace(Booster=lambda **k: object()))
+    assert eng._booster("PE") is None
+
+
+def test_yara_zip_slip_and_compile_gate(tmp_path, monkeypatch):
+    import io, zipfile
+    from escudo.yara_engine import YaraEngine
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("../../escape.yar", "rule a { condition: true }")
+        z.writestr("ok/regla.yar", "rule b { condition: true }")
+    payload = buf.getvalue()
+
+    class R:
+        def __init__(self, d): self.d = io.BytesIO(d)
+        def read(self, n=-1): return self.d.read(n)
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: R(payload))
+    eng = YaraEngine(tmp_path / "data" / "yara")
+    (tmp_path / "data").mkdir()
+    eng.yara = None                       # sin la librería no se compila, pero se instala igual
+    assert eng.update() == 2
+    assert not (tmp_path / "escape.yar").exists() and (tmp_path / "data/yara/escape.yar").exists()

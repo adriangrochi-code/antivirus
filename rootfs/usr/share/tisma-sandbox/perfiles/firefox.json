@@ -1,0 +1,19 @@
+{
+  "nombre": "firefox",
+  "descripcion": "Firefox ESR: red y GPU; solo ve Descargas",
+  "exec": "/usr/bin/firefox-esr",
+  "red": true,
+  "gpu": true,
+  "audio": true,
+  "rw": [
+    "~/Descargas"
+  ],
+  "dbus_talk": [
+    "org.freedesktop.Notifications"
+  ],
+  "dbus_own": [
+    "org.mozilla.firefoxesr.*",
+    "org.mpris.MediaPlayer2.firefox.*"
+  ],
+  "escritorio": "firefox-esr"
+}

@@ -1,0 +1,12 @@
+{
+  "nombre": "visor-pdf",
+  "descripcion": "Okular: SIN red, documentos en solo lectura",
+  "exec": "/usr/bin/okular",
+  "red": false,
+  "gpu": true,
+  "ro": [
+    "~/Documentos",
+    "~/Descargas"
+  ],
+  "escritorio": "org.kde.okular"
+}

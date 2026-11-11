@@ -35,13 +35,64 @@ from hope.runtime.loop import solve_with_review  # noqa: E402
 from hope.runtime.toolcalls import CALL_RE, HELP, ToolRunner  # noqa: E402
 from hope.teacher.client import OpenAICompatibleTeacher, TeacherConfig  # noqa: E402
 from hope.tools.builtin import default_catalog  # noqa: E402
-from hope.tools.creation import ToolForge  # noqa: E402
 from hope.tools.tlm import ToolUsageMemory  # noqa: E402
+import hope.tools.sandbox as _hope_sandbox  # noqa: E402
+
+
+class _JailedSubprocess:
+    """Sustituye a ``subprocess`` dentro de hope/tools/sandbox.py.
+
+    El sandbox de Hope limita tiempo y memoria pero NO bloquea la red ni el sistema de archivos
+    (lo dice su propia documentación). Como el agente puede llamar a ⟦python⟧, ⟦compilar⟧,
+    ⟦pruebas⟧… sin pedir permiso, todo proceso se encierra en bubblewrap: sin red, sistema de
+    solo lectura, $HOME oculto y solo la carpeta temporal del trabajo escribible.
+    Sin bubblewrap no se ejecuta nada (falla cerrado)."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    @staticmethod
+    def _limits(mem_mb: int = 1024, cpu_s: int = 30):
+        def apply():
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS, (mem_mb << 20, mem_mb << 20))
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s))
+            resource.setrlimit(resource.RLIMIT_FSIZE, (10 << 20, 10 << 20))
+            # Sin RLIMIT_NPROC: cuenta todos los procesos del usuario y en un escritorio fallaría.
+        return apply
+
+    def run(self, argv, *args, cwd=None, preexec_fn=None, timeout=None, **kw):
+        import shutil as _sh
+        bwrap = _sh.which("bwrap")
+        if not bwrap:
+            raise PermissionError("bubblewrap no está instalado: las herramientas que ejecutan código "
+                                  "están desactivadas por seguridad")
+        work = str(Path(cwd).resolve()) if cwd else "/tmp"
+        jail = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+                "--tmpfs", str(Path.home()), "--tmpfs", "/run", "--bind", work, work, "--chdir", work,
+                "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--"]
+        return self._real.run(jail + list(argv), *args, cwd=cwd, timeout=timeout,
+                              preexec_fn=self._limits(cpu_s=int(timeout or 20) + 1), **kw)
+
+
+import subprocess as _subprocess  # noqa: E402
+
+_hope_sandbox.subprocess = _JailedSubprocess(_subprocess)
 
 STEP_FORMAT = ("Formato: un paso por línea «Paso n: expresión = valor»; al final una línea "
                "«Resultado: …». Si faltan datos o son contradictorios, dilo en el Resultado.")
-# Herramientas que necesitan servicios que TISMA Code no conecta (web, wiki, navegador)
-SKIP = {"buscar_web", "enlaces_web", "buscar_wiki", "inspeccionar", "leer_web"}
+# Lista BLANCA: solo herramientas de cálculo puro cuya entrada es texto. Las que leen rutas del
+# disco (stl, gcode, git_leer, imagen_info, recortar…), las que crean o componen herramientas
+# (forja persistente), la web y el maestro remoto quedan fuera. El código (⟦python⟧, ⟦compilar⟧,
+# ⟦pruebas⟧, ⟦lint⟧) se ejecuta además en bubblewrap sin red ni $HOME (_JailedSubprocess).
+ALLOWED = {"calc", "fraccion", "estad", "unidades", "resolver", "derivar", "integrar", "limite", "matriz",
+           "logica", "python", "pruebas", "lint", "compilar", "circuito", "filtro", "convertir", "correlacion",
+           "bases", "ajuste", "ode", "constantes", "resistencias", "material", "regex", "validar", "hex",
+           "entropia", "memoria", "anotar", "nota", "diff"}
+SKIP = set(HELP) - ALLOWED
 
 
 def tool_help(topic: str = "", limit: int = 60) -> str:
@@ -66,9 +117,8 @@ class HopeTools:
         self.tlm = ToolUsageMemory(data_dir / "hope_tlm.json")
         self.catalog = default_catalog()
         self.teacher = OpenAICompatibleTeacher(TeacherConfig(endpoint=endpoint, model=model))
-        self.forge = ToolForge(self.catalog, self.teacher, store_dir=data_dir / "herramientas_creadas")
-        self.runner = ToolRunner(self.catalog, memory=self.notebook, forge=self.forge, tlm=self.tlm,
-                                 teacher=self.teacher, topic="tisma-code")
+        # Sin forja (crearía herramientas persistentes) ni maestro (⟦preguntar_maestro⟧) en el agente
+        self.runner = ToolRunner(self.catalog, memory=self.notebook, tlm=self.tlm, topic="tisma-code")
         self.usage = AgentUsageMemory(data_dir / "hope_consejo.json")
         self._lock = threading.Lock()
 
@@ -77,8 +127,8 @@ class HopeTools:
 
     # ------------------------------------------------------------ herramientas
     def run(self, name: str, arg: str) -> str:
-        if name in SKIP:
-            return f"error: «{name}» no está disponible en TISMA Code (sin acceso web desde el agente)"
+        if name not in ALLOWED:
+            return f"error: «{name}» no está disponible en TISMA Code por seguridad"
         with self._lock:
             return self.runner.run(name, arg)
 

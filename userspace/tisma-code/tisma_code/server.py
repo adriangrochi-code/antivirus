@@ -17,6 +17,8 @@ from . import models
 from .agent import Session
 
 STATIC = Path(__file__).parent / "static"
+STATIC_FILES = {"/static/logo.svg": ("logo.svg", "image/svg+xml")}
+MAX_LOG = 5000
 CONFIG = Path.home() / ".config/tisma-code/config.json"
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1"   # Strata
 
@@ -26,6 +28,7 @@ class App:
         self.token = secrets.token_urlsafe(24)
         self.session: Session | None = None
         self.log: list[dict] = []
+        self.base = 0
         self.cond = threading.Condition()
         self.downloads = models.Downloads(on_progress=lambda d: self.push({"type": "download", **d}))
         self.server = models.LocalServer()
@@ -36,14 +39,27 @@ class App:
         except (OSError, ValueError):
             pass
 
+    def llm(self):
+        """Cliente del motor con la clave de llama-server si el endpoint es el servidor propio."""
+        import functools
+
+        from .agent import chat_completion
+        own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
+        return functools.partial(chat_completion, api_key=self.server.api_key if own else "local")
+
     def save_config(self) -> None:
-        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         CONFIG.write_text(json.dumps(self.config, indent=2))
+        CONFIG.chmod(0o600)
 
     def push(self, ev: dict) -> None:
         with self.cond:
-            ev["seq"] = len(self.log)
+            ev["seq"] = self.base + len(self.log)
             self.log.append(ev)
+            if len(self.log) > MAX_LOG:              # memoria acotada
+                drop = len(self.log) - MAX_LOG
+                del self.log[:drop]
+                self.base += drop
             self.cond.notify_all()
 
     def pump(self, s: Session) -> None:
@@ -56,9 +72,9 @@ class App:
     def events_since(self, seq: int, wait: float = 25) -> list[dict]:
         end = time.monotonic() + wait
         with self.cond:
-            while len(self.log) <= seq and time.monotonic() < end:
+            while self.base + len(self.log) <= seq and time.monotonic() < end:
                 self.cond.wait(end - time.monotonic())
-            return self.log[seq:]
+            return self.log[max(0, seq - self.base):]
 
 
 APP: App
@@ -96,11 +112,13 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass                     # el navegador cerró la conexión (p. ej. al recargar)
 
+    def _host_ok(self) -> bool:
+        # anti DNS-rebinding: el Host debe ser exactamente nuestra dirección
+        port = self.server.server_address[1]
+        return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}")
+
     def _authorized(self) -> bool:
-        host = self.headers.get("Host", "")
-        if not host.startswith(("127.0.0.1:", "localhost:")):   # anti DNS-rebinding
-            return False
-        return secrets.compare_digest(self.headers.get("X-Token", ""), APP.token)
+        return self._host_ok() and secrets.compare_digest(self.headers.get("X-Token", ""), APP.token)
 
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -110,16 +128,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if not self._host_ok():
+            return self._send(403, {"error": "host no permitido"})
         if url.path == "/":
-            if q.get("t") != APP.token:
+            if not secrets.compare_digest(q.get("t", ""), APP.token):
                 return self._send(403, b"Abre TISMA Code desde su lanzador.", "text/plain")
             html = (STATIC / "index.html").read_text().replace("__TOKEN__", APP.token)
             return self._send(200, html.encode(), "text/html")
-        if url.path.startswith("/static/") and "/.." not in url.path:
-            f = STATIC / url.path[len("/static/"):]
-            if f.is_file():
-                ctype = "image/svg+xml" if f.suffix == ".svg" else "text/css" if f.suffix == ".css" else "application/javascript"
-                return self._send(200, f.read_bytes(), ctype)
+        if url.path in STATIC_FILES:                 # lista blanca: nada de rutas arbitrarias
+            name, ctype = STATIC_FILES[url.path]
+            return self._send(200, (STATIC / name).read_bytes(), ctype)
         if not self._authorized():
             return self._send(403, {"error": "no autorizado"})
         try:
@@ -128,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"config": APP.config, "hardware": APP.hw,
                                         "workspace": str(s.ws.root) if s else None,
                                         "git": git_branch(s.ws.root) if s else None,
-                                        "seq": len(APP.log), "server_model": APP.server.model})
+                                        "seq": APP.base + len(APP.log), "server_model": APP.server.model})
             if url.path == "/api/dirs":
                 base = Path(q.get("path") or Path.home()).expanduser().resolve()
                 dirs = sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
@@ -168,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
                 APP.config.update({k: b[k] for k in ("endpoint", "model") if k in b})
                 ws = b["workspace"]
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
-                            context_tokens=int(b.get("context", 32768)))
+                            llm=APP.llm(), context_tokens=int(b.get("context", 32768)))
                 s.ws.allow_network = bool(b.get("network", False))
                 APP.session = s
                 threading.Thread(target=APP.pump, args=(s,), daemon=True).start()
@@ -207,6 +225,7 @@ class Handler(BaseHTTPRequestHandler):
                 APP.save_config()
                 if APP.session:
                     APP.session.endpoint, APP.session.model = ep, APP.config["model"]
+                    APP.session.llm = APP.llm()
                 return self._send(200, {"endpoint": ep})
         except (KeyError, ValueError, OSError, RuntimeError) as e:
             return self._send(400, {"error": str(e)})

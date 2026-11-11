@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Iterator
 
 from .config import Config
+from .ml import THRESHOLD_HIGH, THRESHOLD_SUSPICIOUS, MLEngine
 from .signatures import SignatureDB
+from .yara_engine import YaraEngine
 
 CHUNK = 1024 * 1024
 # Solapamiento entre bloques para no perder patrones que crucen el límite.
@@ -60,6 +62,8 @@ class Scanner:
         self.max_size = config.max_file_size_mb * 1024 * 1024
         self.excludes = [os.path.normcase(os.path.abspath(p)) for p in config.exclude_dirs]
         self.excludes.append(os.path.normcase(os.path.abspath(config.quarantine_dir)))
+        self.yara = YaraEngine(config.data_dir / "yara")
+        self.ml = MLEngine(config.data_dir / "modelos")
 
     def _excluded(self, path: str) -> bool:
         p = os.path.normcase(os.path.abspath(path))
@@ -106,9 +110,27 @@ class Scanner:
         name = self.db.lookup_hash(sha.hexdigest())
         if name:
             detections.insert(0, Detection(path, name, "high", "hash"))
+        for m in self.yara.match(path):
+            detections.append(Detection(path, f"YARA.{m['rule']}", m["severity"], "yara"))
         if self.config.heuristics and not detections:
             detections.extend(self._heuristics(path, head))
+        detections.extend(self._ml(path, st.st_size, bool(detections)))
         return detections
+
+    def _ml(self, path: str, size: int, corroborated: bool) -> list[Detection]:
+        """Modelo EMBER2024: solo ejecutables/APK/PDF. Solo no basta para la cuarentena."""
+        if not self.ml.libs_ok or size > 30 * 1024 * 1024:
+            return []
+        try:
+            with open(path, "rb") as fh:
+                r = self.ml.score(fh.read())
+        except (OSError, ValueError):
+            return []
+        if not r or r[1] < THRESHOLD_SUSPICIOUS:
+            return []
+        kind, p = r
+        sev = "high" if corroborated and p >= THRESHOLD_HIGH else "low"
+        return [Detection(path, f"ML.EMBER2024.{kind} ({p:.0%})", sev, "ml")]
 
     def _heuristics(self, path: str, head: bytes) -> list[Detection]:
         out: list[Detection] = []

@@ -1,0 +1,13 @@
+{
+  "nombre": "libreoffice",
+  "descripcion": "LibreOffice: SIN red (macros de documentos no pueden exfiltrar)",
+  "exec": "/usr/bin/libreoffice",
+  "red": false,
+  "gpu": true,
+  "rw": [
+    "~/Documentos",
+    "~/Descargas"
+  ],
+  "x11": true,
+  "escritorio": "libreoffice-startcenter"
+}

@@ -149,7 +149,7 @@ def detect_checks(root: Path) -> list[str]:
 def project_memory(root: Path, limit: int = 6000) -> str:
     for name in ("TISMA.md", "AGENTS.md", "CLAUDE.md"):
         p = root / name
-        if p.is_file():
+        if p.is_file() and not p.is_symlink():
             return f"\n\nInstrucciones del proyecto ({name}):\n" + p.read_text(errors="replace")[:limit]
     return ""
 

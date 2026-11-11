@@ -236,10 +236,12 @@ function onEvent(ev) {
       break;
     case "approval": {
       setBusy(false);
-      const q = {write_file: "¿Crear o reemplazar", edit_file: "¿Editar", run_command: "¿Ejecutar este comando en"}[ev.tool] || "¿Permitir";
-      const target = ev.tool === "run_command" ? "el proyecto" : `<code>${esc(ev.args.path)}</code>`;
+      const q = {write_file: "¿Crear o reemplazar", edit_file: "¿Editar", run_command: "¿Ejecutar este comando en",
+                 verify: "¿Ejecutar las pruebas de", formatear: "¿Dar formato a"}[ev.tool] || "¿Permitir";
+      const target = ["run_command", "verify"].includes(ev.tool) ? "este proyecto" : `<code>${esc(ev.args.path)}</code>`;
+      const always = ev.tool === "verify" ? "Sí, confío en las pruebas de este proyecto" : "Sí, y no volver a preguntar en esta sesión";
       const d = put(`<div class="q">${q} ${target}?</div><pre>${diff(ev.preview)}</pre><div class="acts">
-        <button class="btn p" data-a="1">Sí</button><button class="btn" data-a="2">Sí, y no volver a preguntar en esta sesión</button><button class="btn" data-a="0">No</button></div>`, "perm");
+        <button class="btn p" data-a="1">Sí</button><button class="btn" data-a="2">${always}</button><button class="btn" data-a="0">No</button></div>`, "perm");
       d.querySelectorAll("[data-a]").forEach(b => b.onclick = async () => {
         await api("/api/approve", {id: ev.id, allow: b.dataset.a !== "0", always: b.dataset.a === "2"});
         d.querySelector(".acts").innerHTML = `<span class="note">${b.dataset.a === "0" ? "No permitido" : "Permitido"}</span>`;
@@ -405,6 +407,7 @@ async function refreshEngine() {
 }
 
 (async () => {
+  history.replaceState(null, "", "/");          // el token no queda en el historial del navegador
   state = await api("/api/state");
   seq = state.seq;
   setBusy(false);

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -191,11 +192,42 @@ def endpoint_models(endpoint: str) -> list[str]:
 
 
 # ---------------------------------------------------------------- servidor llama.cpp
-class LocalServer:
-    """Sirve un GGUF descargado con llama-server (llama.cpp) en 127.0.0.1."""
+def port_owner_is_me(port: int) -> bool:
+    """¿El proceso que escucha en 127.0.0.1:port es de este usuario? (evita que otro usuario local
+    suplante al motor de IA y le dicte llamadas a herramientas al agente)."""
+    import os as _os
+    inodes = set()
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            for line in Path(table).read_text().splitlines()[1:]:
+                f = line.split()
+                if f[3] == "0A" and int(f[1].rsplit(":", 1)[1], 16) == port:
+                    inodes.add(f[9])
+        except OSError:
+            continue
+    if not inodes:
+        return False
+    for pid in _os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            if _os.stat(f"/proc/{pid}").st_uid != _os.getuid():
+                continue
+            for fd in _os.listdir(f"/proc/{pid}/fd"):
+                link = _os.readlink(f"/proc/{pid}/fd/{fd}")
+                if link.startswith("socket:[") and link[8:-1] in inodes:
+                    return True
+        except OSError:
+            continue
+    return False
 
-    def __init__(self, port: int = 8081):
+
+class LocalServer:
+    """Sirve un GGUF descargado con llama-server (llama.cpp): puerto aleatorio y clave aleatoria."""
+
+    def __init__(self, port: int = 0):
         self.port = port
+        self.api_key = secrets.token_urlsafe(24)
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
 
@@ -209,8 +241,13 @@ class LocalServer:
         self.stop()
         f = fit(p.stat().st_size, hw)
         ngl = "999" if f["where"] == "gpu" else "20" if f["where"] == "mixto" else "0"
+        if not self.port:
+            import socket
+            with socket.socket() as sk:
+                sk.bind(("127.0.0.1", 0))
+                self.port = sk.getsockname()[1]
         self.proc = subprocess.Popen([exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                                      "-ngl", ngl, "-c", "16384", "--jinja"],
+                                      "--api-key", self.api_key, "-ngl", ngl, "-c", "16384", "--jinja"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.model = p.name
         return f"http://127.0.0.1:{self.port}/v1"

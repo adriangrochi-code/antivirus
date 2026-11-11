@@ -1,0 +1,13 @@
+{
+  "nombre": "tisma",
+  "descripcion": "Tisma (laminador): red para impresoras/nube, GPU; Documentos y Descargas",
+  "exec": "/opt/tisma/tisma",
+  "red": true,
+  "gpu": true,
+  "rw": [
+    "~/Documentos",
+    "~/Descargas"
+  ],
+  "x11": true,
+  "escritorio": "net.tisma.Tisma"
+}

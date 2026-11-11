@@ -1,0 +1,14 @@
+{
+  "nombre": "steam",
+  "descripcion": "Steam (Proton): red, GPU, audio y mandos; sin acceso a tus documentos",
+  "exec": "/usr/games/steam",
+  "red": true,
+  "gpu": true,
+  "audio": true,
+  "mandos": true,
+  "x11": true,
+  "dbus_talk": [
+    "org.freedesktop.Notifications"
+  ],
+  "escritorio": "steam"
+}

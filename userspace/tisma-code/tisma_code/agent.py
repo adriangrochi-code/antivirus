@@ -23,6 +23,7 @@ import urllib.request
 import uuid
 
 from . import harness, memory, review, tools
+from . import devtools
 from .docs import DocSpace
 
 try:                                     # Hope es opcional: sin vendor/ el agente funciona igual
@@ -35,9 +36,12 @@ del usuario en su propio equipo. Respondes en el idioma del usuario.
 
 Cómo trabajas:
 1. Para tareas de varios pasos, primero crea un plan con update_todos y mantenlo al día.
-2. Antes de cambiar código, explora: list_dir, search y read_file. No inventes el contenido de archivos.
+2. Antes de cambiar código, explora: mapa_repo, simbolo, search y read_file. No inventes el contenido de archivos.
+   Usa git (status, diff, log, blame) para entender el historial.
 3. Para modificar, usa edit_file con un fragmento copiado de read_file; write_file solo para archivos nuevos.
-4. Después de cambiar código, llama a verify (tests/compilación) y corrige lo que falle.
+4. Tras cada edición recibirás los errores de los linters en las líneas que cambiaste: corrígelos antes de seguir.
+   Al terminar, llama a verify (tests/compilación) y corrige lo que falle. Usa diagnosticos(completo=true)
+   para revisar tipos y seguridad antes de dar el trabajo por terminado.
 4b. Para cálculos, unidades o problemas de ingeniería/ciencia usa la herramienta hope (exacta) o consejo
     (varios agentes + verificación); nunca calcules de memoria. Escribe los cálculos como «Paso n: … = …»
     y termina con «Resultado: …»: un crítico revisa cada paso.
@@ -58,8 +62,28 @@ class LLMError(Exception):
     pass
 
 
+_OWNER_OK: dict[int, float] = {}
+
+
+def _check_local_owner(endpoint: str) -> None:
+    from urllib.parse import urlparse
+
+    from .models import port_owner_is_me
+    u = urlparse(endpoint)
+    if u.hostname not in ("127.0.0.1", "localhost", "::1"):
+        return
+    port = u.port or 80
+    if time.monotonic() - _OWNER_OK.get(port, -1e9) < 30:
+        return
+    if not port_owner_is_me(port):
+        raise LLMError(f"El motor en el puerto {port} no pertenece a tu usuario: por seguridad no se usa "
+                       "(otro usuario del equipo podría estar suplantándolo)")
+    _OWNER_OK[port] = time.monotonic()
+
+
 def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
                     api_key: str = "local", timeout: int = 900) -> tuple[dict, dict]:
+    _check_local_owner(endpoint)
     body = {"model": model, "messages": messages, "temperature": 0.2, "top_p": 0.9}
     if tool_schemas:
         body["tools"] = tool_schemas
@@ -102,7 +126,8 @@ class Session:
         self.events: "queue.Queue[dict]" = queue.Queue()
         self.always_allow: set[str] = set()
         self.todos: list[dict] = []
-        self.stats = {"steps": 0, "prompt_tokens": 0, "completion_tokens": 0, "seconds": 0.0,
+        self._mapped = False
+        self.stats = {"lint_feedback": 0, "steps": 0, "prompt_tokens": 0, "completion_tokens": 0, "seconds": 0.0,
                       "repaired_calls": 0, "fuzzy_edits": 0, "compactions": 0,
                       "verified_tasks": 0, "review_rounds": 0, "escalations": 0}
         self._loops = harness.LoopDetector()
@@ -158,10 +183,22 @@ class Session:
         info["allow"] = allow
         if allow and always:
             self.always_allow.add(info["tool"])
+        if allow and always and info["tool"] == "verify":
+            self._trust_file.write_text("El usuario confió en las pruebas de este proyecto\n")
         ev.set()
         return True
 
+    @property
+    def _trust_file(self):
+        return self.kb.dir / "confianza-verify"
+
+    def trusted(self) -> bool:
+        """Las pruebas del repo son código del repo: solo se ejecutan solas si confiaste en el proyecto."""
+        return self._trust_file.exists()
+
     def _ask(self, tool: str, args: dict, preview: str) -> bool:
+        if tool == "verify" and self.trusted():
+            return True
         if tool not in tools.NEEDS_APPROVAL or tool in self.always_allow:
             return True
         aid = uuid.uuid4().hex[:12]
@@ -201,7 +238,15 @@ class Session:
     def _task(self, text: str) -> None:
         experience, used_ids = self.kb.context(text)
         start_msgs = len(self.messages)
-        self.messages.append({"role": "user", "content": text + (f"\n\n{experience}" if experience else "")})
+        extra = f"\n\n{experience}" if experience else ""
+        if not self._mapped:                  # mapa del repositorio una vez por sesión (ctags)
+            self._mapped = True
+            try:
+                rmap = devtools.repo_map(self.ws, budget=4000)
+                extra += f"\n\nMapa del repositorio (símbolos principales):\n{rmap}"
+            except Exception:  # noqa: BLE001
+                pass
+        self.messages.append({"role": "user", "content": text + extra})
         if experience:
             self.emit("info", message=f"Usando {len(used_ids)} recuerdo(s) de tareas parecidas")
         self.current = self.router.first()
@@ -228,7 +273,7 @@ class Session:
                     verified = c["verdict"] == "ok"
                 break                                  # sin cambios: nada más que verificar
             checks = harness.detect_checks(self.ws.root)
-            if not (self.auto_verify and checks):
+            if not (self.auto_verify and checks) or not self._ask("verify", {}, tools.preview(self.ws, "verify", {})):
                 verified = None
             else:
                 self.emit("info", message="Verificando los cambios (pruebas/compilación)…")
@@ -361,6 +406,20 @@ class Session:
         self.emit("info", message=f"Se alcanzó el límite de {MAX_STEPS} pasos")
         return ""
 
+    def _lint_feedback(self, target, before: str) -> str:
+        """Linters sobre las líneas recién cambiadas: el modelo ve sus errores al instante."""
+        try:
+            rel = self.ws.rel(target)
+            after = target.read_text(errors="replace")
+            d = "".join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), f"a/{rel}", f"b/{rel}"))
+            diags = devtools.diagnostics_near_changes(self.ws, rel, d)
+        except Exception:  # noqa: BLE001 — un linter roto nunca debe romper la edición
+            return ""
+        if not diags:
+            return ""
+        self.stats["lint_feedback"] += 1
+        return "\n\nLinters en las líneas cambiadas:\n" + devtools.format_diagnostics(diags, 15)
+
     def _run_call(self, call: dict) -> dict:
         fn = call.get("function", {})
         name = fn.get("name", "")
@@ -415,10 +474,12 @@ class Session:
             self.todos = [t for t in args.get("todos", []) if isinstance(t, dict)]
             self.emit("todos", todos=self.todos)
             return reply("Lista de tareas actualizada.", True, args)
+        if name == "diagnosticos" and not args.get("rutas"):
+            args["rutas"] = sorted(self._originals) or ["."]
         try:
             pv = tools.preview(self.ws, name, args)
             target = None
-            if name in ("write_file", "edit_file"):
+            if name in ("write_file", "edit_file", "formatear"):
                 target = self.ws.resolve(args["path"])
                 if name == "edit_file" and target.is_file() and args.get("old") not in target.read_text(errors="replace"):
                     self.stats["fuzzy_edits"] += 1
@@ -428,7 +489,10 @@ class Session:
                 rel = self.ws.rel(target)
                 if rel not in self._originals:
                     self._originals[rel] = target.read_text(errors="replace") if target.is_file() else ""
+            before = target.read_text(errors="replace") if target is not None and target.is_file() else ""
             result = tools.execute(self.ws, name, args)
+            if target is not None and name in ("write_file", "edit_file", "formatear"):
+                result += self._lint_feedback(target, before)
             return reply(result, True, args)
         except (tools.ToolError, KeyError, OSError, ValueError) as e:
             return reply(f"Error: {e}", False, args)

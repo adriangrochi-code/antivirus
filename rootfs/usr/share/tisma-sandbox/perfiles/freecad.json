@@ -1,0 +1,12 @@
+{
+  "nombre": "freecad",
+  "descripcion": "FreeCAD: SIN red; Documentos",
+  "exec": "/usr/bin/freecad",
+  "red": false,
+  "gpu": true,
+  "x11": true,
+  "rw": [
+    "~/Documentos"
+  ],
+  "escritorio": "org.freecad.FreeCAD"
+}
