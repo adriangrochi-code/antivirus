@@ -71,6 +71,23 @@ Cómo trabajas:
 Para usar una herramienta, usa la llamada de función del sistema. Si no puedes, escribe exactamente:
 <tool_call>{"name": "read_file", "arguments": {"path": "main.py"}}</tool_call>""" + harness.RIGOR_PROMPT
 
+# Ventanas pequeñas (≤ 12k): el prompt completo (~1.500 tokens) más las herramientas dejaban menos de la mitad
+# de la ventana para trabajar y el agente se resumía cada dos pasos. Lo esencial, en ~400 tokens:
+SYSTEM_PROMPT_CORTO = """Eres TISMA Code, un agente que trabaja en la carpeta del proyecto del usuario, en su \
+equipo. Responde en su idioma, breve.
+1. Tareas de varios pasos: plan con update_todos.
+2. Antes de cambiar nada, mira: search y read_file. No inventes contenido de archivos.
+3. Cambia con edit_file (fragmento exacto copiado de read_file); write_file solo para archivos nuevos.
+   Corrige los errores de linter que te devuelva cada edición. Al terminar, verify.
+4. Nunca calcules de memoria: usa herramientas (actívalas con herramientas: calculo, ingenieria, cad…).
+5. Tu contexto es pequeño: usa explorar para búsquedas largas y anotar para lo que no debes olvidar; al llenarse
+   empezarás de cero con un resumen y tu cuaderno.
+6. Cada escritura y comando lo aprueba el usuario; si lo deniega, no insistas.
+7. Afirma solo lo que hayas comprobado con una herramienta; si no lo sabes, dilo.
+Para usar una herramienta, usa la llamada de función. Si no puedes, escribe exactamente:
+<tool_call>{"name": "read_file", "arguments": {"path": "main.py"}}</tool_call>"""
+VENTANA_PEQUENA = 12288
+
 MAX_STEPS = 50
 
 
@@ -162,7 +179,8 @@ class Session:
         self.current = self.router.first()
         # El prefijo (sistema + historial) nunca se reescribe salvo al compactar:
         # así el motor reutiliza su caché KV y cada paso solo procesa lo nuevo.
-        self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT +
+        self.messages: list[dict] = [{"role": "system", "content":
+                                      (SYSTEM_PROMPT_CORTO if context_tokens <= VENTANA_PEQUENA else SYSTEM_PROMPT) +
                                       f"\n\nCarpeta del proyecto: {self.ws.root}" +
                                       self._checks_hint() + harness.project_memory(self.ws.root) +
                                       (self.especialistas.describe() if self.especialistas else "")}]
@@ -181,6 +199,7 @@ class Session:
         self.docs = DocSpace(self.ws.root, self.kb.dir)
         self.cuaderno = contexto.Cuaderno(self.kb.dir)   # memoria de trabajo: sobrevive a los reinicios
         self._task_text, self._task_start = "", 1
+        self._post_reset: int | None = None   # contexto justo después del último reinicio
         self.rea = None                       # REA se arranca solo si el modelo lo usa
         self.craft = None                     # Craft Anything, igual: bajo demanda
         self.solidcraft = None                # SolidCraft (CAD), bajo demanda
@@ -325,7 +344,14 @@ class Session:
     def _task(self, text: str) -> None:
         experience, used_ids = self.kb.context(text)
         self._task_text = text
+        self._post_reset = None
+        self.cuaderno.nueva_tarea()
         self.cuaderno.pedido(text)
+        big = int(self.context_tokens * contexto.CHARS_POR_TOKEN * 0.35)
+        if len(text) > big:
+            # Un pedido más grande que la ventana nunca se podía resumir: va a disco y entra recortado
+            n = self.cuaderno.guardar_salida("pedido", text)
+            text = contexto.recortar(text, big) + f"\n[Pedido completo guardado como n.º {n}: recordar(salida={n})]"
         extra = f"\n\n{experience}" if experience else ""
         if not self._mapped:                  # mapa del repositorio una vez por sesión (ctags)
             self._mapped = True
@@ -479,7 +505,12 @@ class Session:
 
     def _maybe_compact(self, force: bool = False) -> bool:
         """Reinicio limpio: archiva, resume por partes y empieza de cero con el traspaso como primer mensaje."""
-        if not force and (self.context_used() < self.context_tokens * contexto.UMBRAL or len(self.messages) < 6):
+        used = self.context_used()
+        umbral = contexto.UMBRAL if self.context_tokens > VENTANA_PEQUENA else 0.75   # lo fijo pesa más
+        if not force and (used < self.context_tokens * umbral or len(self.messages) < 3):
+            return False
+        # Tras un reinicio, solo si de verdad se ha trabajado desde entonces (si no, bucle de resúmenes)
+        if not force and self._post_reset is not None and used - self._post_reset < self.context_tokens * 0.2:
             return False
         old = self.messages[1:]
         if not old:
@@ -494,12 +525,14 @@ class Session:
         self.cuaderno.data["reinicios"] += 1
         self.cuaderno._save()
         handoff = contexto.traspaso(self.cuaderno.data["reinicios"], self._task_text, self.cuaderno.render(),
-                                    summary, self.todos, sorted(self._originals),
-                                    contexto.recortar(last, min(3000, contexto.presupuesto_salida(self.context_tokens))))
+                                    summary, self.todos, sorted(self._originals), last,
+                                    presupuesto=int(self.context_tokens * contexto.CHARS_POR_TOKEN *
+                                                    (0.2 if self.context_tokens > VENTANA_PEQUENA else 0.14)))
         self.messages = [self.messages[0], {"role": "user", "content": handoff}]
         self._task_start = 1
         self._measured = None
-        self._loops = harness.LoopDetector()
+        self._post_reset = contexto.tokens(self.messages) + 1500   # + definiciones de herramientas (aprox.)
+        # el detector de bucles se conserva: repetir lo mismo tras un reinicio sigue siendo un bucle
         self.stats["compactions"] += 1
         return True
 
@@ -511,7 +544,10 @@ class Session:
                 return ""
             self._maybe_compact()
             self.emit("thinking", model=self.current.name)
-            msg = self._call_llm(self.messages, kits.visible(self.schemas, self.kits, self.context_tokens))
+            visible = kits.visible(self.schemas, self.kits, self.context_tokens)
+            if self.context_tokens <= VENTANA_PEQUENA:
+                visible = [kits.SCHEMA_CORTO if t["function"]["name"] == "herramientas" else t for t in visible]
+            msg = self._call_llm(self.messages, visible)
             self.stats["steps"] += 1
             content = msg.get("content") or ""
             calls = msg.get("tool_calls") or []
@@ -552,10 +588,20 @@ class Session:
         for step in range(max_steps):
             if self._cancel.is_set():
                 return "Exploración detenida"
-            if contexto.tokens(msgs) > self.context_tokens * 0.7 or step == max_steps - 1:
+            if contexto.tokens(msgs) > self.context_tokens * 0.6 or step == max_steps - 1:
+                # Para la respuesta final se recortan los resultados viejos: si no, la petición no cabía
+                for m in msgs[2:-2]:
+                    if m["role"] == "tool":
+                        m["content"] = contexto.recortar(m["content"], 600)
                 msgs.append({"role": "user", "content": "Se acabó el presupuesto: responde ya con lo que sabes."})
-                return (self._call_llm(msgs, None).get("content") or "Sin conclusión")[:3000]
-            msg = self._call_llm(msgs, schemas)
+                try:
+                    return (self._call_llm(msgs, None).get("content") or "Sin conclusión")[:3000]
+                except LLMError as e:
+                    return f"La exploración no pudo terminar ({e}); sigue tú con search/read_file."
+            try:
+                msg = self._call_llm(msgs, schemas)
+            except LLMError as e:          # un fallo del motor en la exploración no tumba la tarea entera
+                return f"La exploración se interrumpió ({e}); sigue tú con search/read_file."
             calls = msg.get("tool_calls") or harness.extract_text_tool_calls(msg.get("content") or "", names)
             msgs.append({"role": "assistant", "content": msg.get("content") or "", **({"tool_calls": calls} if calls else {})})
             if not calls:
@@ -659,7 +705,8 @@ class Session:
             try:
                 return reply(self.cuaderno.recordar(str(args.get("consulta") or ""),
                                                     int(sal) if sal is not None else None,
-                                                    int(args.get("desde") or 1), int(args.get("lineas") or 120)),
+                                                    int(args.get("desde") or 1), int(args.get("lineas") or 120),
+                                                    limite=contexto.presupuesto_salida(self.context_tokens)),
                              True, args)
             except (ValueError, TypeError) as e:
                 return reply(f"Error: {e}", False, args)

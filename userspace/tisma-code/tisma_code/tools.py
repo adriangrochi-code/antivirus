@@ -342,6 +342,8 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
                 if args.get("nombre") else "Listar plantillas")
     if name == "ingenieria":
         extra = " " + json.dumps(args["opciones"], ensure_ascii=False) if args.get("opciones") else ""
+        if args.get("salida"):
+            extra += f"\nEscribirá: {args['salida']}"
         return (f"{args.get('accion')}: {args.get('archivo')}{extra}\n(receta fija, aislada con bubblewrap: solo ve el "
                 "proyecto y sin red; los scripts de FreeCAD, Blender u Octave son código del proyecto)")
     if name == "run_command":

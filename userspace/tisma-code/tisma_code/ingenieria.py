@@ -38,6 +38,8 @@ BIN = {"openscad": "openscad", "gmsh": "gmsh", "ngspice": "ngspice", "kicad_erc"
        "kicad_drc": "kicad-cli", "octave": "octave-cli", "verilog": "iverilog", "yosys": "yosys",
        "freecad": "freecadcmd", "blender": "blender", "pandoc": "pandoc", "openfoam": "blockMesh",
        "malla_info": "python3"}
+SALIDA_EXT = {"openscad": (".stl", ".3mf", ".off", ".amf"), "gmsh": (".msh",),
+              "pandoc": (".pdf", ".docx", ".html", ".odt")}
 TIMEOUT = {"openfoam": 1800, "blender": 900, "freecad": 600, "gmsh": 600}
 MALLA_PY = r'''
 import json, struct, sys
@@ -100,14 +102,18 @@ def _recipe(accion: str, f: str, salida: str, opciones: dict) -> str:
     if accion == "ngspice":
         return f"ngspice -b {q(f)}"
     if accion == "kicad_erc":
-        return f"kicad-cli sch erc --format json --severity-all -o .tisma/erc.json {q(f)}; cat .tisma/erc.json"
+        return (f"rm -f .tisma/erc.json; kicad-cli sch erc --format json --severity-all -o .tisma/erc.json {q(f)}; "
+                "cat .tisma/erc.json")
     if accion == "kicad_drc":
-        return f"kicad-cli pcb drc --format json --severity-all -o .tisma/drc.json {q(f)}; cat .tisma/drc.json"
+        return (f"rm -f .tisma/drc.json; kicad-cli pcb drc --format json --severity-all -o .tisma/drc.json {q(f)}; "
+                "cat .tisma/drc.json")
     if accion == "octave":
         return f"octave-cli --no-gui --quiet --norc {q(f)}"
     if accion == "verilog":
         top = opciones.get("tb") or f             # ya validado como ruta del proyecto en run()
-        return f"iverilog -g2012 -o .tisma/sim.vvp {q(top)} && vvp -n .tisma/sim.vvp"
+        inc = sorted({os.path.dirname(top) or ".", os.path.dirname(f) or "."})
+        return (f"iverilog -g2012 {' '.join('-I ' + q(d) for d in inc)} -o .tisma/sim.vvp {q(top)} && "
+                "vvp -n .tisma/sim.vvp")
     if accion == "yosys":
         top = str(opciones.get("top", ""))
         if top and not re.fullmatch(r"\w+", top):
@@ -177,7 +183,7 @@ def summarize(accion: str, out: str) -> tuple[str, dict]:
         head += re.findall(r"^.*(?:error|syntax error).*$", out, re.M | re.I)[:8]
     elif accion in ("kicad_erc", "kicad_drc"):
         try:
-            d = json.loads(out[out.index("{"):])
+            d, _ = json.JSONDecoder().raw_decode(out[out.index("{"):])   # detrás puede venir [stderr]
             viol = [v for sh in d.get("sheets", [d]) for v in sh.get("violations", [])] + d.get("unconnected_items", [])
             med["incidencias"] = len(viol)
             head.append(f"{len(viol)} incidencia(s)")
@@ -304,6 +310,9 @@ def run(ws, accion: str, archivo: str, salida: str = "", opciones: dict | None =
             raise ToolError("tb: un archivo .v o .sv del proyecto")
         opciones = {**opciones, "tb": ws.rel(tb)}
     out_rel = ws.rel(ws.resolve(salida)) if salida else ""
+    if out_rel and not out_rel.lower().endswith(SALIDA_EXT.get(accion, ("\0",))):
+        raise ToolError(f"salida de {accion} debe terminar en {', '.join(SALIDA_EXT.get(accion, ()) ) or '(sin salida)'}"
+                        " (nunca sobrescribe código ni otros archivos)")
     safe_dir(ws.root, ".tisma")                   # nunca un enlace plantado
     cmd = _recipe(accion, rel, out_rel, opciones)
     text, med = summarize(accion, ws.run_command(cmd, timeout=TIMEOUT.get(accion, 300)))

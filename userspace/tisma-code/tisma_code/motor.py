@@ -70,15 +70,32 @@ class _R:
             if et in _SCALAR:                         # se salta sin leer elemento a elemento
                 self.f.seek(n * struct.calcsize(_SCALAR[et]), 1)
                 return n
+            if et != 8:                               # listas de listas: ningún GGUF real las usa (y anidadas
+                raise ValueError("GGUF: lista anidada")   # miles de veces agotaban la recursión)
             for _ in range(n):
-                self.value(et, False)
+                self.string()
             return n                                  # de las listas solo interesa la longitud (vocabulario)
         raise ValueError(f"GGUF: tipo desconocido {t}")
 
 
 def gguf_info(path: str | Path) -> dict:
-    """Metadatos que importan para planificar, y el tamaño de los tensores de expertos frente al resto."""
-    p = Path(path)
+    """Metadatos que importan para planificar. Los GGUF los descarga el usuario: cualquier rareza del archivo
+    termina en ValueError (nunca en otra excepción que tumbe el arranque del motor)."""
+    try:
+        return _gguf_info(Path(path))
+    except (ValueError, OSError):
+        raise
+    except Exception as e:  # noqa: BLE001 (OverflowError, RecursionError, struct.error, TypeError…)
+        raise ValueError(f"GGUF inválido: {type(e).__name__}") from e
+
+
+def _num(v, lo: int = 0, hi: int = 1 << 24) -> int:
+    if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+        raise ValueError("GGUF: valor fuera de rango")
+    return v
+
+
+def _gguf_info(p: Path) -> dict:
     with open(p, "rb") as f:
         r = _R(f)
         if f.read(4) != b"GGUF":
@@ -114,13 +131,16 @@ def gguf_info(path: str | Path) -> dict:
             expert += size
         else:
             other += size
-    heads = int(g("attention.head_count", 0) or 0)
-    return {"arquitectura": arch, "capas": int(g("block_count", 0) or 0),
-            "expertos": int(g("expert_count", 0) or 0), "expertos_activos": int(g("expert_used_count", 0) or 0),
-            "contexto_max": int(g("context_length", 0) or 0),
-            "kv_heads": int(g("attention.head_count_kv", heads) or heads),
-            "key_len": int(g("attention.key_length", 0) or (int(g("embedding_length", 0)) // heads if heads else 0)),
-            "value_len": int(g("attention.value_length", 0) or 0),
+    heads = _num(g("attention.head_count", 0) or 0)
+    heads_kv = g("attention.head_count_kv", heads)
+    heads_kv = _num(heads_kv if isinstance(heads_kv, int) else heads)     # en algunos modelos es una lista
+    return {"arquitectura": str(arch), "capas": _num(g("block_count", 0) or 0, hi=4096),
+            "capas_densas": _num(g("leading_dense_block_count", 0) or 0, hi=4096),
+            "expertos": _num(g("expert_count", 0) or 0), "expertos_activos": _num(g("expert_used_count", 0) or 0),
+            "contexto_max": _num(g("context_length", 0) or 0, hi=1 << 26),
+            "kv_heads": heads_kv,
+            "key_len": _num(g("attention.key_length", 0) or (_num(g("embedding_length", 0) or 0) // heads if heads else 0)),
+            "value_len": _num(g("attention.value_length", 0) or 0),
             "tokenizador": kv.get("tokenizer.ggml.model", ""), "vocabulario": kv.get("tokenizer.ggml.tokens", 0),
             "bytes_expertos": expert, "bytes_resto": other, "nombre": kv.get("general.name", p.stem)}
 
@@ -178,8 +198,12 @@ def plan(info: dict, size: int, hw: dict, ctx_wanted: int = 32768) -> dict:
             per_layer = info["bytes_expertos"] * scale / (1 << 20) / max(1, info["capas"])
             c = fits_ctx(min(gpu_budget - rest_mb, budget_ram - (w_mb - rest_mb)))
             room = gpu_budget - rest_mb - kv_mb(info, c)
+            dense = info.get("capas_densas", 0)
+            per_layer = info["bytes_expertos"] * scale / (1 << 20) / max(1, info["capas"] - dense)
             if room > 0:
-                n_cpu = min(info["capas"], max(0, math.ceil(info["capas"] - room / per_layer)))
+                moe_layers = info["capas"] - dense
+                # --n-cpu-moe N: los expertos de las N PRIMERAS capas en RAM (las densas iniciales no tienen)
+                n_cpu = min(info["capas"], dense + max(0, math.ceil(moe_layers - room / per_layer)))
                 return {"dispositivo": "mixto", "args": ["-ngl", "999", "--n-cpu-moe", str(n_cpu)], "ctx": c,
                         "motivo": f"MoE: atención y {info['capas'] - n_cpu} capas de expertos en la GPU, "
                                   f"{n_cpu} en RAM"}
@@ -240,14 +264,32 @@ def hw_key(hw: dict) -> str:
         ",".join(sorted(g.get("name", "") for g in hw.get("gpus", [])))
 
 
+def model_key(model_file: str) -> str:
+    """Nombres como «ggml-model-Q4_K_M.gguf» se repiten entre repositorios: clave = ruta relativa + tamaño."""
+    p = Path(model_file).resolve()
+    try:
+        rel = str(p.relative_to(models.MODELS_DIR.resolve()))
+    except ValueError:
+        rel = str(p)
+    try:
+        return f"{rel}:{total_size(p)}"
+    except OSError:
+        return rel
+
+
 def saved(model_file: str, hw: dict) -> dict | None:
-    m = models._read_json(MEDIDAS).get(Path(model_file).name)
-    return m if m and m.get("equipo") == hw_key(hw) else None
+    m = models._read_json(MEDIDAS).get(model_key(model_file))
+    if not m or m.get("equipo") != hw_key(hw):
+        return None
+    args = m.get("args") or []
+    if "-md" in args and not Path(args[args.index("-md") + 1]).is_file():
+        return None                       # el modelo borrador se borró: se vuelve a planificar
+    return m
 
 
 def _save(model_file: str, rec: dict) -> None:
     data = models._read_json(MEDIDAS)
-    data[Path(model_file).name] = rec
+    data[model_key(model_file)] = rec
     MEDIDAS.parent.mkdir(parents=True, exist_ok=True)
     tmp = MEDIDAS.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False))

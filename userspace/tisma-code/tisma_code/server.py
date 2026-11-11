@@ -62,6 +62,12 @@ class App:
 
     def auto_motor(self) -> None:
         """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado."""
+        try:
+            self._auto_motor()
+        except Exception as e:  # noqa: BLE001 — un modelo raro nunca debe dejar la app sin arrancar
+            self.push({"type": "error", "message": f"El motor TISMA no pudo arrancar solo: {e}"})
+
+    def _auto_motor(self) -> None:
         from . import motor
         if models.endpoint_models(self.config["endpoint"]):
             return
@@ -88,23 +94,42 @@ class App:
                    f"{c.get('motivo', '')}" + ("" if c.get("medido") else
                                                 ". Pulsa «⚙ optimizar» para medir la configuración más rápida.")})
 
+    _optimizing = threading.Lock()
+
     def optimize(self, path: str) -> None:
         from . import motor
+        if not self._optimizing.acquire(blocking=False):
+            self.push({"type": "error", "message": "Ya hay una optimización en curso"})
+            return
+        try:
+            self._optimize(path, motor)
+        finally:
+            self._optimizing.release()
+
+    def _optimize(self, path: str, motor) -> None:
         self.push({"type": "info", "message": "Optimizando el motor para este modelo (unos minutos: se prueban "
                    "varias configuraciones)…"})
+        was_serving = bool(self.server.proc and self.server.model == Path(path).name)
+        if self.server.proc:
+            self.server.stop()            # su memoria (VRAM incluida) falsearía las mediciones
         try:
             rec = motor.optimize(path, self.hw, on_step=lambda m: self.push({"type": "info", "message": "· " + m}))
-        except (OSError, ValueError, RuntimeError) as e:
+        except Exception as e:  # noqa: BLE001 (GGUF raro, motor que no arranca…): se avisa y se restaura
             self.push({"type": "error", "message": f"No se pudo optimizar: {e}"})
+            rec = {}
+        if was_serving or not models.endpoint_models(self.config["endpoint"]):
+            try:
+                self.config["endpoint"] = self.server.start(path, self.hw)
+                if self.session:
+                    self.session.endpoint = self.config["endpoint"]
+                    self.session.context_tokens = self.context(self.server.ctx)
+            except (OSError, RuntimeError, ValueError) as e:
+                self.push({"type": "error", "message": f"No se pudo volver a arrancar el modelo: {e}"})
+        if not rec:
             return
         if not rec.get("gen"):
             self.push({"type": "error", "message": "Ninguna configuración arrancó: revisa que el modelo no esté dañado"})
             return
-        if self.server.proc and self.server.model == Path(path).name:
-            self.config["endpoint"] = self.server.start(path, self.hw)
-            if self.session:
-                self.session.endpoint = self.config["endpoint"]
-                self.session.context_tokens = self.context(self.server.ctx)
         self.push({"type": "info", "message": f"Mejor configuración: {rec['nombre']} — {rec['gen']} tokens/s generando, "
                    f"{rec['prompt']:.0f} tokens/s leyendo, contexto {rec['ctx'] // 1024}k ({rec['motivo']})."})
 

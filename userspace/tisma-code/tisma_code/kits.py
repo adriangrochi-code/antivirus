@@ -58,6 +58,10 @@ KITS: dict[str, dict] = {
 
 VENTANA_GRANDE = 65536
 
+CORTO = {"desarrollo": "git, símbolos, linters", "calculo": "cálculo exacto (Hope)", "ingenieria": "simular y medir",
+         "cad": "CAD 3D", "documentos": "tus documentos", "inversa": "ingeniería inversa",
+         "investigacion": "investigar/recrear", "especialistas": "modelos especializados"}
+
 SCHEMA = {"type": "function", "function": {
     "name": "herramientas", "description": "Activa un kit de herramientas que no tienes cargado. Kits: " +
     "; ".join(f"{k} ({v['desc']})" for k, v in KITS.items()) + ".",
@@ -89,3 +93,7 @@ def describe(active: set[str], context_tokens: int) -> str:
     off = [k for k in KITS if k not in active]
     return ("\n\n[Kits activos: " + (", ".join(sorted(active)) or "solo el núcleo") + ". Si necesitas otro (" +
             ", ".join(off) + "), actívalo con herramientas.]") if off else ""
+
+SCHEMA_CORTO = {"type": "function", "function": {
+    "name": "herramientas", "description": "Activa un kit: " + "; ".join(f"{k} ({v})" for k, v in CORTO.items()),
+    "parameters": SCHEMA["function"]["parameters"]}}
