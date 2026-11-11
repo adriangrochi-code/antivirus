@@ -1,0 +1,37 @@
+TISMA - Kit de endurecimiento para Windows XP, Vista, 7, 8 y 8.1
+=================================================================
+
+Estas versiones de Windows ya no reciben parches de seguridad. Este kit no los sustituye,
+pero cierra las puertas por las que entran casi todos los ataques:
+
+1. Red: cortafuegos bloqueando conexiones de fuera; SMBv1 (WannaCry), NetBIOS, LLMNR,
+   escritorio y asistencia remotos (BlueKeep) apagados; servicios de red que en casa no
+   hacen falta, desactivados. Sin Internet para mshta, wscript, cscript, regsvr32,
+   certutil, hh y bitsadmin (los usa el malware para descargar).
+   En XP se apaga además el servicio "Servidor": compartir carpetas deja de funcionar.
+2. Contraseñas: solo NTLMv2, sin hashes LM, sin acceso anónimo, UAC siempre preguntando.
+3. Memoria: DEP para todos los programas y SEHOP (frenan los desbordamientos de búfer).
+4. USB y scripts: AutoRun apagado; los .vbs, .js y .wsf no se ejecutan y los .hta se
+   abren con el Bloc de notas.
+5. Impresoras: la cola de impresión no acepta conexiones de la red (PrintNightmare).
+6. Programas: no se pueden ejecutar desde Descargas, Temp, AppData, la Papelera ni
+   la raíz de ProgramData (por ahí entra el malware de descargas y correos).
+
+CÓMO USARLO
+- Clic derecho en TISMA-Endurecer.bat > "Ejecutar como administrador". Reinicia al terminar.
+- Para instalar un programa descargado: TISMA-Permitir-Instalar.bat (como administrador),
+  instala, y pulsa una tecla para reactivar el bloqueo.
+- Si un programa que usas a diario deja de abrir (algunos se instalan en AppData, como
+  Discord): TISMA-Permitir-Programa.bat con ese .exe.
+- Para deshacerlo todo: C:\TISMA-Kit\copia-1\TISMA-Deshacer.bat (como administrador) y
+  reiniciar. También se crea un punto de restauración antes de empezar.
+
+QUÉ MÁS HACER
+- Navegador: no uses Internet Explorer. Usa un navegador que aún reciba parches para tu
+  versión de Windows.
+- Desinstala Java, Flash, Adobe Reader viejos y todo lo que no uses.
+- Usa una cuenta normal (no administrador) para el día a día.
+- Haz copias de tus archivos en un disco externo que desconectes después.
+- Si sospechas una infección: arranca TISMA desde el USB y usa "Revisar Windows".
+
+Pruébalo primero en un equipo o máquina virtual que no sea imprescindible.

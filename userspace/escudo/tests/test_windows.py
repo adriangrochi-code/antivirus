@@ -357,3 +357,71 @@ def test_enlaces_no_salen_del_disco(tmp_path, scanner):
     assert not [x for x in hall if x.tipo == "hosts"]
     W.limpiar(w, hall, niveles=("high", "medium"), log=lambda m: None)
     assert fuera.read_bytes() == b"6.6.6.6 www.paypal.com\n"
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Kit de endurecimiento (los .bat se ejecutan en Windows: aquí, formato y reglas que evitan errores conocidos)
+# --------------------------------------------------------------------------------------------------------------
+KIT_SRC = Path(__file__).resolve().parents[3] / "windows"
+
+
+def _construir_kit(destino: Path) -> Path:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("construir_kit", KIT_SRC / "construir-kit.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    m.construir(str(destino))
+    return destino
+
+
+def test_kit_formato_y_reglas_de_cmd(tmp_path):
+    import re
+    kit = _construir_kit(tmp_path / "kit")
+    bats = sorted(kit.glob("*.bat"))
+    assert {b.name for b in bats} >= {"TISMA-Endurecer.bat", "TISMA-Permitir-Instalar.bat",
+                                       "TISMA-Permitir-Programa.bat"}
+    assert (kit / "LEEME.txt").read_bytes().startswith(b"\xef\xbb\xbf")
+    for b in bats + [kit / "plantilla-deshacer.txt"]:
+        datos = b.read_bytes()
+        assert datos.isascii() and b"\n" not in datos.replace(b"\r\n", b""), b.name     # ASCII y CRLF
+        texto = datos.decode().replace("\r\n", "\n")
+        etiquetas = {m.lower() for m in re.findall(r"^:([A-Za-z_]\w*)", texto, re.M)} | {"eof"}
+        for n, linea in enumerate(texto.split("\n"), 1):
+            if linea.lstrip().lower().startswith("rem "):
+                continue
+            # && y || tras «reg» no son fiables en todos los cmd: siempre «if errorlevel»
+            assert "&&" not in linea and "||" not in linea, f"{b.name}:{n}"
+            # CALL vuelve a expandir los %: una ruta con %VARIABLE% llegaría vacía o rota
+            if re.match(r"\s*call\s", linea, re.I):
+                assert not re.search(r"%%[^%\s\"]+%%", linea), f"{b.name}:{n}"     # %%f (FOR) sí vale
+            for destino in re.findall(r"\b(?:goto|call)\s+:(\w+)", linea, re.I):
+                assert destino.lower() in etiquetas, f"{b.name}:{n} etiqueta {destino}"
+        assert texto.count("(") - texto.count("^(") == texto.count(")") - texto.count("^)"), b.name
+
+
+def test_kit_se_copia_al_disco_de_windows(tmp_path):
+    kit = _construir_kit(tmp_path / "kit")
+    raiz = windows7(tmp_path / "disco")
+    w = W.Windows(str(raiz))
+    assert W.instalar_kit(w, str(kit)) == "C:\\TISMA-Kit"
+    assert (raiz / "TISMA-Kit" / "TISMA-Endurecer.bat").read_bytes() == (kit / "TISMA-Endurecer.bat").read_bytes()
+    with pytest.raises(OSError):
+        W.instalar_kit(w, str(tmp_path / "no-hay"))
+
+
+def test_kit_reglas_srp_literales(tmp_path):
+    """Las reglas guardan %TEMP%, %APPDATA%… tal cual (se resuelven por usuario), sin LNK en los tipos."""
+    kit = _construir_kit(tmp_path / "kit")
+    datos = (kit / "tisma-srp.reg").read_bytes()
+    assert datos.startswith(b"\xff\xfe")
+    texto = datos[2:].decode("utf-16-le")
+    assert texto.startswith("Windows Registry Editor Version 5.00\r\n")
+
+    def dec(h):
+        return bytes(int(x, 16) for x in h.split(",")).decode("utf-16-le").rstrip("\0")
+    rutas = [dec(h) for h in __import__("re").findall(r'"ItemData"=hex\(2\):([0-9a-f,]+)', texto)]
+    assert "%TEMP%\\*.*" in rutas and "%USERPROFILE%\\Downloads" in rutas
+    assert any(r.startswith("%HKEY_CURRENT_USER\\") and r.endswith("Local AppData%\\*.*") for r in rutas)
+    assert len(rutas) == len(set(rutas)) == 15
+    tipos = dec(__import__("re").search(r'"ExecutableTypes"=hex\(7\):([0-9a-f,]+)', texto).group(1)).split("\0")
+    assert "EXE" in tipos and "VBS" in tipos and "LNK" not in tipos

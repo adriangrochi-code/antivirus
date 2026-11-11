@@ -259,15 +259,17 @@ def cmd_windows(cfg: Config, args) -> int:
             if not args.json:
                 print(W.informe(w, hall, todo=args.todo))
             niveles = ("high", "medium") if args.tambien_medias else ("high",)
-            if args.limpiar and any(h.gravedad in niveles for h in hall):
-                if nuestro:                   # volver a montar con escritura solo para limpiar
-                    W.desmontar(raiz)
-                    montado = None
-                    raiz = montado = W.montar(disp, escritura=True)
-                    w = W.Windows(raiz)
+            limpiar = args.limpiar and any(h.gravedad in niveles for h in hall)
+            if (limpiar or args.kit) and nuestro:      # volver a montar con escritura solo para escribir
+                W.desmontar(raiz)
+                montado = None
+                raiz = montado = W.montar(disp, escritura=True)
+                w = W.Windows(raiz)
+                if limpiar:
                     hall = W.Analisis(w, scanner).ejecutar(completo=args.completo, sin_archivos=args.sin_archivos)
-                elif not os.access(raiz, os.W_OK):
-                    raise OSError(f"{raiz} está montado en solo lectura: no se puede limpiar")
+            elif (limpiar or args.kit) and not os.access(raiz, os.W_OK):
+                raise OSError(f"{raiz} está montado en solo lectura: no se puede escribir en él")
+            if limpiar:
                 aviso("\nLimpiando…")
                 hecho = W.limpiar(w, hall, niveles, log=aviso)
                 r["limpieza"] = hecho
@@ -286,6 +288,10 @@ def cmd_windows(cfg: Config, args) -> int:
                     aviso(f"  ERROR: {e}")
             elif args.limpiar:
                 aviso("Nada que limpiar.")
+            if args.kit:
+                r["kit"] = W.instalar_kit(w)
+                aviso(f"\nKit de endurecimiento copiado a {r['kit']}. Al arrancar Windows: clic derecho en "
+                      f"{r['kit']}\\TISMA-Endurecer.bat > «Ejecutar como administrador» (lee antes LEEME.txt).")
             resultados.append(r)
             peor = max([peor] + [W.ORDEN[h.gravedad] for h in hall])
         except OSError as e:
@@ -358,6 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--completo", action="store_true", help="escanear el disco entero (más lento)")
     s.add_argument("--sin-archivos", action="store_true", help="solo inicio automático y configuración")
     s.add_argument("--todo", action="store_true", help="listar también las entradas de inicio normales")
+    s.add_argument("--kit", action="store_true", help="copiar el kit de endurecimiento a C:\\TISMA-Kit")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_windows)
 

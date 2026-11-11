@@ -111,6 +111,14 @@ windows() {
         read -r -p "¿Limpiar lo grave? (se guarda una copia del registro y los archivos van a C:\TISMA-Cuarentena) [s/N] " ok
         [[ "$ok" =~ ^[sS]$ ]] && escudo windows "$@" --limpiar || true
     fi
+    if [[ $rc -le 1 && -t 0 ]]; then
+        echo
+        echo "El kit de endurecimiento cierra lo que usan los ataques (SMBv1, escritorio remoto, AutoRun,"
+        echo "programas desde Descargas/Temp…). Se ejecuta luego desde Windows y se puede deshacer."
+        read -r -p "¿Copiarlo al disco de Windows (C:\TISMA-Kit)? [s/N] " ok
+        [[ "$ok" =~ ^[sS]$ ]] && escudo windows "$@" --sin-archivos --kit >/dev/null && \
+            echo "Copiado. En Windows: clic derecho en C:\TISMA-Kit\TISMA-Endurecer.bat > Ejecutar como administrador." || true
+    fi
 }
 
 case "${1:-}" in

@@ -1030,6 +1030,28 @@ def limpiar(w: Windows, hallazgos: list[Hallazgo], niveles=("high",), quarantine
     return hecho
 
 
+KIT = os.environ.get("TISMA_KIT_WINDOWS", "/usr/share/tisma/windows-kit")
+
+
+def instalar_kit(w: Windows, origen: str | None = None) -> str:
+    """Copia el kit de endurecimiento a C:\\TISMA-Kit para ejecutarlo desde Windows."""
+    origen = origen or KIT
+    archivos = sorted(f for f in os.listdir(origen) if os.path.isfile(os.path.join(origen, f))) \
+        if os.path.isdir(origen) else []
+    if not archivos:
+        raise OSError(f"no está el kit de endurecimiento ({origen})")
+    destino = w.r.buscar("TISMA-Kit") or os.path.join(w.raiz, "TISMA-Kit")
+    if os.path.islink(destino):
+        raise OSError(f"{destino} es un enlace: no se escribe")
+    os.makedirs(destino, exist_ok=True)
+    for f in archivos:
+        d = os.path.join(destino, f)
+        if os.path.islink(d):
+            os.unlink(d)
+        shutil.copyfile(os.path.join(origen, f), d)
+    return w.unidad + "\\TISMA-Kit"
+
+
 def limpiar_hosts(ruta: str, copias: str) -> None:
     os.makedirs(copias, exist_ok=True)
     shutil.copy2(ruta, os.path.join(copias, "hosts"))

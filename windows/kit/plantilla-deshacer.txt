@@ -1,0 +1,16 @@
+@echo off
+rem TISMA - Deshacer el endurecimiento: vuelve a poner los valores que habia antes.
+rem Generado por TISMA-Endurecer.bat. Ejecutalo como administrador y reinicia despues.
+setlocal EnableExtensions DisableDelayedExpansion
+net session >nul 2>&1
+if errorlevel 1 (
+    echo Hace falta permiso de administrador: clic derecho, "Ejecutar como administrador".
+    pause
+    exit /b 1
+)
+echo.
+echo  Esto deshace el endurecimiento de TISMA y deja Windows como estaba (menos protegido).
+set "OK="
+set /p "OK=Escribe S y pulsa Intro para seguir: "
+if /i not "%OK%"=="S" exit /b 0
+echo  Deshaciendo...
