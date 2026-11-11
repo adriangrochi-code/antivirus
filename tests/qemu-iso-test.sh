@@ -25,7 +25,11 @@ check() { if grep -qaE "$2" <<<"$LOG"; then echo "  ok   $1"; else echo "  FALLO
 echo "Arranque de $ISO:"
 check "llega al inicio de sesión" "login:"
 check "lockdown activo" "Kernel is locked down"
-check "LSM landlock/yama/apparmor/bpf" "LSM: initializing lsm=.*landlock.*yama.*apparmor.*bpf"
+# Cada LSM por su mensaje de arranque (desde el kernel 7 ya no se imprime la línea «LSM: initializing lsm=…»)
+check "LSM landlock" "landlock: Up and running"
+check "LSM yama" "Yama: (becoming mindful|disabled by default)"
+check "LSM apparmor" "AppArmor: AppArmor initialized"
+check "LSM en la línea de arranque" "lsm=landlock,lockdown,yama,integrity,apparmor,bpf"
 for u in nftables.service dnscrypt-proxy.service chrony.service usbguard.service systemd-oomd.service \
          auditd.service tisma-bloqueo-sesion.service dev-zram0.swap; do
     # systemd recorta los nombres largos en la consola («tisma-bloqueo-sesion.servi…»): basta el principio

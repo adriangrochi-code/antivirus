@@ -8,6 +8,7 @@
 #   centinela-apps strata    Strata (IA local para equipos con GPU dedicada y ≥32 GB), ~300 MB desde GitHub
 #   centinela-apps rea       REA (análisis de binarios para TISMA Code): Node.js + rea-agents, ~200 MB
 #   centinela-apps craft     Craft Anything (CAD por código para TISMA Code), ~35 MB desde GitHub
+#   centinela-apps openjarvis  OpenJarvis (asistente de agentes, commit fijado) desde GitHub
 #   centinela-apps estado    muestra qué está instalado
 set -euo pipefail
 
@@ -59,7 +60,7 @@ simulacion)
         netgen python3-netgen python3-pyvista python3-vtk9 mpi-default-bin
     echo "Simulación lista: TISMA Code ya puede usar ingenieria → openfoam, y FEniCSx/PyVista desde Python."
     ;;
-strata|rea|craft)
+strata|rea|craft|openjarvis)
     need_root "$@"
     # No van en la ISO (pesan ~530 MB entre los tres): se descargan de su release oficial con la versión y el
     # SHA-256 fijados por TISMA, con el mismo script que usa la construcción de la ISO.
@@ -82,5 +83,5 @@ estado)
     printf 'binderfs:  %s\n' "$(grep -q binder /proc/filesystems && echo soportado || echo NO soportado)"
     flatpak list --app --columns=application 2>/dev/null | grep -E 'bottles|heroic' || true
     ;;
-*) sed -n '2,11p' "$0"; exit 2 ;;
+*) sed -n '2,12p' "$0"; exit 2 ;;
 esac

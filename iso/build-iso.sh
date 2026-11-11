@@ -233,7 +233,7 @@ fi
 # Componentes que no están en Debian: sus scripts van también en la imagen para descargarlos al usarlos
 # (centinela-apps strata|rea|craft y los «@componente» de los perfiles), con la misma versión y SHA-256 fijados
 install -d -m 755 "$CHROOT/usr/lib/tisma/componentes"
-for c in strata rea craft-anything; do install -m 755 "$HERE/components/$c.sh" "$CHROOT/usr/lib/tisma/componentes/"; done
+for c in strata rea craft-anything openjarvis; do install -m 755 "$HERE/components/$c.sh" "$CHROOT/usr/lib/tisma/componentes/"; done
 if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
 # Tisma engine (laminador) y llama.cpp (motor de TISMA Code en equipos sin GPU dedicada: build oficial, ~36 MB)
 "$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-}" \
@@ -258,7 +258,10 @@ instalar_paquetes "${compilar[@]}"
 instalar_paquetes python3-scipy python3-sklearn          # lightgbm las necesita (se quedan en la imagen)
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
-"$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
+# OpenJarvis (opcional, entorno de Python grande): solo en la ISO completa; si no, centinela-apps openjarvis
+if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
+    "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
+fi
 if [[ "${TISMA_ISO_COMPLETA:-0}" != 1 ]] && ((${#compilar[@]})); then
     in_chroot apt-get purge -y -q "${compilar[@]}" || true
     in_chroot apt-get autoremove --purge -y -q || true
