@@ -265,9 +265,19 @@ if [[ "${TISMA_ISO_COMPLETA:-0}" != 1 ]] && ((${#compilar[@]})); then
 fi
 fi
 fi
-# Binario estático: funciona igual en el kernel genérico y en el kernel a medida
-gcc -O2 -static -pthread -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
-gcc -O2 -static -pthread -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
+# hardened_malloc (asignador endurecido contra desbordamientos del montón en los demonios de red): sin la
+# biblioteca, el LD_PRELOAD de sus servicios solo dejaría un error en cada arranque
+if [[ ! -e "$CHROOT/usr/lib/libhardened_malloc-light.so" ]]; then
+    rm -f "$CHROOT"/etc/systemd/system/*.service.d/60-tisma-hardened-malloc.conf
+    log "AVISO: sin hardened_malloc (TISMA_SIN_COMPILAR=1): los demonios de red usan el asignador de glibc"
+fi
+# Binarios estáticos (funcionan igual en el kernel genérico y en el kernel a medida), con todas las
+# protecciones contra desbordamientos: PIE estático (ASLR), canario de pila, FORTIFY, pila protegida contra
+# «stack clash», CET (IBT + pila sombra), variables a cero, RELRO completo y pila no ejecutable
+ENDURECIDO=(-O2 -static-pie -fPIE -pthread -fstack-protector-strong -fstack-clash-protection -fcf-protection=full
+            -D_FORTIFY_SOURCE=3 -ftrivial-auto-var-init=zero "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack")
+gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
+gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
 chmod 700 "$CHROOT/var/lib/escudo"
 

@@ -143,6 +143,7 @@ BUILTIN_VERIFIERS = {"sudoku": verify_sudoku, "json": verify_json}
 
 # ---------------------------------------------------------------- ejecución
 def jail_argv(s: Specialist, argv: list[str]) -> list[str]:
+    from . import models
     bwrap = shutil.which("bwrap")
     if not bwrap:
         raise SpecialistError("bubblewrap no está instalado: los especialistas no se ejecutan sin aislamiento")
@@ -151,8 +152,9 @@ def jail_argv(s: Specialist, argv: list[str]) -> list[str]:
             "--tmpfs", "/run", "--tmpfs", "/var/tmp", "--tmpfs", home]
     if s.carpeta:
         base += ["--ro-bind", s.carpeta, s.carpeta, "--chdir", s.carpeta]
-    # /dev/dri y /dev/kfd ya están en /dev: la GPU sigue disponible para modelos con aceleración.
-    return base + ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv",
+    # «--dev /dev» crea un /dev mínimo: la GPU (/dev/dri, /dev/kfd, NVIDIA) se monta aparte para los
+    # especialistas con aceleración
+    return base + models.gpu_binds() + ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv",
                    "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", home,
                    "--setenv", "LANG", "C.UTF-8", "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--", *argv]
 

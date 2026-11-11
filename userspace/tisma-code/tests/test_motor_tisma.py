@@ -172,3 +172,20 @@ def test_choice_by_agent_step_time_and_quant_recommendation():
     assert rec == ["m-3B-Q4_K_M.gguf"]                          # con ~13 GB/s, lo que va a velocidad usable
     assert files[3]["fit"]["where"] == "no"                     # el MoE de 13,5 GB no cabe con 16 GB
     assert models.active_fraction("Qwen3-30B-A3B-Q4_K_M") < 0.15
+
+
+def test_engine_runs_jailed_with_models_readonly_and_gpu(modeldir, monkeypatch):
+    monkeypatch.setattr(models.shutil, "which", lambda n: "/usr/bin/bwrap" if n == "bwrap" else None)
+    argv = models.jail_engine(["/opt/llama.cpp/bin/llama-server", "-m", "x.gguf"])
+    assert argv[0] == "/usr/bin/bwrap" and argv[-3:] == ["/opt/llama.cpp/bin/llama-server", "-m", "x.gguf"]
+    home = str(models.Path.home())
+    assert argv[argv.index(home) - 1] == "--tmpfs"                          # sin la carpeta personal
+    m = str(models.MODELS_DIR.resolve())
+    i = argv.index(m)
+    assert argv[i - 1] == "--ro-bind" and argv[i + 1] == m                  # modelos: solo lectura
+    assert "--share-net" in argv and "--unshare-all" in argv and ["--cap-drop", "ALL"] == argv[argv.index("--cap-drop"):argv.index("--cap-drop") + 2]
+    assert ["--dev-bind-try", "/dev/dri", "/dev/dri"] == argv[argv.index("/dev/dri") - 1:argv.index("/dev/dri") + 2]
+    assert argv.index("--dev") < argv.index("/dev/dri")                     # la GPU después del /dev mínimo
+    monkeypatch.setattr(models.shutil, "which", lambda n: None)
+    with pytest.raises(RuntimeError):
+        models.jail_engine(["llama-server"])                                 # sin bubblewrap no arranca

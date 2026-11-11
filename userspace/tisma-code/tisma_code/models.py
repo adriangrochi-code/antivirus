@@ -277,6 +277,38 @@ def strata_status(hw: dict) -> dict:
 
 
 # ---------------------------------------------------------------- servidor llama.cpp
+# Dispositivos de GPU que el motor puede usar dentro de la jaula (Vulkan en AMD/Intel, ROCm, NVIDIA)
+GPU_DEVS = ("/dev/dri", "/dev/kfd", "/dev/nvidiactl", "/dev/nvidia0", "/dev/nvidia-uvm", "/dev/nvidia-uvm-tools")
+
+
+def gpu_binds() -> list[str]:
+    """Argumentos de bubblewrap para ver la GPU: «--dev /dev» crea un /dev mínimo SIN /dev/dri."""
+    out: list[str] = []
+    for d in GPU_DEVS:
+        out += ["--dev-bind-try", d, d]
+    return out
+
+
+def jail_engine(argv: list[str]) -> list[str]:
+    """llama-server dentro de bubblewrap. Lee modelos GGUF descargados de internet y su lector ha tenido
+    desbordamientos de memoria reales (p. ej. CVE-2024-42477/42478/42479): si un modelo malicioso lograra
+    ejecutar código, quedaría en una jaula sin la carpeta personal (solo los modelos, de lectura), sin
+    capacidades ni otros procesos visibles. Comparte la red porque escucha en 127.0.0.1."""
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        raise RuntimeError("bubblewrap no está instalado: por seguridad el motor no se ejecuta sin aislamiento")
+    home = str(Path.home())
+    cache = MODELS_DIR.parent / "cache-motor"           # caché de shaders de Vulkan entre arranques
+    cache.mkdir(parents=True, exist_ok=True)
+    models = str(MODELS_DIR.resolve())
+    return [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", *gpu_binds(), "--proc", "/proc",
+            "--tmpfs", "/tmp", "--tmpfs", "/run", "--tmpfs", "/var/tmp", "--tmpfs", home,
+            "--ro-bind", models, models, "--bind", str(cache), str(cache),
+            "--unshare-all", "--share-net", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+            "--clearenv", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", home,
+            "--setenv", "XDG_CACHE_HOME", str(cache), "--setenv", "LANG", "C.UTF-8", "--", *argv]
+
+
 def port_listening(port: int) -> bool:
     for table in ("/proc/net/tcp", "/proc/net/tcp6"):
         try:
@@ -404,7 +436,7 @@ class LocalServer:
 
     @staticmethod
     def _spawn(argv: list[str]) -> subprocess.Popen:
-        return subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return subprocess.Popen(jail_engine(argv), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _fallback(self, proc: subprocess.Popen, base: list[str], wait_s: float = 180) -> None:
         """Si el motor no admite la caché KV comprimida (requiere Flash Attention), se relanza sin ella."""

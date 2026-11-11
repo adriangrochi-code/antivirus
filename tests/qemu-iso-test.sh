@@ -18,6 +18,8 @@ for _ in $(seq 1 300); do
     sleep 5
 done
 LOG="$(sed 's/\x1b\[[0-9;]*m//g' "$W/serie.log")"
+# GUARDAR_LOG=<archivo>: conserva el registro serie completo para revisarlo
+if [[ -n "${GUARDAR_LOG:-}" ]]; then printf '%s\n' "$LOG" > "$GUARDAR_LOG"; fi
 fallo=0
 check() { if grep -qaE "$2" <<<"$LOG"; then echo "  ok   $1"; else echo "  FALLO $1"; fallo=1; fi; }
 echo "Arranque de $ISO:"
