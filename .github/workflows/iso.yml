@@ -29,12 +29,21 @@ concurrency:
 
 jobs:
   iso:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[iso]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[iso')
     runs-on: ubuntu-24.04
-    env:
-      ETIQUETA: ${{ inputs.etiqueta || format('v0.9-preview{0}', github.run_number) }}
     timeout-minutes: 330
     steps:
+      - name: Etiqueta de la versión
+        env:
+          MENSAJE: ${{ github.event.head_commit.message }}
+          MANUAL: ${{ inputs.etiqueta }}
+          NUMERO: ${{ github.run_number }}
+        run: |
+          # A mano: la del formulario. Con un commit: «[iso v0.9-preview5]» la fija; «[iso]» solo, la automática
+          etiqueta="${MANUAL:-v0.9-preview$NUMERO}"
+          if [[ -z "$MANUAL" && "$MENSAJE" =~ \[iso\ ([A-Za-z0-9._-]+)\] ]]; then etiqueta="${BASH_REMATCH[1]}"; fi
+          echo "ETIQUETA=$etiqueta" >> "$GITHUB_ENV"
+          echo "Etiqueta: $etiqueta"
       - name: Liberar espacio en el runner
         run: |
           [[ "$ETIQUETA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Etiqueta no válida: $ETIQUETA"; exit 1; }
