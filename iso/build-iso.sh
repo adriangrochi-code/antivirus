@@ -223,8 +223,12 @@ if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
     log "Imagen mínima: sin Hope ni componentes pesados"
 elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
     rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
+    # Lo que importan sus herramientas (unidades, gráficos, álgebra simbólica): solo si Hope va en la imagen
+    instalar_paquetes python3-pint python3-matplotlib python3-sympy python3-scipy
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
+    # Nunca una copia vieja de una build anterior (Hope es privado: una ISO pública no puede llevarlo)
+    rm -rf "$LIB/python/vendor"
 fi
 # Componentes que no están en Debian: sus scripts van también en la imagen para descargarlos al usarlos
 # (centinela-apps strata|rea|craft y los «@componente» de los perfiles), con la misma versión y SHA-256 fijados
@@ -251,6 +255,7 @@ mapfile -t compilar < <(lista_paquetes "$PERFILES/programacion.list" | while rea
 instalar_paquetes "${compilar[@]}"
 "$HERE/components/hardened-malloc.sh" "$CHROOT" || log "AVISO: no se pudo compilar hardened_malloc"
 "$HERE/components/scx.sh" "$CHROOT" || log "AVISO: sin planificadores sched_ext (se usa el del kernel)"
+instalar_paquetes python3-scipy python3-sklearn          # lightgbm las necesita (se quedan en la imagen)
 "$HERE/components/escudo-ml.sh" "$CHROOT" || log "AVISO: sin motor ML de Escudo (sigue con firmas y YARA)"
 "$HERE/components/python-extra.sh" "$CHROOT" || log "AVISO: sin ruff/sounddevice"
 "$HERE/components/openjarvis.sh" "$CHROOT" || log "AVISO: no se pudo instalar OpenJarvis (opcional)"
@@ -282,8 +287,10 @@ chmod 755 "$CHROOT/etc/grub.d/05_tisma_graficos"
 in_chroot systemctl enable fstrim.timer 2>/dev/null || log "AVISO: sin fstrim.timer"
 # Servicio del análisis dentro de la VM de Escudo (inerte salvo con tisma.detonar en el arranque)
 in_chroot systemctl enable tisma-detonar 2>/dev/null || true
-# Imagen de la máquina virtual de análisis (make vm-detonacion): sin ella Escudo analiza en sandbox
-if [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
+# Imagen de la máquina virtual de análisis (make vm-detonacion, ~300 MB ya comprimidos): solo en la ISO completa.
+# Sin ella Escudo analiza lo descargado en su sandbox (bubblewrap + seccomp).
+rm -rf "$CHROOT/usr/lib/tisma/vm"
+if [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 && "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
     install -D -m 644 -t "$CHROOT/usr/lib/tisma/vm" "$BUILD_DIR"/vm/{detonacion.iso,vmlinuz,initrd.img}
     log "Imagen de análisis incluida (Escudo analizará en máquina virtual si hay KVM)"
 fi

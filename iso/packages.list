@@ -76,13 +76,13 @@ opensnitch python3-opensnitch-ui keepassxc nmap
 # --- Tisma engine (laminador): dependencias de ejecución ---
 libgl1 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libssl3t64 unzip git
 # --- Ingeniería y ciencia ---
-python3-numpy python3-scipy
+python3-numpy
 python3-yaml python3-pil python3-pytest
 # Herramientas que TISMA Code usa con «ingenieria» (mallas, electrónica digital/analógica, optimización, informes).
 # Lo pesado (OpenFOAM, ParaView, FEniCSx, Netgen, PyVista/VTK) va aparte: «centinela-apps simulacion»
 # --- TISMA Code (IA local para programar) ---
-# Hope (cálculo exacto de TISMA Code) usa unidades (pint), gráficos (matplotlib) y álgebra simbólica (sympy)
-python3-pint python3-matplotlib python3-sympy
+# (Hope, cálculo exacto de TISMA Code, usa pint, matplotlib, sympy y scipy: build-iso.sh los instala solo
+# si Hope va en la imagen. scipy y sklearn también con el motor ML de Escudo, que se compila aparte.)
 bubblewrap strace xvfb
 # llama.cpp no está en trixie: se compila (iso/components/llama-cpp.sh) con estas dependencias
 # planificadores sched_ext (iso/components/scx.sh)
@@ -96,7 +96,7 @@ chromium chromium-l10n chromium-sandbox dnscrypt-proxy wireguard-tools network-m
 xdg-dbus-proxy ripgrep universal-ctags git
 python3-yara yara python3-pefile libnotify-bin gpgv
 # Motor ML de Escudo (lightgbm y signify se instalan con iso/components/escudo-ml.sh)
-python3-sklearn python3-asn1crypto python3-oscrypto python3-certvalidator python3-typing-extensions libgomp1
+python3-asn1crypto python3-oscrypto python3-certvalidator python3-typing-extensions libgomp1
 # Eventos del kernel (inotify) en vez de sondeo, y conexiones de red: sin ellos Escudo recorría las carpetas
 # cada 5 s (CPU y disco siempre despiertos)
 python3-watchdog python3-psutil libglib2.0-bin
