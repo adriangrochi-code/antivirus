@@ -13,6 +13,15 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 5b (instalación como Windows)**: el USB arranca directo al instalador, sin menú (Esc
+  durante 3 s muestra las opciones; si el equipo ya tiene TISMA instalado, arranca ese sistema). El instalador se
+  abre solo y pregunta tres cosas: dónde instalar, la contraseña del disco y tu cuenta; la hora y los formatos
+  salen de tu ubicación y el teclado es el del USB. Al terminar se reinicia solo. La contraseña del disco la pide
+  la pantalla de arranque gráfica con el teclado en español (antes, GRUB en inglés). Arreglos de la preview 5:
+  la sesión del USB no tenía usuario (pantalla negra con cursor), la instalación fallaba en equipos UEFI (faltaban
+  dosfstools y squashfs-tools), un sistema cifrado no arrancaba (faltaba cryptsetup-initramfs), OpenSnitch
+  bloqueaba el DNS y la hora, el DNS no volvía si se arrancaba sin red y no había icono para instalar. Si el
+  arranque no llega a la pantalla de inicio, a los 4 minutos se muestra en pantalla qué falló.
 - **Novedades de la preview 5**: Escudo protege antes de que aparezca la pantalla de inicio de sesión; la puerta
   de primera ejecución y el análisis en aislamiento funcionan dentro del servicio (antes se apagaban o daban
   «limpio»); YARA y los modelos de IA se descargan solos; detecta malware sin archivo, carga de eBPF y puertas
@@ -56,8 +65,9 @@ ni para equipos con datos importantes sin copia.**
 
 1. **En una máquina virtual** (lo más seguro): QEMU/virt-manager o VirtualBox con UEFI, 4 GB de RAM o más y
    un disco de 40 GB.
-2. **En un equipo real**: graba la ISO en un USB (`dd` o Ventoy) y arranca en modo live; desde el escritorio se
-   puede instalar con «Instalar TISMA OS». **Secure Boot puede quedarse activado**.
+2. **En un equipo real**: graba la ISO en un USB (`dd` o Ventoy) y arranca desde él: el instalador se abre solo.
+   Para probar sin instalar, pulsa «Cancelar» (o Esc al arrancar > «Probar TISMA OS sin instalar»).
+   **Secure Boot puede quedarse activado**.
 
 ## Secure Boot
 
