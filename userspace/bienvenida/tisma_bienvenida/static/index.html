@@ -116,10 +116,11 @@ footer .sp{flex:1}
 
     <section data-s="2">
       <h2>¿Para qué vas a usar el equipo?</h2>
-      <p class="lead">Dejamos a mano las aplicaciones que más vas a usar y ajustamos la potencia. Todo lo demás sigue en el menú.</p>
+      <p class="lead">Marca todos los usos que quieras: se suman sus aplicaciones. Dejamos a mano las que más vas a usar y ajustamos la potencia; todo lo demás sigue en el menú.</p>
       <div class="grid g3" id="perfiles"></div>
+      <div style="margin-top:10px"><button class="btn s" id="todos">Elegir todo</button></div>
       <div class="panel" id="instPanel" hidden style="margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <div style="flex:1;min-width:220px"><b id="instTit">Apps de este perfil</b><div class="muted" id="instTxt" style="margin-top:4px"></div></div>
+        <div style="flex:1;min-width:220px"><b id="instTit">Apps de lo elegido</b><div class="muted" id="instTxt" style="margin-top:4px"></div></div>
         <button class="btn s p" id="instBtn">Instalar ahora</button>
       </div>
     </section>
@@ -220,29 +221,47 @@ function aplicarTema() {
     res(); }, 350); });
 }
 let temaP = Promise.resolve();
+function pintarPerfiles() {
+  $$(".opt[data-perfil]").forEach(b => { const on = st.perfiles.includes(b.dataset.perfil);
+    b.classList.toggle("sel", on); b.setAttribute("aria-pressed", on); });
+  $("#todos").textContent = st.perfiles.length === Object.keys(st.perfiles_todos).length ? "Todo elegido" : "Elegir todo";
+}
+let perfT = null;
+function elegirPerfiles() {
+  pintarPerfiles();
+  clearTimeout(perfT);
+  if (!st.perfiles.length) { $("#instPanel").hidden = true; return; }
+  // Se aplica al dejar de tocar (marcar varios seguidos no rehace la barra cada vez)
+  perfT = setTimeout(async () => {
+    try { const r = await api("/api/perfil", {perfiles: st.perfiles});
+          toast(r.ok ? "Barra de tareas preparada" : "Guardado (la barra se actualiza al reiniciar la sesión)"); }
+    catch (e) { toast("No se pudo aplicar: " + e.message); }
+    revisarApps();
+  }, 600);
+}
 // Las apps de cada perfil no vienen en la ISO: se descargan de los repositorios firmados de Debian al elegirlo
 let instT = null;
 async function revisarApps() {
   const panel = $("#instPanel"), txt = $("#instTxt"), btn = $("#instBtn");
-  if (!st.perfil) return;
+  if (!st.perfiles.length) { panel.hidden = true; return; }
   try {
-    const f = await api("/api/faltan?perfil=" + encodeURIComponent(st.perfil));
+    const f = await api("/api/faltan?perfiles=" + encodeURIComponent(st.perfiles.join(",")));
     const n = f.paquetes + f.componentes;
     if (f.sin_herramienta || (!n && !instT)) { panel.hidden = true; return; }
     panel.hidden = false;
     btn.hidden = false; btn.disabled = false;
     if (st.live) {
-      txt.textContent = `Faltan ${n} programas de este perfil. En la sesión live se perderían al apagar: se instalan al elegir el perfil tras instalar TISMA OS.`;
+      txt.textContent = `Faltan ${n} programas de lo elegido. En la sesión live se perderían al apagar: se instalan tras instalar TISMA OS.`;
       btn.hidden = true;
     } else {
-      txt.textContent = `Faltan ${n} programas de este perfil (no vienen en la ISO para que pese menos). Se descargan de los repositorios oficiales y firmados; tardará unos minutos según tu conexión.`;
+      txt.textContent = `Faltan ${n} programas de lo elegido (no vienen en la ISO para que pese menos). Se descargan de los repositorios oficiales y firmados; tardará unos minutos según tu conexión.`;
     }
   } catch (e) { panel.hidden = true; }
 }
 async function instalarApps() {
   const btn = $("#instBtn");
   try {
-    const r = await api("/api/instalar", {perfil: st.perfil});
+    const r = await api("/api/instalar", {perfiles: st.perfiles});
     if (!r.ok) { toast(r.error); return; }
     btn.disabled = true;
     seguirInstalacion();
@@ -265,7 +284,7 @@ async function seguirInstalacion() {
   btn.disabled = false;
   if (r.fase === "listo") {
     toast("Apps instaladas");
-    try { await api("/api/perfil", {perfil: st.perfil}); } catch (e) {}   // anclar las recién instaladas
+    try { await api("/api/perfil", {perfiles: st.perfiles}); } catch (e) {}   // anclar las recién instaladas
     $("#instPanel").hidden = true;
   } else if (r.fase === "cancelado") {
     txt.textContent = "Cancelado. Puedes instalarlas ahora o más tarde desde la Tienda.";
@@ -302,21 +321,23 @@ async function terminar() {
   if (st.usuario) $("#hola").textContent = `Hola, ${st.usuario}. Te damos la bienvenida a TISMA OS`;
   $("#acentos").innerHTML = Object.entries(st.acentos).map(([k, v]) =>
     `<button class="dot" role="radio" data-a="${esc(k)}" style="background:${esc(v)}" aria-label="${esc(k)}" title="${esc(k)}"></button>`).join("");
-  $("#perfiles").innerHTML = Object.entries(st.perfiles).map(([k, p]) =>
+  st.perfiles_todos = st.perfiles;
+  $("#perfiles").innerHTML = Object.entries(st.perfiles_todos).map(([k, p]) =>
     `<button class="opt" data-perfil="${esc(k)}"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONOS[k] || ""}</svg></div><b>${esc(p.nombre)}</b><span>${esc(p.desc)}</span></button>`).join("");
   pintarTema();
-  $$(".opt[data-perfil]").forEach(b => b.classList.toggle("sel", b.dataset.perfil === st.perfil));
+  st.perfiles = st.perfiles_elegidos || [];
+  pintarPerfiles();
   $$(".opt[data-modo]").forEach(b => b.onclick = () => { st.tema = b.dataset.modo; aplicarTema(); });
   $$(".dot").forEach(d => d.onclick = () => { st.acento = d.dataset.a; aplicarTema(); });
-  $$(".opt[data-perfil]").forEach(b => b.onclick = async () => {
-    $$(".opt[data-perfil]").forEach(x => { x.classList.toggle("sel", x === b); x.setAttribute("aria-pressed", x === b); });
-    try { const r = await api("/api/perfil", {perfil: b.dataset.perfil}); st.perfil = b.dataset.perfil;
-          toast(r.ok ? "Barra de tareas preparada" : "Perfil guardado (la barra se actualiza al reiniciar la sesión)"); }
-    catch (e) { toast("No se pudo aplicar: " + e.message); }
-    revisarApps();
+  // Varios usos a la vez: cada uno se marca o desmarca y se suman sus apps
+  $$(".opt[data-perfil]").forEach(b => b.onclick = () => {
+    const k = b.dataset.perfil;
+    st.perfiles = st.perfiles.includes(k) ? st.perfiles.filter(x => x !== k) : [...st.perfiles, k];
+    elegirPerfiles();
   });
+  $("#todos").onclick = () => { st.perfiles = Object.keys(st.perfiles_todos); elegirPerfiles(); };
   $("#instBtn").onclick = instalarApps;
-  if (st.perfil) revisarApps();
+  if (st.perfiles.length) revisarApps();
   $$("[data-abrir]").forEach(b => b.onclick = async () => { try { await api("/api/abrir", {app: b.dataset.abrir}); toast("Abriendo…"); } catch (e) { toast(e.message); } });
   $$(".step").forEach(s => s.onclick = () => ir(+s.dataset.i));
   $("#sig").onclick = () => paso === N - 1 ? terminar() : ir(paso + 1);

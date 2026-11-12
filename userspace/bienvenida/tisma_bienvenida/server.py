@@ -166,13 +166,41 @@ def apply_theme(modo: str, acento: str) -> dict:
     return {"ok": ok, "salida": out}
 
 
-def apply_profile(perfil: str) -> dict:
-    p = PERFILES[perfil]
+MAX_ANCLADAS = 10        # iconos anclados en la barra: lo demás sigue en el menú
+
+
+def combinar(perfiles: list[str]) -> dict:
+    """Varios usos a la vez (juegos + programación + …): suma de listas y apps, sin repetir, en orden."""
+    listas, apps = [], []
+    for k in perfiles:
+        for x in PERFILES[k]["listas"]:
+            if x not in listas:
+                listas.append(x)
+        for x in PERFILES[k]["apps"]:
+            if x not in apps:
+                apps.append(x)
+    potencia = "rendimiento" if any(PERFILES[k]["potencia"] == "rendimiento" for k in perfiles) else "equilibrado"
+    return {"listas": listas, "apps": apps[:MAX_ANCLADAS], "potencia": potencia}
+
+
+def elegidos(valor) -> list[str] | None:
+    """Perfiles pedidos (lista, «a,b» o uno solo); None si alguno no existe o no hay ninguno."""
+    if isinstance(valor, str):
+        valor = [v for v in valor.split(",") if v]
+    if not isinstance(valor, list) or not valor or len(valor) > len(PERFILES):
+        return None
+    if not all(isinstance(v, str) and v in PERFILES for v in valor):
+        return None
+    return list(dict.fromkeys(valor))
+
+
+def apply_profile(perfiles: list[str]) -> dict:
+    p = combinar(perfiles)
     launchers = desktop_ids(p["apps"])
     ok1, out1 = _ok(["gdbus", "call", "--session", "--dest", "org.kde.plasmashell", "--object-path", "/PlasmaShell",
                      "--method", "org.kde.PlasmaShell.evaluateScript", panel_script(launchers)])
     ok2, _ = _ok(["systemctl", "start", "--no-block", f"centinela-perfil@{p['potencia']}.service"])
-    write_conf(perfil=perfil)
+    write_conf(perfiles=perfiles, perfil=perfiles[0])
     return {"ok": ok1, "lanzadores": launchers, "potencia": ok2, "salida": out1}
 
 
@@ -184,25 +212,26 @@ def live_session() -> bool:
         return False
 
 
-def missing_for(perfil: str) -> dict:
-    """Lo que falta de las apps del perfil (paquetes de Debian y componentes de GitHub)."""
+def missing_for(perfiles: list[str]) -> dict:
+    """Lo que falta de las apps de los perfiles elegidos (paquetes de Debian y componentes de GitHub)."""
     try:
-        r = RUN(["tisma-perfil", "faltan", *PERFILES[perfil]["listas"]], capture_output=True, text=True, timeout=30)
+        r = RUN(["tisma-perfil", "faltan", *combinar(perfiles)["listas"]], capture_output=True, text=True,
+                timeout=30)
         d = json.loads(r.stdout or "{}")
         return {"paquetes": len(d.get("paquetes", [])), "componentes": len(d.get("componentes", []))}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {"paquetes": 0, "componentes": 0, "sin_herramienta": True}
 
 
-def start_install(perfil: str) -> dict:
+def start_install(perfiles: list[str]) -> dict:
     proc = INSTALANDO.get("proc")
     if proc is not None and proc.poll() is None:
         return {"ok": False, "error": "Ya hay una instalación en curso"}
     if live_session():
         return {"ok": False, "error": "En la sesión live se perdería al apagar: instala TISMA OS en el disco y "
                                        "elige el perfil en el primer inicio"}
-    INSTALANDO.update(perfil=perfil, inicio=time.time(), proc=POPEN(
-        ["pkexec", "tisma-perfil", "instalar", *PERFILES[perfil]["listas"]],
+    INSTALANDO.update(perfil=",".join(perfiles), inicio=time.time(), proc=POPEN(
+        ["pkexec", "tisma-perfil", "instalar", *combinar(perfiles)["listas"]],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
     return {"ok": True}
 
@@ -312,12 +341,16 @@ class Handler(BaseHTTPRequestHandler):
             c = read_conf()
             return self._send(200, {"tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
                                     "perfil": c.get("perfil", ""), "acentos": ACENTOS,
+                                    "perfiles_elegidos": [x for x in (c.get("perfiles") or
+                                                                      ([c["perfil"]] if c.get("perfil") else []))
+                                                          if x in PERFILES],
                                     "perfiles": {k: {"nombre": v["nombre"], "desc": v["desc"]} for k, v in PERFILES.items()},
                                     "usuario": nombre_de_pila(), "live": live_session()})
         if u.path == "/api/faltan":
-            if q.get("perfil") not in PERFILES:
+            ps = elegidos(q.get("perfiles") or q.get("perfil"))
+            if not ps:
                 return self._send(400, {"error": "perfil inválido"})
-            return self._send(200, missing_for(q["perfil"]))
+            return self._send(200, missing_for(ps))
         if u.path == "/api/instalacion":
             return self._send(200, install_state())
         if u.path == "/api/ia":
@@ -340,13 +373,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "tema o acento inválido"})
             return self._send(200, apply_theme(b["modo"], b["acento"]))
         if u.path == "/api/perfil":
-            if b.get("perfil") not in PERFILES:
+            ps = elegidos(b.get("perfiles") or b.get("perfil"))
+            if not ps:
                 return self._send(400, {"error": "perfil inválido"})
-            return self._send(200, apply_profile(b["perfil"]))
+            return self._send(200, apply_profile(ps))
         if u.path == "/api/instalar":
-            if b.get("perfil") not in PERFILES:
+            ps = elegidos(b.get("perfiles") or b.get("perfil"))
+            if not ps:
                 return self._send(400, {"error": "perfil inválido"})
-            return self._send(200, start_install(b["perfil"]))
+            return self._send(200, start_install(ps))
         if u.path == "/api/abrir":
             argv = ABRIR.get(b.get("app"))
             if not argv or not shutil.which(argv[0]):

@@ -139,3 +139,26 @@ def test_saludo_con_el_nombre_de_pila():
     assert server.nombre_de_pila("Ana Prueba,,,", "anap") == "Ana"
     assert server.nombre_de_pila("", "anap") == "anap"
     assert server.nombre_de_pila(",,,", "anap") == "anap"
+
+
+def test_varios_usos_a_la_vez(srv, monkeypatch):
+    """Juegos + programación + …: se suman las listas de apps y se instala todo junto."""
+    port, calls = srv
+    c = server.combinar(["diario", "juegos", "programacion"])
+    assert c["listas"] == ["esenciales", "diario", "juegos", "programacion"]
+    assert c["potencia"] == "rendimiento"                          # alguno lo pide
+    assert len(c["apps"]) <= server.MAX_ANCLADAS and len(set(c["apps"])) == len(c["apps"])
+    todo = server.combinar(list(server.PERFILES))
+    assert set(todo["listas"]) == {x for p in server.PERFILES.values() for x in p["listas"]}
+    # La API acepta varios, rechaza los que no existen y los repetidos no cuentan dos veces
+    assert req(port, "POST", "/api/perfil", {"perfiles": ["diario", "root"]})[0] == 400
+    assert req(port, "POST", "/api/perfil", {"perfiles": []})[0] == 400
+    assert req(port, "POST", "/api/perfil", {"perfiles": ["diario", "juegos", "diario"]})[0] == 200
+    est = json.loads(req(port, "GET", "/api/estado")[1])
+    assert est["perfiles_elegidos"] == ["diario", "juegos"]
+    assert ["systemctl", "start", "--no-block", "centinela-perfil@rendimiento.service"] in calls
+    monkeypatch.setattr(server, "live_session", lambda: False)
+    monkeypatch.setattr(server, "INSTALANDO", {})
+    assert json.loads(req(port, "POST", "/api/instalar", {"perfiles": ["diario", "juegos"]})[1])["ok"]
+    inst = next(x for x in calls if x[:3] == ["pkexec", "tisma-perfil", "instalar"])
+    assert inst[3:] == ["esenciales", "diario", "juegos"]
