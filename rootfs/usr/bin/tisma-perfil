@@ -112,8 +112,10 @@ def instalar(nombres: list[str], run=None) -> int:
               "inicio": time.time(), "ok": None}
     guardar(estado)
     if not pend and not comps:
-        guardar({**estado, "fase": "listo", "ok": True, "mensaje": "Ya estaba todo instalado"})
-        print("Ya estaba todo instalado.")
+        # Ya instalado (p. ej. Wine por otro perfil): igualmente se activan los 32 bits si este perfil los necesita
+        aviso = activar_32bits(run) if PERFILES_32 & set(nombres) and not os.path.exists(MARCA_32) else ""
+        guardar({**estado, "fase": "listo", "ok": True, "mensaje": aviso or "Ya estaba todo instalado"})
+        print(aviso or "Ya estaba todo instalado.")
         return 0
     if any(p.startswith(("steam-installer", "steam-libs")) for p in pend):
         # Licencia de Steam aceptada de antemano (si no, apt se queda esperando una respuesta que nadie da)

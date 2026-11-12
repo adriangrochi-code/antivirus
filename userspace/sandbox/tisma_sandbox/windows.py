@@ -1,14 +1,21 @@
-"""Doble clic en un programa de Windows (.exe, .msi): como en Windows, pero revisado y aislado.
+"""Doble clic en un programa de Windows (.exe, .msi): tan cómodo como en Windows, pero revisado y aislado.
 
-1. Si falta Wine, se ofrece instalarlo (perfil «windows»).
+Lo que el usuario nota es lo mismo que en Windows: doble clic y el programa se abre, con Internet y con sus
+documentos. Por debajo:
+1. Si falta Wine, se instala solo la primera vez (paquetes firmados de Debian; sin contraseña para el administrador
+   que usa el equipo: regla de polkit limitada a «tisma-perfil instalar windows»). Si el programa es de 32 bits y
+   están apagados, se activan y se pide reiniciar, como Windows al terminar de instalar algo.
 2. El programa se copia a la carpeta privada de su aislamiento y Escudo revisa ESA copia (firmas, YARA, ML y lo que
    hace al ejecutarlo con Wine en un entorno de prueba): se ejecuta exactamente lo revisado.
    - limpio → se abre;
    - sospechoso → se avisa con los motivos; un administrador puede permitirlo (escudo permitir);
    - malicioso → no se abre.
    Sin Escudo funcionando no se abre nada (falla cerrado).
-3. Se abre con Wine dentro de tisma-sandbox: SIN red, con su propio «Windows» (prefijo de Wine) por programa, sin
-   ver la carpeta personal: solo ~/Windows/<programa> para intercambiar archivos (unidad Z: de Wine).
+3. Se abre con Wine dentro de tisma-sandbox, con su propio «Windows» (prefijo de Wine) por programa: ve tus carpetas
+   de documentos (Documentos, Descargas, Escritorio, Imágenes, Música, Vídeos: sus «Mis documentos» son los tuyos),
+   pero NUNCA el resto de la carpeta personal (claves, contraseñas del navegador, configuración, arranque). Tiene
+   Internet porque Escudo ya lo revisó y su IPS vigila la red; los documentos tienen además las instantáneas de
+   TISMA y el detector de ransomware de Escudo.
 4. Si era un instalador, los programas que instaló aparecen en el menú de inicio; al abrirlos, Escudo revisa su .exe
    igual que la primera vez (lo ya revisado se abre al instante).
 """
@@ -27,8 +34,9 @@ from . import profile as prof
 
 EXTENSIONES = (".exe", ".msi", ".msp")
 MENU = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "applications/tisma-windows"
-INTERCAMBIO = Path.home() / "Windows"
 TITULO = "Programas de Windows"
+CARPETAS = ("DESKTOP", "DOWNLOAD", "DOCUMENTS", "PICTURES", "MUSIC", "VIDEOS")
+MARCA_32 = Path("/etc/tisma/32bits")
 
 
 # ---------------------------------------------------------------- avisos al usuario
@@ -68,14 +76,64 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def perfil(nombre: str, carpeta: str) -> prof.Profile:
-    """El aislamiento de UN programa de Windows: su $HOME privado (con su prefijo de Wine) y su carpeta de
-    intercambio; sin red, con gráficos, sonido y mandos."""
-    p = prof.Profile(nombre=nombre, exec="/usr/bin/wine", descripcion="Programa de Windows aislado", red=False,
-                     gpu=True, audio=True, mandos=True, x11=True, portales=False, rw=[f"~/Windows/{carpeta}"],
+def carpetas_usuario(xdg=None) -> list[str]:
+    """Las carpetas de documentos del usuario (con su nombre en su idioma), como rutas «~/…»."""
+    home = str(Path.home())
+    out = []
+    for c in CARPETAS:
+        try:
+            r = xdg(c) if xdg else subprocess.run(["xdg-user-dir", c], capture_output=True, text=True,
+                                                  timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            r = ""
+        if r and r.startswith(home + os.sep) and r != home and "/." not in r[len(home):]:
+            out.append("~" + r[len(home):])
+    return list(dict.fromkeys(out))
+
+
+def perfil(nombre: str, carpetas: list[str] | None = None) -> prof.Profile:
+    """El aislamiento de UN programa de Windows: su $HOME privado (con su prefijo de Wine) más las carpetas de
+    documentos; con Internet, gráficos, sonido y mandos. validate() rechaza cualquier ruta prohibida."""
+    p = prof.Profile(nombre=nombre, exec="/usr/bin/wine", descripcion="Programa de Windows aislado", red=True,
+                     gpu=True, audio=True, mandos=True, x11=True, portales=False,
+                     rw=carpetas if carpetas is not None else carpetas_usuario(),
                      env={"WINEPREFIX": f"{Path.home()}/.wine", "WINEDEBUG": "-all"})
     p.validate()
     return p
+
+
+def preparar_home(home_app: Path) -> None:
+    """Para que «Mis documentos» de Wine sean las carpetas del usuario: Wine lee user-dirs.dirs de SU $HOME."""
+    real = Path.home() / ".config/user-dirs.dirs"
+    destino = home_app / ".config/user-dirs.dirs"
+    try:
+        if real.is_file() and not destino.exists():
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            lineas = [ln for ln in real.read_text(encoding="utf-8").splitlines()
+                      if re.fullmatch(r'XDG_[A-Z]+_DIR="\$HOME/[^"$`\\]*"', ln)]
+            destino.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def es_32bits(path: Path) -> bool:
+    """¿Programa de Windows de 32 bits (máquina i386 en la cabecera PE)?"""
+    try:
+        with open(path, "rb") as fh:
+            cab = fh.read(4096)
+        off = int.from_bytes(cab[60:64], "little")
+        return cab[:2] == b"MZ" and cab[off:off + 4] == b"PE\0\0" and cab[off + 4:off + 6] == b"\x4c\x01"
+    except (OSError, ValueError):
+        return False
+
+
+def bits32_apagados(cmdline: str | None = None) -> bool:
+    if cmdline is None:
+        try:
+            cmdline = Path("/proc/cmdline").read_text()
+        except OSError:
+            return False
+    return "ia32_emulation=0" in cmdline.split()
 
 
 def revisar(ruta: Path, pedir=None) -> dict:
@@ -84,9 +142,9 @@ def revisar(ruta: Path, pedir=None) -> dict:
         sys.path.insert(0, "/usr/lib/centinela/python")
         from escudo.consulta import pedir_revision as pedir
     try:
+        # Solo se avisa si hay que esperar (lo ya revisado se abre sin decir nada)
         return pedir(str(ruta), al_avanzar=lambda d: avisar(
-            f"Escudo está revisando «{ruta.name}» antes de abrirlo (la primera vez puede tardar unos minutos).",
-            "security-medium"))
+            f"Comprobando que «{ruta.name}» es seguro. Se abrirá solo en un momento.", "security-medium"))
     except (OSError, ConnectionError) as e:
         return {"estado": "error", "mensaje": f"Escudo no responde ({e})", "sin_escudo": True}
 
@@ -115,16 +173,25 @@ def decidir(r: dict, nombre: str, ruta_original: Path, permitir=None) -> bool:
     return False
 
 
-def wine_listo() -> bool:
-    if shutil.which("wine"):
-        return True
-    if not preguntar("Para abrir programas de Windows hace falta Wine, que no está instalado.\n\n¿Descargarlo e "
-                     "instalarlo ahora? (unos cientos de MB; para programas de 32 bits hay que reiniciar después)",
-                     "Instalar Wine"):
-        return False
-    avisar("Instalando Wine… te avisamos al terminar.")
-    if subprocess.call(["pkexec", "/usr/bin/tisma-perfil", "instalar", "windows"]) != 0 or not shutil.which("wine"):
-        error("No se pudo instalar Wine. Revisa la conexión a Internet e inténtalo de nuevo.")
+def instalar_windows() -> bool:
+    return subprocess.call(["pkexec", "/usr/bin/tisma-perfil", "instalar", "windows"]) == 0
+
+
+def wine_listo(programa: Path | None = None, instalar=None, cmdline: str | None = None) -> bool:
+    """Wine instalado y, si el programa es de 32 bits, los 32 bits activos. Sin preguntas: como Windows."""
+    instalar = instalar or instalar_windows
+    if not shutil.which("wine"):
+        avisar("Preparando el equipo para abrir programas de Windows (solo la primera vez, unos minutos)…")
+        if not instalar() or not shutil.which("wine"):
+            error("No se pudo preparar el equipo para programas de Windows. Revisa la conexión a Internet e "
+                  "inténtalo de nuevo.")
+            return False
+    if programa is not None and es_32bits(programa) and bits32_apagados(cmdline):
+        if not MARCA_32.exists():
+            instalar()                              # activa los 32 bits para el próximo arranque
+        if preguntar(f"«{programa.name}» necesita reiniciar el equipo una vez para poder abrirse (como al terminar "
+                     "de instalar algo en Windows).", "Reiniciar ahora", "Más tarde"):
+            subprocess.call(["systemctl", "reboot"])
         return False
     return True
 
@@ -160,7 +227,7 @@ def menu_instalados(nombre: str, home_app: Path, menu: Path = MENU) -> list[Path
         # La ruta de Windows va en un campo propio (escapado como valor de .desktop), no en Exec: el acceso se pasa
         # a sí mismo (%k) y el lanzador lee de él a qué aislamiento y programa corresponde
         destino.write_text("[Desktop Entry]\nType=Application\n"
-                           f"Name={nombre_vis}\nComment=Programa de Windows (aislado, sin Internet)\n"
+                           f"Name={nombre_vis}\nComment=Programa de Windows\n"
                            "Exec=tisma-abrir-windows --acceso %k\nIcon=wine\nCategories=Wine;\n"
                            f"X-TISMA-Perfil={nombre}\nX-TISMA-Exe={win.replace(chr(92), chr(92) * 2)}\n",
                            encoding="utf-8")
@@ -231,7 +298,7 @@ def abrir(ruta: Path) -> int:
     if not ruta.is_file() or ruta.suffix.lower() not in EXTENSIONES:
         error(f"«{ruta.name}» no es un programa de Windows (.exe o .msi).")
         return 2
-    if not wine_listo():
+    if not wine_listo(ruta):
         return 1
     sha = sha256(ruta)
     nombre = nombre_perfil(ruta.name, sha)
@@ -245,16 +312,15 @@ def abrir(ruta: Path) -> int:
         return 1
     if not decidir(revisar(copia), ruta.name, ruta):
         return 1
-    carpeta = nombre.removeprefix("windows-")
-    p = perfil(nombre, carpeta)
-    (INTERCAMBIO / carpeta).mkdir(parents=True, exist_ok=True)
-    avisar(f"Abriendo «{ruta.name}» sin acceso a Internet. Para pasarle archivos usa la carpeta "
-           f"Windows/{carpeta} de tu carpeta personal (unidad Z: dentro del programa).")
+    preparar_home(home_app)
+    p = perfil(nombre)
     dentro = f"{Path.home()}/programa/{copia.name}"
     rc = ejecutar(p, ["msiexec", "/i", dentro] if copia.suffix.lower() in (".msi", ".msp") else [dentro])
     nuevos = menu_instalados(nombre, home_app)
     if nuevos:
-        avisar(f"Se instalaron {len(nuevos)} programa(s) de Windows: están en el menú de inicio.")
+        avisar(("Ya puedes abrir «" + nuevos[0].read_text().split("Name=", 1)[1].split("\n", 1)[0] +
+                "» desde el menú de inicio.") if len(nuevos) == 1 else
+               f"Los {len(nuevos)} programas instalados ya están en el menú de inicio.")
     return rc
 
 
@@ -272,10 +338,11 @@ def abrir_instalado(nombre: str, win: str) -> int:
     if not exe:
         error("El programa ya no está instalado.")
         return 1
-    if not wine_listo() or not decidir(revisar(exe), exe.name, exe):
+    if not wine_listo(exe) or not decidir(revisar(exe), exe.name, exe):
         return 1
     carpeta_win = win.rsplit("\\", 1)[0]
-    return ejecutar(perfil(nombre, nombre.removeprefix("windows-")), ["start", "/wait", "/d", carpeta_win, win])
+    preparar_home(home_app)
+    return ejecutar(perfil(nombre), ["start", "/wait", "/d", carpeta_win, win])
 
 
 def leer_acceso(acceso: Path, menu: Path = MENU) -> tuple[str, str] | None:
