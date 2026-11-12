@@ -21,7 +21,8 @@ ni para equipos con datos importantes sin copia.**
   navegador. En el menú de arranque la selección ya no tapa el logo y los títulos se leen bien con Secure Boot.
   **Varios usos a la vez**: en el instalador, la página «Tu uso» tiene casillas (diario, estudio, ingeniería,
   programación, juegos y creación) y «Elegir todo»; al terminar se descargan sumadas todas sus aplicaciones
-  (sin Internet, en el primer arranque con conexión). Lo mismo en la Bienvenida.
+  (sin Internet, en el primer arranque con conexión). Lo mismo en la Bienvenida. Lo elegido queda en
+  `/etc/tisma/perfiles-elegidos`; si la descarga se cortó, `sudo tisma-perfil completar` la retoma.
   **Más como Windows**: Dolphin ve los equipos y carpetas compartidas de la red de Windows; clic derecho >
   Propiedades > Compartir comparte una carpeta con la red local (el puerto solo se abre a la red de casa y
   mientras haya algo compartido); miniaturas de fotos, vídeos y PDF; teléfonos por USB; teclas de brillo,
