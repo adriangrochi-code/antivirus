@@ -1,0 +1,4 @@
+# Al entrar, el escritorio arranca limpio, como en Windows: Plasma no vuelve a abrir las ventanas de la sesión
+# anterior (en la VM reabría hasta capturas de pantalla viejas). También hace el inicio de sesión más rápido.
+[General]
+loginMode=emptySession

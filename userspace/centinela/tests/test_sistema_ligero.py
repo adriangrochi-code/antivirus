@@ -161,3 +161,69 @@ def test_lanzadores_fijos_existen_siempre():
     for app in re.findall(r'"applications:([^"]+)\.desktop"', lay):
         en_rootfs = (ROOT / "usr/share/applications" / f"{app}.desktop").exists()
         assert en_rootfs or (app == "org.kde.dolphin" and "dolphin" in paquetes), app
+
+
+def test_atajos_de_windows():
+    texto = (ROOT / "etc/skel/.config/kglobalshortcutsrc").read_text(encoding="utf-8")
+    # Cada atajo de Windows apunta a lo suyo y no queda duplicado en otra acción (Win+R era grabar la pantalla)
+    esperado = {
+        "[kwin]": {"Window Maximize": "Meta+Up", "Window Minimize": "Meta+Down", "MinimizeAll": "Meta+M"},
+        "[services][org.kde.krunner.desktop]": {"_launch": "Meta+R"},
+        "[services][org.kde.spectacle.desktop]": {"RectangularRegionScreenShot": "Meta+Shift+S"},
+        "[services][org.kde.plasma-systemmonitor.desktop]": {"_launch": "Ctrl+Shift+Esc"},
+        "[services][systemsettings.desktop]": {"_launch": "Meta+I"},
+    }
+    grupos: dict[str, dict[str, str]] = {}
+    actual = None
+    for linea in texto.splitlines():
+        if linea.startswith("["):
+            actual = linea.strip()
+            grupos[actual] = {}
+        elif "=" in linea and not linea.startswith("#") and actual:
+            k, v = linea.split("=", 1)
+            grupos[actual][k] = v
+    usados: dict[str, str] = {}
+    for grupo, acciones in grupos.items():
+        for accion, valor in acciones.items():
+            activos = valor.split(",")[0] if grupo == "[kwin]" else valor
+            for tecla in activos.split("\\t"):
+                if tecla != "none":
+                    assert tecla not in usados, f"{tecla} en {accion} y en {usados[tecla]}"
+                    usados[tecla] = accion
+    for grupo, acciones in esperado.items():
+        for accion, tecla in acciones.items():
+            assert tecla in grupos[grupo][accion].split(",")[0].split("\\t"), (grupo, accion)
+    assert "minimizeallEnabled=true" in (ROOT / "etc/xdg/kwinrc").read_text(encoding="utf-8")
+
+
+def test_menu_nuevo_con_documentos_de_office(tmp_path):
+    import importlib.util
+    import zipfile
+    spec = importlib.util.spec_from_file_location("plantillas", ROOT.parent / "iso/plantillas-nuevo.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.escribir(tmp_path)
+    base = tmp_path / "usr/share/templates"
+    for desktop in base.glob("*.desktop"):
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read(desktop, encoding="utf-8")
+        assert (base / cp["Desktop Entry"]["URL"]).is_file()
+    for ext in ("docx", "xlsx", "pptx"):
+        (archivo,) = (base / ".source").glob(f"*.{ext}")
+        with zipfile.ZipFile(archivo) as z:
+            assert z.testzip() is None and "[Content_Types].xml" in z.namelist()
+            assert not any(n.endswith((".bin", "vbaProject.bin")) for n in z.namelist())  # sin macros
+    assert 'plantillas-nuevo.py' in (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+
+
+def test_escritorio_como_windows():
+    # Al entrar no se reabren las ventanas de la sesión anterior
+    assert "loginMode=emptySession" in (ROOT / "etc/xdg/ksmserverrc").read_text(encoding="utf-8")
+    # Win+R / Alt+Espacio: KRunner tiene tiempo de arrancar en equipos lentos (Plasma le da 5 s)
+    k = (ROOT / "etc/systemd/user/plasma-krunner.service.d/50-tisma-tiempo.conf").read_text(encoding="utf-8")
+    assert "TimeoutSec=30" in k
+    # El icono del USB va en «Escritorio»: con ~/Desktop, xdg-user-dirs dejaba una carpeta en inglés
+    build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+    assert "/etc/skel/Escritorio/instalar-tisma.desktop" in build and "/etc/skel/Desktop" not in build
+    region = (ROOT / "etc/calamares/modules/shellprocess-region.conf").read_text(encoding="utf-8")
+    assert "rmdir ${ROOT}/etc/skel/Escritorio" in region

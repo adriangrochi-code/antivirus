@@ -7,6 +7,8 @@ wobblywindowsEnabled=false
 magiclampEnabled=false
 squashEnabled=true
 overviewEnabled=true
+# Win+M: minimizar todas las ventanas (atajo en kglobalshortcutsrc)
+minimizeallEnabled=true
 
 [Effect-blur]
 BlurStrength=12

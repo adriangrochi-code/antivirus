@@ -1,0 +1,34 @@
+# Atajos de teclado de Windows en TISMA. Va en /etc/skel porque kglobalaccel NO lee /etc/xdg (probado en la VM):
+# cada usuario nuevo (también el del USB) arranca con esta copia, la amplía Plasma y se cambia en Preferencias.
+# Ya vienen así en Plasma y no hace falta tocarlos: Win (menú), Win+E (archivos), Win+L (bloquear), Win+D (escritorio),
+# Win+V (portapapeles), Win+. (emojis), Win+P (pantallas), Win+Tab (vista de tareas), Win+1…9 (barra de tareas),
+# Win+←/→ (acoplar a un lado), Alt+Tab, Alt+F4, Ctrl+Alt+Supr (salir).
+# Formato de KWin: «activos,de fábrica,descripción», varias teclas separadas con \t.
+
+[kwin]
+# Win+↑ maximiza y Win+↓ minimiza, como en Windows (en Plasma acoplaban arriba y abajo)
+Window Maximize=Meta+Up\tMeta+PgUp,Meta+PgUp,Maximizar la ventana
+Window Minimize=Meta+Down\tMeta+PgDown,Meta+PgDown,Minimizar la ventana
+Window Quick Tile Top=none,Meta+Up,Acoplar la ventana arriba
+Window Quick Tile Bottom=none,Meta+Down,Acoplar la ventana abajo
+# Win+M minimiza todo (script «minimizeall», activado en kwinrc)
+MinimizeAll=Meta+M\tMeta+Shift+D,Meta+Shift+D,Minimizar todas las ventanas
+
+[services][org.kde.krunner.desktop]
+# Win+R: «Ejecutar» (buscar y abrir programas, archivos y cálculos)
+_launch=Meta+R\tAlt+Space\tAlt+F2\tSearch
+
+[services][org.kde.spectacle.desktop]
+# Win+Shift+S recorta una zona de la pantalla directamente (como la Herramienta Recortes); Impr abre Spectacle.
+_launch=Print
+RectangularRegionScreenShot=Meta+Shift+S\tMeta+Shift+Print
+# Grabar: solo Win+Shift+R (Win+R es «Ejecutar»)
+RecordRegion=Meta+Shift+R
+
+[services][org.kde.plasma-systemmonitor.desktop]
+# Ctrl+Shift+Esc: Monitor del sistema (el Administrador de tareas)
+_launch=Ctrl+Shift+Esc\tMeta+Esc
+
+[services][systemsettings.desktop]
+# Win+I: Preferencias (Configuración)
+_launch=Meta+I\tTools

@@ -212,6 +212,8 @@ rsync -a --chown=root:root --exclude __pycache__ "$REPO/rootfs/" "$CHROOT/"
 chmod 600 "$CHROOT"/etc/usbguard/usbguard-daemon.conf "$CHROOT"/etc/usbguard/rules.conf   # usbguard exige 0600
 mkdir -p "$CHROOT/etc/centinela"
 python3 "$HERE/make-branding.py" "$REPO/branding" "$CHROOT"
+# Clic derecho > Crear nuevo: documento de Word, de Excel y de PowerPoint (como en Windows)
+python3 "$HERE/plantillas-nuevo.py" "$CHROOT" >/dev/null
 
 # Endurecimiento del sistema base (noviembre de 2026, comparado con Kicksecure/secureblue)
 # - Sin el bit setuid/setgid en programas que un escritorio no usa: vía clásica de escalada de privilegios (los
@@ -382,7 +384,9 @@ EOF
 # Lanzador del instalador en el escritorio live (el instalador lo quita del sistema instalado: shellprocess@region).
 # Antes se copiaba de install-debian.desktop, que en trixie se llama calamares-install-debian.desktop: la preview 5
 # no tenía icono para instalar. Ejecutable: si no, Plasma pregunta si abrirlo o ejecutarlo.
-install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT/etc/skel/Desktop/instalar-tisma.desktop"
+# En «Escritorio», no «Desktop»: si existe ~/Desktop al crear el usuario, xdg-user-dirs lo adopta y queda una carpeta en
+# inglés entre Documentos, Descargas, Imágenes… (visto en la VM)
+install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT/etc/skel/Escritorio/instalar-tisma.desktop"
 # Todo lo que el instalador y la sesión del USB ejecutan de verdad. La build instala sin «recomendados» y así
 # faltaron user-setup (sin usuario en el USB: pantalla negra), dosfstools y squashfs-tools (la instalación fallaba)
 # y cryptsetup-initramfs (un sistema cifrado no arrancaba). Si falta algo, la ISO no se genera.
