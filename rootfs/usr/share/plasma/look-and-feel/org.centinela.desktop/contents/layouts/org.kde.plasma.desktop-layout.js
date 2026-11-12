@@ -28,14 +28,9 @@ tasks.writeConfig("highlightWindows", "true");
 
 panel.addWidget("org.kde.plasma.marginsseparator");
 var tray = panel.addWidget("org.kde.plasma.systemtray");
-// TISMA Rendimiento como icono de la bandeja (no un panel fijo que tape el escritorio)
-try {
-    var trayCont = desktopById(tray.readConfig("SystrayContainmentId"));
-    trayCont.currentConfigGroup = ["General"];
-    var extra = trayCont.readConfig("extraItems") || [];
-    if (extra.indexOf("org.tisma.rendimiento") < 0) { extra.push("org.tisma.rendimiento"); }
-    trayCont.writeConfig("extraItems", extra);
-} catch (e) {}
+// Bandeja: sin tocar su contenedor interno. Escribir en él desde este script (para añadir TISMA Rendimiento)
+// la dejaba VACÍA en el primer inicio: sin red/Wi-Fi, volumen ni batería (visto en la A275 y reproducido en la VM).
+// TISMA Rendimiento aparece solo (está activado por defecto en su metadata).
 var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
 clock.writeConfig("showDate", "true");

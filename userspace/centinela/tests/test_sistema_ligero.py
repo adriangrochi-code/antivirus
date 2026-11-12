@@ -308,3 +308,12 @@ def test_menu_de_arranque_legible_con_secure_boot():
     tema = (ROOT / "boot/grub/themes/centinela/theme.txt").read_text(encoding="utf-8")
     # Sin rótulo «TISMA»: en la A275 quedaba encima de la caja violeta de la opción elegida
     assert "wordmark" not in tema.split("acentos):", 1)[-1]
+
+
+def test_bandeja_completa_en_el_primer_inicio():
+    # Tocar el contenedor interno de la bandeja desde el script del tema la dejaba vacía (sin Wi-Fi ni volumen)
+    js = (ROOT / "usr/share/plasma/look-and-feel/org.centinela.desktop/contents/layouts/"
+          "org.kde.plasma.desktop-layout.js").read_text(encoding="utf-8")
+    codigo = "\n".join(l for l in js.splitlines() if not l.strip().startswith("//"))
+    assert "org.kde.plasma.systemtray" in codigo
+    assert "SystrayContainmentId" not in codigo and "extraItems" not in codigo
