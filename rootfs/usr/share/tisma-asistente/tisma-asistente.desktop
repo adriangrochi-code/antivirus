@@ -3,5 +3,5 @@ Type=Application
 Name=TISMA Asistente
 Comment=Doble palmada para empezar a trabajar (voz y audio procesados en tu equipo)
 Exec=tisma-asistente escuchar
-Icon=tisma
+Icon=tisma-asistente
 X-KDE-autostart-phase=2

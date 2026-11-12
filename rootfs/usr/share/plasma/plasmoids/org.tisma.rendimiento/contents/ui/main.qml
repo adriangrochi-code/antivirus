@@ -13,7 +13,7 @@ PlasmoidItem {
     readonly property var gpu: (estado.gpus && estado.gpus.length) ? estado.gpus[0] : null
     readonly property real tempCpu: estado.temperaturas ? (estado.temperaturas.cpu || 0) : 0
 
-    Plasmoid.icon: "tisma"
+    Plasmoid.icon: "tisma-rendimiento"
     toolTipMainText: "TISMA Rendimiento"
     toolTipSubText: estado.cpu
         ? "CPU " + estado.cpu.uso + " % · " + tempCpu + " °C · RAM " + (estado.memoria.used_mb / 1024).toFixed(1) + " GB · perfil " + estado.perfil
@@ -42,7 +42,7 @@ PlasmoidItem {
     }
 
     compactRepresentation: Kirigami.Icon {
-        source: "tisma"
+        source: "tisma-rendimiento"
         active: zona.containsMouse
         MouseArea { id: zona; anchors.fill: parent; hoverEnabled: true; onClicked: root.expanded = !root.expanded
                     onEntered: root.actualizar() }
@@ -75,7 +75,7 @@ PlasmoidItem {
         PlasmaComponents.Button {
             Layout.fillWidth: true
             Layout.topMargin: Kirigami.Units.smallSpacing
-            icon.name: "tisma"
+            icon.name: "tisma-rendimiento"
             text: "Abrir TISMA Rendimiento"
             onClicked: { ejecutar.connectSource("/usr/bin/tisma-rendimiento"); root.expanded = false }
         }

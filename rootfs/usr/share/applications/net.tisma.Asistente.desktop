@@ -3,6 +3,6 @@ Type=Application
 Name=TISMA Asistente: empezar a trabajar
 Comment=Ejecuta tu rutina de trabajo (también con doble palmada si la activas)
 Exec=tisma-asistente rutina
-Icon=tisma
+Icon=tisma-asistente
 Categories=Utility;
 Keywords=asistente;rutina;jarvis;palmada;

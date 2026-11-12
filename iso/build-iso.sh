@@ -413,6 +413,8 @@ in_chroot systemctl enable tisma-secureboot.service 2>/dev/null || true
 in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/tisma ] && plymouth-set-default-theme tisma' \
     || log "AVISO: sin tema de arranque TISMA"
 in_chroot update-initramfs -u -k all
+# Iconos de las apps de TISMA recién generados: caché al día (las apps GTK no los verían si no)
+in_chroot sh -c 'command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -f /usr/share/icons/hicolor' || true
 in_chroot apt-get clean
 # Cachés del sistema (ldconfig, catálogo del registro, hwdb) ya al día: sin estas marcas systemd las regeneraba en
 # CADA arranque del USB (ldconfig: 88 s en QEMU) porque /usr parecía más nuevo que /etc

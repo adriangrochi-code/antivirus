@@ -119,3 +119,25 @@ def test_dns_blocks_malware_with_live_resolvers():
     assert d["require_nofilter"] is False                          # si no, se excluirían los que filtran
     assert "tif.medium" in (ROOT / "usr/lib/tisma/actualizar-bloqueo").read_text()
     assert "OnUnitActiveSec=1d" in (SD / "tisma-bloqueo.timer").read_text()
+
+
+def test_iconos_de_apps_distintos_y_existentes():
+    """Cada app de TISMA tiene su icono de la familia (no el logo repetido) y el icono existe."""
+    import importlib.util
+    import re
+    spec = importlib.util.spec_from_file_location("iconos", ROOT.parent / "branding/iconos.py")
+    ic = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ic)
+    disponibles = {f"tisma-{n}" for n in ic.APPS} | {"tisma"}
+    usados = {}
+    for f in list((ROOT / "usr/share/applications").glob("*.desktop")) + [ROOT / "usr/share/tisma/live/instalar-tisma.desktop"]:
+        m = re.search(r"^Icon=(.+)$", f.read_text(), re.M)
+        if m and m.group(1).startswith("tisma"):
+            assert m.group(1) in disponibles, (f.name, m.group(1))
+            usados[f.name] = m.group(1)
+    assert len(usados) >= 8 and len(set(usados.values())) == len(usados)      # ninguno repetido
+    colores = [c for c, _, _ in ic.APPS.values()]
+    assert len(set(colores)) == len(colores)
+    import xml.dom.minidom
+    for n in ic.APPS:
+        xml.dom.minidom.parseString(ic.icono(n))                              # SVG válido

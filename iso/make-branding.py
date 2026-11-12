@@ -49,6 +49,16 @@ def main(branding: Path, root: Path) -> None:
         svg(branding / "logo.svg", d / "tisma.png", size)
     (icons / "scalable/apps").mkdir(parents=True, exist_ok=True)
     (icons / "scalable/apps/tisma.svg").write_bytes((branding / "logo.svg").read_bytes())
+    # Iconos de cada app de TISMA: misma familia (hexágono de la marca), símbolo y color propios (branding/iconos.py)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("iconos", branding / "iconos.py")
+    iconos = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(iconos)
+    for fuente in iconos.escribir(icons / "scalable/apps"):
+        for size in (16, 22, 24, 32, 48, 64, 128, 256):
+            d = icons / f"{size}x{size}/apps"
+            d.mkdir(parents=True, exist_ok=True)
+            svg(fuente, d / (fuente.stem + ".png"), size)
     # Instalador (Calamares): logo y portada de la marca TISMA
     cal = root / "etc/calamares/branding/tisma"
     cal.mkdir(parents=True, exist_ok=True)
