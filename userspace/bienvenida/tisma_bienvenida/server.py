@@ -113,11 +113,40 @@ def desktop_ids(keys: list[str]) -> list[str]:
     return out
 
 
-def panel_script(launchers: list[str]) -> str:
-    """JavaScript de Plasma que cambia los iconos anclados de la barra de tareas (solo datos de la lista fija)."""
-    return ("var ps = panels(); for (var i = 0; i < ps.length; i++) { var ws = ps[i].widgets('org.kde.plasma.icontasks');"
+def panel_script(launchers: list[str], alto: float | None = None) -> str:
+    """JavaScript de Plasma que cambia los iconos anclados de la barra de tareas (solo datos de la lista fija) y,
+    si se pide, su alto (en unidades de la cuadrícula de Plasma: 2,6 normal, 3,6 para chicos)."""
+    h = f" ps[i].height = Math.round(gridUnit * {float(alto):.1f});" if alto else ""
+    return ("var ps = panels(); for (var i = 0; i < ps.length; i++) {" + h +
+            " var ws = ps[i].widgets('org.kde.plasma.icontasks');"
             " for (var j = 0; j < ws.length; j++) { ws[j].currentConfigGroup = ['General'];"
             f" ws[j].writeConfig('launchers', {json.dumps(launchers)}); ws[j].reloadConfig(); }} }}")
+
+
+# Escritorio simple para chicos (primaria): barra e iconos más grandes y letra más grande. Reversible.
+USOS_ADULTOS = {"estudio", "ingenieria", "programacion", "juegos"}
+LETRA = {False: 10, True: 12}
+FUENTES = ("font", "menuFont", "toolBarFont", "smallestReadableFont")
+
+
+def es_equipo_de_chicos(perfiles: list[str]) -> bool:
+    return "primaria" in perfiles and not USOS_ADULTOS & set(perfiles)
+
+
+def escritorio_chicos(activar: bool) -> dict:
+    tam = LETRA[activar]
+    ok_letra = True
+    for clave in FUENTES:
+        t = tam - 2 if clave == "smallestReadableFont" else tam
+        ok, _ = _ok(["kwriteconfig6", "--file", "kdeglobals", "--group", "General", "--key", clave,
+                     f"Inter,{t},-1,5,400,0,0,0,0,0,0,0,0,0,0,1"])
+        ok_letra = ok_letra and ok
+    alto = 3.6 if activar else 2.6
+    ok_panel, _ = _ok(["gdbus", "call", "--session", "--dest", "org.kde.plasmashell", "--object-path", "/PlasmaShell",
+                       "--method", "org.kde.PlasmaShell.evaluateScript",
+                       f"var ps = panels(); for (var i = 0; i < ps.length; i++) ps[i].height = Math.round(gridUnit * {alto});"])
+    write_conf(chicos=activar)
+    return {"ok": ok_letra and ok_panel, "chicos": activar}
 
 
 def _ok(argv: list[str], timeout: int = 60) -> tuple[bool, str]:
@@ -219,11 +248,15 @@ def elegidos(valor) -> list[str] | None:
 def apply_profile(perfiles: list[str]) -> dict:
     p = combinar(perfiles)
     launchers = desktop_ids(p["apps"])
+    chicos = es_equipo_de_chicos(perfiles)
     ok1, out1 = _ok(["gdbus", "call", "--session", "--dest", "org.kde.plasmashell", "--object-path", "/PlasmaShell",
-                     "--method", "org.kde.PlasmaShell.evaluateScript", panel_script(launchers)])
+                     "--method", "org.kde.PlasmaShell.evaluateScript",
+                     panel_script(launchers, 3.6 if chicos else None)])
+    if chicos != bool(read_conf().get("chicos")):
+        escritorio_chicos(chicos)
     ok2, _ = _ok(["systemctl", "start", "--no-block", f"centinela-perfil@{p['potencia']}.service"])
     write_conf(perfiles=perfiles, perfil=perfiles[0])
-    return {"ok": ok1, "lanzadores": launchers, "potencia": ok2, "salida": out1}
+    return {"ok": ok1, "lanzadores": launchers, "potencia": ok2, "salida": out1, "chicos": chicos}
 
 
 def live_session() -> bool:
@@ -361,7 +394,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"error": "no autorizado"})
         if u.path == "/api/estado":
             c = read_conf()
-            return self._send(200, {"tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
+            return self._send(200, {"chicos": bool(c.get("chicos")),
+                                    "tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
                                     "perfil": c.get("perfil", ""), "acentos": ACENTOS,
                                     "perfiles_elegidos": [x for x in (c.get("perfiles") or
                                                                       ([c["perfil"]] if c.get("perfil") else []) or
@@ -400,6 +434,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ps:
                 return self._send(400, {"error": "perfil inválido"})
             return self._send(200, apply_profile(ps))
+        if u.path == "/api/chicos":
+            return self._send(200, escritorio_chicos(b.get("activar") is True))
         if u.path == "/api/instalar":
             ps = elegidos(b.get("perfiles") or b.get("perfil"))
             if not ps:

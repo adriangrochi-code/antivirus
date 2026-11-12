@@ -162,3 +162,19 @@ def test_varios_usos_a_la_vez(srv, monkeypatch):
     assert json.loads(req(port, "POST", "/api/instalar", {"perfiles": ["diario", "juegos"]})[1])["ok"]
     inst = next(x for x in calls if x[:3] == ["pkexec", "tisma-perfil", "instalar"])
     assert inst[3:] == ["esenciales", "diario", "juegos", "creacion"]
+
+
+def test_escritorio_simple_para_chicos(monkeypatch, tmp_path):
+    """Equipo de un estudiante de primaria: barra, iconos y letra más grandes; reversible y nunca con usos de adulto."""
+    monkeypatch.setattr(server, "CONF", tmp_path / "b.json")
+    assert server.es_equipo_de_chicos(["primaria"]) and server.es_equipo_de_chicos(["primaria", "diario"])
+    assert not server.es_equipo_de_chicos(["primaria", "programacion"]) and not server.es_equipo_de_chicos(["liceo"])
+    assert "gridUnit * 3.6" in server.panel_script(["applications:x.desktop"], 3.6)
+    assert "height" not in server.panel_script(["applications:x.desktop"])
+    llamadas = []
+    monkeypatch.setattr(server, "_ok", lambda argv, timeout=60: llamadas.append(argv) or (True, ""))
+    assert server.escritorio_chicos(True) == {"ok": True, "chicos": True}
+    assert any("Inter,12," in " ".join(a) for a in llamadas) and server.read_conf()["chicos"] is True
+    llamadas.clear()
+    server.escritorio_chicos(False)
+    assert any("Inter,10," in " ".join(a) for a in llamadas) and any("gridUnit * 2.6" in " ".join(a) for a in llamadas)

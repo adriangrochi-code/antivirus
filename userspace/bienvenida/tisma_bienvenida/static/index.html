@@ -118,7 +118,8 @@ footer .sp{flex:1}
       <h2>¿Para qué vas a usar el equipo?</h2>
       <p class="lead">Marca todos los usos que quieras: se suman sus aplicaciones. Dejamos a mano las que más vas a usar y ajustamos la potencia; todo lo demás sigue en el menú.</p>
       <div class="grid g3" id="perfiles"></div>
-      <div style="margin-top:10px"><button class="btn s" id="todos">Elegir todo</button></div>
+      <div style="margin-top:10px"><button class="btn s" id="todos">Elegir todo</button>
+        <button class="btn s" id="chicos" hidden title="Barra, iconos y letra más grandes, con sus apps a mano">Escritorio simple para chicos</button></div>
       <div class="panel" id="instPanel" hidden style="margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:220px"><b id="instTit">Apps de lo elegido</b><div class="muted" id="instTxt" style="margin-top:4px"></div></div>
         <button class="btn s p" id="instBtn">Instalar ahora</button>
@@ -223,10 +224,17 @@ function aplicarTema() {
     res(); }, 350); });
 }
 let temaP = Promise.resolve();
+function pintarChicos() {
+  const b = $("#chicos");
+  b.hidden = !st.perfiles.includes("primaria") && !st.chicos;
+  b.classList.toggle("sel", !!st.chicos);
+  b.textContent = st.chicos ? "Escritorio para chicos: activado" : "Escritorio simple para chicos";
+}
 function pintarPerfiles() {
   $$(".opt[data-perfil]").forEach(b => { const on = st.perfiles.includes(b.dataset.perfil);
     b.classList.toggle("sel", on); b.setAttribute("aria-pressed", on); });
   $("#todos").textContent = st.perfiles.length === Object.keys(st.perfiles_todos).length ? "Todo elegido" : "Elegir todo";
+  pintarChicos();
 }
 let perfT = null;
 function elegirPerfiles() {
@@ -235,7 +243,7 @@ function elegirPerfiles() {
   if (!st.perfiles.length) { $("#instPanel").hidden = true; return; }
   // Se aplica al dejar de tocar (marcar varios seguidos no rehace la barra cada vez)
   perfT = setTimeout(async () => {
-    try { const r = await api("/api/perfil", {perfiles: st.perfiles});
+    try { const r = await api("/api/perfil", {perfiles: st.perfiles}); st.chicos = r.chicos; pintarChicos();
           toast(r.ok ? "Barra de tareas preparada" : "Guardado (la barra se actualiza al reiniciar la sesión)"); }
     catch (e) { toast("No se pudo aplicar: " + e.message); }
     revisarApps();
@@ -338,6 +346,12 @@ async function terminar() {
     elegirPerfiles();
   });
   $("#todos").onclick = () => { st.perfiles = Object.keys(st.perfiles_todos); elegirPerfiles(); };
+  $("#chicos").onclick = async () => {
+    try { const r = await api("/api/chicos", {activar: !st.chicos}); st.chicos = r.chicos;
+          toast(r.chicos ? "Escritorio para chicos activado" : "Escritorio normal"); }
+    catch (e) { toast("No se pudo cambiar: " + e.message); }
+    pintarChicos();
+  };
   $("#instBtn").onclick = instalarApps;
   if (st.perfiles.length) revisarApps();
   $$("[data-abrir]").forEach(b => b.onclick = async () => { try { await api("/api/abrir", {app: b.dataset.abrir}); toast("Abriendo…"); } catch (e) { toast(e.message); } });
