@@ -249,8 +249,9 @@ if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
     log "Imagen mínima: sin Hope ni componentes pesados"
 elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
     rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
-    # Lo que importan sus herramientas (unidades, gráficos, álgebra simbólica): solo si Hope va en la imagen
-    instalar_paquetes python3-pint python3-matplotlib python3-sympy python3-scipy
+    # Lo que importan sus herramientas (iso/hope-paquetes.list): solo si Hope va en la imagen
+    mapfile -t _hope_paq < <(grep -v '^\s*#' "$HERE/hope-paquetes.list" | tr -s ' \t' '\n' | grep -v '^$')
+    instalar_paquetes "${_hope_paq[@]}"
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
     # Nunca una copia vieja de una build anterior (Hope es privado: una ISO pública no puede llevarlo)

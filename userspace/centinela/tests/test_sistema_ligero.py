@@ -317,3 +317,18 @@ def test_bandeja_completa_en_el_primer_inicio():
     codigo = "\n".join(l for l in js.splitlines() if not l.strip().startswith("//"))
     assert "org.kde.plasma.systemtray" in codigo
     assert "SystrayContainmentId" not in codigo and "extraItems" not in codigo
+
+
+def test_dependencias_de_hope_solo_con_hope_y_de_debian():
+    """Las herramientas exactas de Hope (orden acordado con Hope): de Debian, sin GPL y solo si Hope va en la imagen."""
+    lista = (ROOT.parent / "iso/hope-paquetes.list").read_text(encoding="utf-8")
+    paq = [p for linea in lista.splitlines() if not linea.lstrip().startswith("#") for p in linea.split()]
+    orden = ["python3-mpmath", "python3-highspy", "python3-cvc5", "python3-networkx", "python3-uncertainties",
+             "python3-holidays", "python3-periodictable", "python3-fluids", "python3-shapely", "python3-statsmodels"]
+    assert [p for p in paq if p in orden] == orden and "python3-z3" in paq and "python3-pulp" in paq
+    assert all(p.startswith("python3-") for p in paq)
+    build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+    rama = build[build.index("fetch-hope.sh"):build.index("rm -rf \"$LIB/python/vendor\"")]
+    assert "hope-paquetes.list" in rama              # dentro de la rama «Hope va en la imagen»
+    base = (ROOT.parent / "iso/packages.list").read_text(encoding="utf-8")
+    assert "python3-cvc5" not in base and "python3-statsmodels" not in base   # la ISO pública no los carga

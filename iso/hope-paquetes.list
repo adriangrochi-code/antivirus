@@ -1,0 +1,25 @@
+# Dependencias de las herramientas de Hope (solo se instalan si Hope va en la imagen: build-iso.sh).
+# Todas de los repositorios firmados de Debian y con licencia compatible con publicar Hope como open source.
+# Orden acordado con Hope (resultado + certificado o segunda verificación en cada herramienta):
+# base que ya usaba Hope: unidades, gráficos, álgebra simbólica y numérico
+python3-pint python3-matplotlib python3-sympy python3-scipy
+# 1 aritmética de intervalos certificada (mpmath.iv, BSD-3)
+python3-mpmath
+# 2 optimización lineal/entera con óptimo global y certificado dual (HiGHS MIT, PuLP)
+python3-highspy python3-pulp
+# 3 SMT doble: cvc5 (BSD-3) junto a z3 (MIT), verificación independiente
+python3-cvc5 python3-z3
+# 4 grafos (networkx, BSD-3)
+python3-networkx
+# 5 propagación de incertidumbre (uncertainties, BSD-3)
+python3-uncertainties
+# 6 feriados por país para días laborables (holidays, MIT; Uruguay, Argentina…)
+python3-holidays
+# 7 masas molares e isótopos (periodictable, dominio público)
+python3-periodictable
+# 8 fluidos: Reynolds, Colebrook, pérdidas en tuberías, bombas (fluids, MIT)
+python3-fluids
+# 9 geometría 2D robusta (shapely/GEOS, BSD-3)
+python3-shapely
+# 10 estadística con diagnóstico (statsmodels, BSD-3)
+python3-statsmodels
