@@ -1,42 +1,46 @@
-# TISMA OS — tema de GRUB (fondo y logo se generan en la build)
+# TISMA OS — tema de GRUB (fondo, logo y rótulo se generan en la build: iso/make-branding.py)
+# Todo en proporción a la pantalla y en columna: logo, rótulo y, debajo, el menú, sin solaparse a ninguna
+# resolución (antes el rótulo iba en píxeles fijos y en pantallas de 600-768 px de alto pisaba las opciones).
 title-text: ""
 desktop-image: "background.png"
-desktop-color: "#1C1B20"
+desktop-color: "#18171C"
 terminal-box: "terminal_*.png"
 
 + image {
-    left = 50%-56
-    top = 12%
-    width = 112
-    height = 130
+    left = 50%-44
+    top = 7%
+    width = 88
+    height = 102
     file = "logo.png"
 }
 
 + image {
-    left = 50%-160
-    top = 14%+150
-    width = 320
-    height = 60
+    left = 50%-100
+    top = 7%+112
+    width = 200
+    height = 38
     file = "wordmark.png"
 }
 
 + boot_menu {
-    left = 30%
-    top = 40%
-    width = 40%
-    height = 36%
-    item_color = "#A0A0A8"
+    left = 20%
+    top = 46%
+    width = 60%
+    height = 38%
+    item_font = "DejaVu Sans Regular 16"
+    selected_item_font = "DejaVu Sans Bold 16"
+    item_color = "#9A99A3"
     selected_item_color = "#FFFFFF"
-    item_height = 32
-    item_padding = 12
-    item_spacing = 6
+    item_height = 34
+    item_padding = 14
+    item_spacing = 8
     selected_item_pixmap_style = "select_*.png"
     scrollbar = false
 }
 
 + label {
     left = 0
-    top = 88%
+    top = 90%
     width = 100%
     align = "center"
     id = "__timeout__"

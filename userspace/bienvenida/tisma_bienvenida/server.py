@@ -119,6 +119,18 @@ def _ok(argv: list[str], timeout: int = 60) -> tuple[bool, str]:
         return False, str(e)
 
 
+def nombre_de_pila(gecos: str | None = None, usuario: str | None = None) -> str:
+    """«Ana» para «Ana Prueba» (el nombre completo que se escribió al instalar); si no hay, el nombre de usuario."""
+    if gecos is None:
+        try:
+            import pwd
+            gecos = pwd.getpwuid(os.getuid()).pw_gecos
+        except (KeyError, ImportError):
+            gecos = ""
+    nombre = (gecos or "").split(",")[0].strip()
+    return nombre.split()[0] if nombre else (usuario if usuario is not None else os.environ.get("USER", ""))
+
+
 def changeicons() -> str | None:
     for d in ("/usr/lib/x86_64-linux-gnu/libexec", "/usr/libexec", "/usr/lib/libexec"):
         p = Path(d) / "plasma-changeicons"
@@ -301,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
                                     "perfil": c.get("perfil", ""), "acentos": ACENTOS,
                                     "perfiles": {k: {"nombre": v["nombre"], "desc": v["desc"]} for k, v in PERFILES.items()},
-                                    "usuario": os.environ.get("USER", ""), "live": live_session()})
+                                    "usuario": nombre_de_pila(), "live": live_session()})
         if u.path == "/api/faltan":
             if q.get("perfil") not in PERFILES:
                 return self._send(400, {"error": "perfil inválido"})
@@ -356,8 +368,12 @@ def open_window(url: str):
         # Perfil propio y temporal: con uno fijo, una segunda Bienvenida le pasaba su URL a la primera y se
         # cerraba al instante; basic: sin pedir crear un monedero de KWallet al primer inicio de sesión
         prof = tempfile.mkdtemp(prefix="tisma-bienvenida-", dir=os.environ.get("XDG_RUNTIME_DIR") or None)
-        return POPEN([exe, f"--app={url}", f"--user-data-dir={prof}", "--class=tisma-bienvenida", "--no-first-run",
-                      "--password-store=basic", "--window-size=980,700", "--disable-features=Translate"],
+        # Por XWayland si está: en Wayland nativo Chromium ignora --class y la ventana salía en la barra de tareas
+        # con el icono de Chromium, agrupada con el navegador (visto en QEMU); por X11 se asocia a su lanzador
+        x11 = ["--ozone-platform=x11"] if os.environ.get("DISPLAY") and shutil.which("Xwayland") else []
+        return POPEN([exe, *x11, f"--app={url}", f"--user-data-dir={prof}", "--class=tisma-bienvenida",
+                      "--no-first-run", "--password-store=basic", "--window-size=980,700",
+                      "--disable-features=Translate"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     webbrowser.open(url)
     return None

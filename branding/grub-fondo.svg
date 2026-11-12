@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <!-- Fondo del menú de arranque: grafito liso con un resplandor violeta arriba, sin líneas ni ondas detrás del
+       menú (el fondo de escritorio con ondas lo hacía confuso) -->
+  <defs>
+    <linearGradient id="f" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#211F27"/><stop offset="1" stop-color="#121116"/>
+    </linearGradient>
+    <radialGradient id="b" cx="0.5" cy="0.08" r="0.55">
+      <stop offset="0" stop-color="#8E3FDD" stop-opacity="0.28"/><stop offset="1" stop-color="#8E3FDD" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#f)"/>
+  <rect width="1920" height="1080" fill="url(#b)"/>
+</svg>

@@ -476,6 +476,7 @@ insmod gfxterm
 insmod png
 set gfxmode=auto
 terminal_output gfxterm
+for f in /boot/grub/themes/centinela/*.pf2; do loadfont \$f; done
 set theme=/boot/grub/themes/centinela/theme.txt
 set timeout_style=hidden
 set timeout=3

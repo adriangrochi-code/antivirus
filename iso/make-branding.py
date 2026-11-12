@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Genera los PNG de marca (GRUB, fondo de pantalla) a partir de los SVG."""
 import struct
+import shutil
 import subprocess
 import sys
 import zlib
@@ -23,9 +24,17 @@ def svg(src: Path, dst: Path, width: int) -> None:
 def main(branding: Path, root: Path) -> None:
     grub = root / "boot/grub/themes/centinela"
     grub.mkdir(parents=True, exist_ok=True)
-    svg(branding / "wallpaper.svg", grub / "background.png", 1920)
-    svg(branding / "logo.svg", grub / "logo.png", 112)
-    svg(branding / "wordmark.svg", grub / "wordmark.png", 320)
+    # Menú de arranque: fondo sobrio propio y logo/rótulo al tamaño exacto del tema (theme.txt: 88 y 200 px)
+    svg(branding / "grub-fondo.svg", grub / "background.png", 1920)
+    svg(branding / "logo.svg", grub / "logo.png", 88)
+    svg(branding / "wordmark.svg", grub / "wordmark.png", 200)
+    # Tipografía del menú (DejaVu, como el resto del sistema) en vez de la de píxeles de GRUB. GRUB carga los .pf2
+    # de la carpeta del tema; sin grub-mkfont o sin la fuente, usa la suya y el tema funciona igual
+    for estilo, ttf in (("Regular", "DejaVuSans.ttf"), ("Bold", "DejaVuSans-Bold.ttf")):
+        fuente = Path("/usr/share/fonts/truetype/dejavu") / ttf
+        if shutil.which("grub-mkfont") and fuente.exists():
+            subprocess.run(["grub-mkfont", "-s", "16", "-o", str(grub / f"dejavu-{estilo.lower()}-16.pf2"),
+                            str(fuente)], check=False)
     for part in ("c", "n", "s", "e", "w", "ne", "nw", "se", "sw"):
         solid_png(grub / f"select_{part}.png", (90, 43, 143, 255))
         solid_png(grub / f"terminal_{part}.png", (28, 27, 32, 235))

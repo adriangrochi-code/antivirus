@@ -132,3 +132,10 @@ def test_profile_apps_install_with_pkexec_and_report_progress(srv, monkeypatch, 
     monkeypatch.setattr(server, "live_session", lambda: True)            # live: no se instala en la RAM
     r = json.loads(req(port, "POST", "/api/instalar", {"perfil": "diario"})[1])
     assert r["ok"] is False and "live" in r["error"]
+
+
+def test_saludo_con_el_nombre_de_pila():
+    from tisma_bienvenida import server
+    assert server.nombre_de_pila("Ana Prueba,,,", "anap") == "Ana"
+    assert server.nombre_de_pila("", "anap") == "anap"
+    assert server.nombre_de_pila(",,,", "anap") == "anap"

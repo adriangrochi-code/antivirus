@@ -38,6 +38,9 @@ chrony
 kde-plasma-desktop sddm sddm-theme-breeze plasma-nm plasma-pa plasma-systemmonitor
 konsole dolphin ark kate okular gwenview kde-spectacle kcalc
 # --- Uso diario ---
+# libpam-kwallet5: la cartera de KDE se crea y se abre sola con la contraseña de la sesión (sin él, el
+# navegador abría un asistente para «crear una cartera» la primera vez: visto en QEMU). xwayland: apps X11
+libpam-kwallet5 xwayland
 bluedevil kscreen kdeconnect partitionmanager filelight kfind kwalletmanager kinfocenter kcharselect
 plasma-browser-integration kde-config-sddm plasma-disks plasma-vault kdialog
 # (LibreOffice y las fuentes CJK: rootfs/usr/share/tisma/perfiles/esenciales.list, se descargan al instalar)
