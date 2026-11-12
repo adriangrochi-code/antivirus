@@ -78,6 +78,48 @@ def extract_text_tool_calls(content: str, known: set[str]) -> list[dict]:
     return calls
 
 
+# Sintaxis nativa de Hope: ⟦nombre: entrada⟧ (acordado con Hope; regex propia, no copiada de su código).
+# La entrada termina en el primer ⟧: si un argumento necesita ese carácter, el modelo usa la forma JSON.
+_BRACKET = re.compile(r"⟦\s*([A-Za-z_][\w.-]{0,63})\s*:\s*(.*?)\s*⟧", re.S)
+
+
+def _main_param(schema: dict) -> str | None:
+    """El argumento al que va la «entrada» de ⟦nombre: entrada⟧: el primero obligatorio (o el único)."""
+    params = schema.get("function", {}).get("parameters", {})
+    req = params.get("required") or []
+    props = list(params.get("properties", {}))
+    return req[0] if req else (props[0] if len(props) == 1 else None)
+
+
+def extract_bracket_tool_calls(content: str, schemas: list[dict], hope_catalog: bool = False) -> list[dict]:
+    """Llamadas ⟦nombre: entrada⟧ de un modelo Hope. Si el nombre es una herramienta del agente, la entrada
+    es su argumento principal (o un objeto JSON con todos); si no y Hope está instalado, va a su catálogo
+    (herramienta «hope»). Nombres desconocidos se ignoran: el texto queda como respuesta normal."""
+    by_name = {t["function"]["name"]: t for t in schemas}
+    calls = []
+    for name, entrada in _BRACKET.findall(content):
+        n = len(calls)
+        if name in by_name:
+            args = None
+            if entrada.startswith("{"):
+                try:
+                    obj = repair_json(entrada)
+                    args = obj if isinstance(obj, dict) else None
+                except ValueError:
+                    args = None
+            if args is None:
+                key = _main_param(by_name[name])
+                if not key:
+                    continue                      # herramienta con varios argumentos: solo con JSON
+                args = {key: entrada}
+            calls.append({"id": f"txt{n}", "type": "function",
+                          "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}})
+        elif hope_catalog and "hope" in by_name:
+            calls.append({"id": f"txt{n}", "type": "function", "function": {
+                "name": "hope", "arguments": json.dumps({"nombre": name, "entrada": entrada}, ensure_ascii=False)}})
+    return calls
+
+
 def normalize_arguments(raw) -> tuple[dict | None, str | None]:
     """Devuelve (args, error). El error se devuelve al modelo para que se corrija."""
     if isinstance(raw, dict):

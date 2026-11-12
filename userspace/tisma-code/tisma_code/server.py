@@ -318,6 +318,9 @@ class Handler(BaseHTTPRequestHandler):
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
                             llm=APP.llm(), context_tokens=APP.context(int(b.get("context", 32768))))
                 s.ws.allow_network = bool(b.get("network", False))
+                if APP.config.get("trazas_hope") is True:      # opt-in: archivo local, nunca se envía
+                    from .trazas import Trazas
+                    s.trazas = Trazas(s.ws.root)
                 APP.session = s
                 if old:
                     old.close()                  # sin esto quedaban vivos llama-server y servidores MCP

@@ -142,6 +142,35 @@ def files(model_id: str, hw: dict | None = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------- descargas
+def licencia_de(info: dict) -> str:
+    """Licencia declarada en Hugging Face (cardData.license o etiqueta «license:…»)."""
+    lic = (info.get("cardData") or {}).get("license")
+    if not lic:
+        lic = next((t.split(":", 1)[1] for t in info.get("tags", []) if str(t).startswith("license:")), "")
+    lic = str(lic or "desconocida").lower()
+    return lic if re.fullmatch(r"[\w.+-]{1,64}", lic) else "desconocida"
+
+
+def guardar_licencia(model_id: str, dest_dir: Path, file: str, get=None) -> None:
+    """Junto al modelo queda su licencia (las trazas para Hope solo valen con licencias que lo permitan).
+    Sin conexión o si falla, no pasa nada: queda «desconocida»."""
+    f = dest_dir / "licencia.json"
+    try:
+        d = json.loads(f.read_text()) if f.exists() else {}
+    except (OSError, ValueError):
+        d = {}
+    try:
+        d["licencia"] = licencia_de((get or _get_json)(f"{HF}/api/models/{model_id}"))
+    except Exception:  # noqa: BLE001
+        d.setdefault("licencia", "desconocida")
+    d["modelo"] = model_id
+    d["archivos"] = sorted(set(d.get("archivos", [])) | {Path(file).name})
+    try:
+        f.write_text(json.dumps(d, ensure_ascii=False, indent=1))
+    except OSError:
+        pass
+
+
 def file_sha256(path: Path) -> str:
     import hashlib
     h = hashlib.sha256()
@@ -191,6 +220,7 @@ class Downloads:
                 if got != sha256.lower():
                     (dest_dir / Path(file).name).unlink(missing_ok=True)
                     raise ValueError(f"SHA-256 incorrecto ({got[:12]}…): archivo descartado")
+            guardar_licencia(model_id, dest_dir, file)
             st["status"] = "completo"
             st["path"] = str(dest_dir / Path(file).name)
         except Exception as e:  # noqa: BLE001

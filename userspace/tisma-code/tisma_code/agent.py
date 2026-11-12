@@ -17,6 +17,7 @@ import difflib
 import json
 import os
 import queue
+import re
 import threading
 import time
 import urllib.error
@@ -165,10 +166,11 @@ def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: li
     if tool_schemas:
         body["tools"] = tool_schemas
         body["tool_choice"] = "auto"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    if isinstance(body.get("user"), str) and re.fullmatch(r"[0-9a-f]{32}", body["user"]):
+        headers["X-Hope-Session"] = body["user"]       # caché de conversación de Hope
     req = urllib.request.Request(endpoint.rstrip("/") + "/chat/completions",
-                                 data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json",
-                                          "Authorization": f"Bearer {api_key}"})
+                                 data=json.dumps(body).encode(), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (localhost)
             data = json.load(r)
@@ -225,6 +227,8 @@ class Session:
                                       self._checks_hint() + harness.project_memory(self.ws.root) +
                                       (self.especialistas.describe() if self.especialistas else "")}]
         self.always_allow: set[str] = set()
+        self.sesion_id = uuid.uuid4().hex      # local: solo identifica la conversación ante el motor
+        self.trazas = None                     # trazas.Trazas si el usuario las activó (desactivadas por defecto)
         self.todos: list[dict] = []
         self._mapped = False
         self._evidence: set[str] = set()
@@ -522,9 +526,18 @@ class Session:
         return "".join(out)
 
     # ------------------------------------------------------------ modelo
+    def es_hope(self) -> bool:
+        """¿El modelo actual es la red de Hope? («hope serve» publica ids que empiezan por «hope»)."""
+        return str(self.current.model or "").lower().startswith("hope")
+
     def _call_llm(self, messages: list, schemas: list | None) -> dict:
         t0 = time.monotonic()
-        msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas)
+        if self.es_hope() and self._llm_extra:
+            # Mismo id en toda la sesión: Hope reutiliza su caché de conversación (además del prefijo idéntico)
+            msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
+                                  extra={"user": self.sesion_id})
+        else:
+            msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas)
         dt = time.monotonic() - t0
         self.stats["seconds"] += dt
         self.stats["prompt_tokens"] += usage.get("prompt_tokens", 0)
@@ -596,6 +609,11 @@ class Session:
                 if calls:
                     self.stats["repaired_calls"] += len(calls)
                     content = harness._TOOL_TAG.sub("", content).strip()
+                elif self.es_hope():
+                    # Hope escribe ⟦nombre: entrada⟧ de forma nativa (las de su catálogo van a la herramienta «hope»)
+                    calls = harness.extract_bracket_tool_calls(content, self.schemas, hope_catalog=self.hope is not None)
+                    if calls:
+                        content = harness._BRACKET.sub("", content).strip()
             assistant = {"role": "assistant", "content": content}
             if calls:
                 assistant["tool_calls"] = calls
@@ -683,6 +701,12 @@ class Session:
         cid = call.get("id") or uuid.uuid4().hex[:12]
 
         def reply(result: str, ok: bool, args: dict | None = None) -> dict:
+            if self.trazas:                       # solo si el usuario activó las trazas para Hope (local)
+                try:
+                    self.trazas.paso(self._task_text, name, args or fn.get("arguments") or {}, result, ok,
+                                     self.current.model)
+                except OSError:
+                    pass
             cap = contexto.presupuesto_salida(self.context_tokens)
             if len(result) > cap and name != "recordar":
                 # La salida entera queda en disco; al contexto solo llega lo esencial (principio y final)
