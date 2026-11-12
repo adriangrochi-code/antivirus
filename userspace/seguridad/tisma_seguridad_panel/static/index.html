@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TISMA Seguridad</title>
+<style>
+:root { --bg:#18171c; --panel:#232229; --borde:#34323c; --txt:#ececf1; --suave:#a3a1ad; --acento:#8b3fe0;
+        --ok:#34d399; --aviso:#fbbf24; --error:#f87171; }
+@media (prefers-color-scheme: light) { :root { --bg:#f4f3f7; --panel:#fff; --borde:#dedbe6; --txt:#1e1c24;
+        --suave:#5d5a68; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 Inter, system-ui, sans-serif; }
+header { display:flex; align-items:center; gap:12px; padding:18px 24px; border-bottom:1px solid var(--borde); }
+header img { width:30px; height:30px; } header b { font-size:18px; }
+main { max-width:1000px; margin:0 auto; padding:20px 24px 40px; }
+h2 { font-size:15px; color:var(--suave); font-weight:600; margin:22px 0 10px; text-transform:uppercase; letter-spacing:.04em; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:12px; }
+.card { background:var(--panel); border:1px solid var(--borde); border-radius:12px; padding:14px 16px;
+        display:flex; flex-direction:column; gap:8px; }
+.card b { font-size:15px; } .card span { color:var(--suave); font-size:13.5px; flex:1; }
+button { background:var(--acento); color:#fff; border:0; border-radius:8px; padding:9px 14px; font:inherit;
+         font-weight:600; cursor:pointer; align-self:flex-start; }
+button.sec { background:transparent; color:var(--txt); border:1px solid var(--borde); }
+button:disabled { opacity:.5; cursor:default; }
+#estado { background:var(--panel); border:1px solid var(--borde); border-radius:12px; padding:16px; display:none; }
+#estado.on { display:block; }
+#res { font-size:16px; font-weight:600; margin-bottom:6px; }
+#res.ok { color:var(--ok); } #res.aviso { color:var(--aviso); } #res.error { color:var(--error); }
+details summary { cursor:pointer; color:var(--suave); }
+pre { white-space:pre-wrap; max-height:340px; overflow:auto; background:var(--bg); padding:10px; border-radius:8px;
+      font:12.5px/1.4 "JetBrains Mono", monospace; }
+.usb { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--borde); }
+</style>
+</head>
+<body>
+<header><img src="/static/logo.svg" alt=""><b>TISMA Seguridad</b></header>
+<main>
+  <div id="estado"><div id="res"></div><div id="prog"></div>
+    <details><summary>Detalles</summary><pre id="salida"></pre></details></div>
+
+  <h2>Revisar el equipo</h2>
+  <div class="grid" id="g-revisar"></div>
+  <h2>Memorias y USB</h2>
+  <div class="grid" id="g-usb"></div>
+  <div class="card" style="margin-top:12px"><b>USB bloqueados</b>
+    <span>Dispositivos que se conectaron y quedaron bloqueados. Autoriza solo los que sean tuyos.</span>
+    <div id="usbs"></div></div>
+  <h2>Windows en este equipo</h2>
+  <div class="grid" id="g-windows"></div>
+  <h2>Sistema</h2>
+  <div class="grid" id="g-sistema"></div>
+</main>
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s);
+const api = async (ruta, cuerpo) => {
+  const r = await fetch(ruta, {method: cuerpo ? "POST" : "GET", headers: {"X-Token": TOKEN, "Content-Type": "application/json"},
+                               body: cuerpo ? JSON.stringify(cuerpo) : undefined});
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || "error"); return d;
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const GRUPOS = {revisar: ["virus", "rootkits", "auditoria", "integridad", "red"], usb: ["usb_cerrar"],
+                windows: ["windows", "windows_limpiar", "windows_kit"],
+                sistema: ["drivers", "secureboot", "estricto_on", "estricto_off"]};
+let tareas = {}, sondeo = null;
+
+function pintar() {
+  for (const [g, ks] of Object.entries(GRUPOS))
+    $("#g-" + g).innerHTML = ks.filter(k => tareas[k]).map(k =>
+      `<div class="card"><b>${esc(tareas[k].titulo)}</b><span>${esc(tareas[k].desc)}</span>` +
+      `<button data-t="${k}" class="${k.endsWith("_off") ? "sec" : ""}">${k.endsWith("_off") ? "Desactivar" : "Empezar"}</button></div>`).join("");
+  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => lanzar(b.dataset.t));
+}
+
+async function lanzar(t, extra) {
+  if (tareas[t].confirmar && !confirm(tareas[t].titulo + "\n\n" + tareas[t].desc + "\n\n¿Continuar?")) return;
+  try { await api("/api/tarea", {tarea: t, ...(extra || {})}); seguir(); }
+  catch (e) { alert(e.message); }
+}
+
+async function seguir() {
+  clearInterval(sondeo);
+  const paso = async () => {
+    const d = await api("/api/tarea");
+    if (!d.tarea) return;
+    $("#estado").classList.add("on");
+    document.querySelectorAll("[data-t]").forEach(b => b.disabled = d.corriendo);
+    $("#salida").textContent = d.salida.join("\n");
+    if (d.corriendo) {
+      $("#res").className = ""; $("#res").textContent = tareas[d.tarea].titulo + "…";
+      $("#prog").textContent = `En curso (${d.segundos} s). El sistema puede pedirte la contraseña de administrador.`;
+    } else if (d.resumen) {
+      $("#res").className = d.resumen.nivel; $("#res").textContent = d.resumen.texto; $("#prog").textContent = "";
+      clearInterval(sondeo); usbs();
+    }
+  };
+  await paso(); sondeo = setInterval(paso, 1500);
+}
+
+async function usbs() {
+  try {
+    const d = await api("/api/usb");
+    $("#usbs").innerHTML = d.bloqueados.length ? d.bloqueados.map(u =>
+      `<div class="usb"><span>${esc(u.nombre)}</span><button class="sec" data-usb="${esc(u.id)}">Autorizar</button></div>`).join("")
+      : `<div class="usb"><span>Ninguno.</span></div>`;
+    document.querySelectorAll("[data-usb]").forEach(b => b.onclick = () => lanzar("usb_permitir", {id: b.dataset.usb}));
+  } catch (e) {}
+}
+
+(async () => { tareas = await api("/api/tareas"); pintar(); usbs(); seguir(); })();
+</script>
+</body>
+</html>

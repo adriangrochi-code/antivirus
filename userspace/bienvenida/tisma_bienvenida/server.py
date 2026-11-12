@@ -78,7 +78,7 @@ PERFILES = {
                "apps": ["archivos", "navegador", "steam", "obs", "kdenlive", "rendimiento"], "potencia": "rendimiento",
                "listas": ["juegos", "creacion"]},
 }
-ABRIR = {"code": ["tisma-code"], "tienda": ["plasma-discover"], "rendimiento": ["tisma-rendimiento"],
+ABRIR = {"seguridad": ["tisma-seguridad-panel"], "code": ["tisma-code"], "tienda": ["plasma-discover"], "rendimiento": ["tisma-rendimiento"],
          "ajustes": ["systemsettings"]}
 # Las apps de cada perfil no van en la ISO (pesaría ~6 GB): se instalan aquí con tisma-perfil (pkexec)
 PERFIL_ESTADO = Path(os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json"))

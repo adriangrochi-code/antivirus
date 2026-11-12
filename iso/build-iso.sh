@@ -237,6 +237,7 @@ rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/py
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/seguridad/tisma_seguridad_panel" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
 # Kit de endurecimiento para Windows XP–8.1 (escudo windows --kit lo copia a C:\TISMA-Kit)
 python3 "$REPO/windows/construir-kit.py" "$CHROOT/usr/share/tisma/windows-kit" >/dev/null

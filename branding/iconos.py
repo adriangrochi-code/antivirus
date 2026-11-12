@@ -62,6 +62,10 @@ APPS: dict[str, tuple[str, str, str]] = {
     "solidcraft": ("#818CF8", "#4F46E5",
                    f'<path d="M128 60 L188 94 V162 L128 196 L68 162 V94 Z M68 94 L128 128 L188 94 M128 128 V196" '
                    f'{TRAZO}/>'),
+    # Seguridad (revisar virus, rootkits, USB, red…): escudo con una tilde
+    "seguridad": ("#FB923C", "#EA580C",
+                  f'<path d="M128 56 L188 78 V126 C188 162 162 186 128 200 C94 186 68 162 68 126 V78 Z" {TRAZO}/>'
+                  f'<path d="M100 128 L120 148 L158 108" {TRAZO}/>'),
     # Tienda: bolsa
     "tienda": ("#F472B6", "#DB2777",
                f'<path d="M72 100 H184 L174 192 H82 Z" {TRAZO}/>'

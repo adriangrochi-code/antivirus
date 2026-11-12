@@ -11,12 +11,17 @@
 #   tisma-seguridad todo        auditoría + rootkits + integridad + virus en /home
 #   tisma-seguridad estricto [on|off]  nivel GrapheneOS: ptrace solo root y lockdown «confidentiality»
 #   tisma-seguridad windows [disco]    revisa y limpia un Windows apagado (XP, Vista, 7, 8…) desde TISMA
+#   tisma-seguridad usb-lista          USB bloqueados (id y nombre), para autorizarlos
+#   tisma-seguridad usb-permitir <id>  autoriza para siempre un USB bloqueado
+# «--si» (en usb y estricto) no pregunta: lo usa la app TISMA Seguridad, que ya pidió la confirmación.
 set -euo pipefail
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 LOGDIR=/var/log/tisma-seguridad
 mkdir -p "$LOGDIR" && chmod 700 "$LOGDIR"
 stamp="$(date +%Y%m%d-%H%M%S)"
-h() { printf '\n\033[1;35m== %s ==\033[0m\n' "$*"; }
+if [[ -t 1 ]]; then h() { printf '\n\033[1;35m== %s ==\033[0m\n' "$*"; }; else h() { printf '\n== %s ==\n' "$*"; }; fi
+SI=0; for a in "$@"; do [[ "$a" == --si ]] && SI=1; done
+confirmar() { [[ $SI -eq 1 ]] && return 0; read -r -p "$1 [s/N] " ok; [[ "$ok" =~ ^[sS]$ ]]; }
 
 auditoria() {
     h "Auditoría del sistema (Lynis)"
@@ -51,15 +56,23 @@ usb() {
     h "Protección USB (USBGuard)"
     echo "Se permitirán SOLO los dispositivos USB conectados ahora mismo:"
     lsusb
-    read -r -p "¿Continuar? [s/N] " ok
-    [[ "$ok" =~ ^[sS]$ ]] || exit 0
+    confirmar "¿Continuar?" || exit 0
     usbguard generate-policy > /etc/usbguard/rules.conf
     chmod 600 /etc/usbguard/rules.conf
     # Estricto: lo que no esté en la lista se bloquea siempre (no solo con la pantalla bloqueada)
     sed -i 's/^ImplicitPolicyTarget=.*/ImplicitPolicyTarget=block/' /etc/usbguard/usbguard-daemon.conf
     systemctl enable --now usbguard
     systemctl restart usbguard
-    echo "Listo. Para autorizar un USB nuevo: usbguard list-devices / usbguard allow-device <id>"
+    echo "Listo. Para autorizar un USB nuevo: TISMA Seguridad → Memorias y USB."
+}
+usb_lista() {
+    # «<id>: block id 1d6b:0002 serial "" name "Teclado" …» → «<id>|<nombre>»
+    usbguard list-devices --blocked 2>/dev/null | sed -nE 's/^([0-9]+): block id [0-9a-f:]+ .*name "([^"]*)".*/\1|\2/p'
+}
+usb_permitir() {
+    [[ "${1:-}" =~ ^[0-9]{1,6}$ ]] || { echo "id inválido" >&2; exit 2; }
+    usbguard allow-device -p "$1"
+    echo "Autorizado."
 }
 suid() {
     h "Programas con SUID/SGID (vía clásica de escalada de privilegios)"
@@ -89,8 +102,7 @@ estricto() {
 - lockdown «confidentiality»: además de impedir modificar el kernel, impide LEER sus secretos (kcore,
   kprobes, perf y BPF sobre memoria del kernel). bpftrace y algunos perfiladores dejan de funcionar.
 TXT
-    read -r -p "¿Activar? [s/N] " ok
-    [[ "$ok" =~ ^[sS]$ ]] || return 0
+    confirmar "¿Activar?" || return 0
     echo "kernel.yama.ptrace_scope = 2" > "$sc"
     sysctl -q kernel.yama.ptrace_scope=2
     mkdir -p /etc/default/grub.d
@@ -127,6 +139,8 @@ case "${1:-}" in
     integridad) integridad ;;
     virus) virus "${2:-/home}" ;;
     usb) usb ;;
+    usb-lista) usb_lista ;;
+    usb-permitir) usb_permitir "${2:-}" ;;
     red) red ;;
     suid) suid ;;
     todo) auditoria; rootkits; integridad; virus /home ;;
