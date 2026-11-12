@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -125,7 +126,9 @@ def test_idle_models_are_unloaded():
             self.stopped = True
     pool = esp.Pool(llm=None, path=Path("/nonexistent"))
     srv = FakeServer()
-    pool._servers["x"], pool._last_use["x"] = srv, 0.0
+    # Último uso hace más del límite (no «0.0»: en un equipo recién arrancado, como los de la CI, el reloj
+    # monótono todavía no llegó a IDLE_UNLOAD y el modelo parecía recién usado)
+    pool._servers["x"], pool._last_use["x"] = srv, time.monotonic() - esp.IDLE_UNLOAD - 1
     assert pool.unload_idle() == ["x"] and srv.stopped and not pool._servers
 
 

@@ -28,6 +28,8 @@ jobs:
         run: |
           # Python desde PyPI (los espejos de Ubuntu del runner fallan a veces al resolver el DNS)
           python3 -m pip install --user --break-system-packages -q pytest numpy pyyaml psutil watchdog
+          # pytest también para todo el sistema: la verificación de TISMA Code lo corre en una jaula sin la carpeta personal
+          sudo python3 -m pip install --break-system-packages -q pytest || true
           # bubblewrap (la jaula de TISMA Code) y GRUB: con reintentos; si fallan, esas pruebas se saltan solas
           sudo apt-get -o Acquire::Retries=5 update -q || true
           sudo apt-get -o Acquire::Retries=5 install -y -q --no-install-recommends bubblewrap grub-common || true

@@ -30,8 +30,13 @@ class FakeLLM:
 def _bwrap_ok() -> bool:
     """La verificación corre las pruebas dentro de bubblewrap: sin él (o sin espacios de nombres) no hay bucle."""
     try:
-        return bool(shutil.which("bwrap")) and subprocess.run(
-            ["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True, timeout=10).returncode == 0
+        if not (shutil.which("bwrap") and subprocess.run(
+                ["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True, timeout=10).returncode == 0):
+            return False
+        # Dentro de la jaula no se ve la carpeta personal: pytest tiene que estar instalado para todo el sistema
+        # (en la CI se instala con pip --user y la verificación fallaba siempre)
+        return subprocess.run([sys.executable, "-s", "-c", "import pytest"], capture_output=True,
+                              timeout=30).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
