@@ -13,6 +13,20 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 7 (lo encontrado en la ThinkPad A275)**: el sistema instalado ya no arranca con el
+  kernel de rescate que Secure Boot rechaza («firma shim incorrecta»): se quita en equipos reales y el menú se
+  rehace cada vez que cambia un kernel. El icono de Wi-Fi, volumen y batería vuelve a la barra desde el primer
+  inicio (la bandeja salía vacía). El panel táctil funciona con toques (tocar = clic) y se ignora mientras
+  escribes. TISMA Code y TISMA Rendimiento se abren como aplicaciones con ventana propia, no como pestañas del
+  navegador. En el menú de arranque la selección ya no tapa el logo y los títulos se leen bien con Secure Boot.
+  **Varios usos a la vez**: en el instalador, la página «Tu uso» tiene casillas (diario, estudio, ingeniería,
+  programación, juegos y creación) y «Elegir todo»; al terminar se descargan sumadas todas sus aplicaciones
+  (sin Internet, en el primer arranque con conexión). Lo mismo en la Bienvenida.
+  **Más como Windows**: Dolphin ve los equipos y carpetas compartidas de la red de Windows; clic derecho >
+  Propiedades > Compartir comparte una carpeta con la red local (el puerto solo se abre a la red de casa y
+  mientras haya algo compartido); miniaturas de fotos, vídeos y PDF; teléfonos por USB; teclas de brillo,
+  suspender por inactividad y aviso de batería baja (en la A275 faltaban). En el USB, el instalador se abre al
+  frente con «Siguiente» a la vista.
 - **Novedades de la preview 6 (instalar y usar como Windows)**: el USB arranca directo al instalador, sin menú (Esc
   durante 3 s muestra las opciones; si el equipo ya tiene TISMA instalado, arranca ese sistema). El instalador se
   abre solo y pregunta tres cosas: dónde instalar, la contraseña del disco y tu cuenta; la hora y los formatos
