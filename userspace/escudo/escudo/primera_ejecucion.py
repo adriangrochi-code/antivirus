@@ -46,16 +46,26 @@ EXTERNAL_DIRS = re.compile(r"^(/home/[^/]+/(Descargas|Downloads)/|/tmp/|/var/tmp
 ORIGIN_XATTRS = ("user.xdg.origin.url", "user.xdg.referrer.url")
 
 
-def is_external(path: str, fd: int | None = None) -> bool:
-    """¿Viene de fuera? Marca de descarga (navegador/KDE) o carpeta de descargas, temporal o USB."""
-    if EXTERNAL_DIRS.match(path):
-        return True
+def is_external(path: str, fd: int | None = None, st: os.stat_result | None = None) -> bool:
+    """¿Viene de fuera? Marca de descarga (navegador/KDE) o carpeta de descargas, temporal o USB.
+
+    Excepción: un programa de root que solo root puede modificar no es una descarga de un usuario (ningún usuario
+    puede crear archivos de root). Sin ella, la puerta bloqueaba al instalador, que ejecuta el sistema nuevo desde
+    /tmp/calamares-root-… («chroot: failed to run command 'ln': Operation not permitted»). Con marca de descarga se
+    analiza igual."""
     for name in ORIGIN_XATTRS:
         try:
             os.getxattr(fd if fd is not None else path, name)
             return True
         except OSError:
             continue
+    if EXTERNAL_DIRS.match(path):
+        if st is None:
+            try:
+                st = os.fstat(fd) if fd is not None else os.stat(path, follow_symlinks=False)
+            except OSError:
+                return True
+        return not (st.st_uid == 0 and not st.st_mode & 0o022)
     return False
 
 
@@ -204,7 +214,7 @@ class Gate:
         path = fan.fd_path(efd, st)
         if not fan.inside(path, sorted(self._marked)):
             return FAN_ALLOW
-        external = is_external(path, efd)
+        external = is_external(path, efd, st)
         if not external:
             return FAN_ALLOW
         sha = self._sha(efd)

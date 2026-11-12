@@ -137,3 +137,21 @@ def test_gate_uses_static_engines_before_sandbox(tmp_path, monkeypatch):
     g2 = pe.Gate(alert=alerts.append, scanner=Sc("medium"))
     inf2 = g2.analyze(str(f), sha, 1000, 1000)
     assert usado and inf2.veredicto == "sospechoso"                  # aislamiento «limpio» + firma media
+
+
+def test_gate_no_bloquea_al_instalador_pero_si_descargas(tmp_path):
+    """El instalador ejecuta el sistema nuevo desde /tmp/calamares-root-…: programas de root que solo root puede
+    modificar. Eso no es una descarga. Lo de un usuario, o lo de root escribible por otros, se sigue analizando."""
+    def st(uid, modo):
+        return os.stat_result((0o100000 | modo, 1, 1, 1, uid, 0, 10, 0, 0, 0))
+    ruta = "/tmp/calamares-root-abc/usr/bin/ln"
+    assert not pe.is_external(ruta, st=st(0, 0o755))                  # sistema instalado: sin bloquear
+    assert pe.is_external(ruta, st=st(1000, 0o755))                   # de un usuario: se analiza
+    assert pe.is_external(ruta, st=st(0, 0o777))                      # de root pero cualquiera lo cambia
+    assert pe.is_external("/tmp/calamares-root-abc/no-existe")       # sin poder comprobarlo: se analiza
+    from escudo import fan
+    mi = tmp_path / "mountinfo"
+    mi.write_text("36 1 0:1 / /home rw - x x rw\n37 36 0:2 / /home/ana rw - x x rw\n"
+                  "38 1 0:3 / /tmp rw - x x rw\n39 38 0:4 / /tmp/calamares-root-x rw - x x rw\n"
+                  "40 38 0:5 / /tmp/.mount_App rw - x x rw\n")
+    assert fan.submounts(["/home", "/tmp"], str(mi)) == ["/home/ana"]

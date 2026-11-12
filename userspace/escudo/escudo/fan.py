@@ -46,11 +46,17 @@ def mark(lib, fd: int, path: str, mask: int) -> str | None:
 
 
 def submounts(roots: list[str], mountinfo: str = "/proc/self/mountinfo") -> list[str]:
-    """Puntos de montaje por debajo de las raíces (p. ej. /home/usuario en otro volumen)."""
+    """Puntos de montaje por debajo de las raíces (p. ej. /home/usuario en otro volumen).
+
+    No los que cuelgan de /tmp o /var/tmp: ahí monta el instalador el disco nuevo (la puerta bloqueaba la
+    instalación y el análisis en tiempo real escaneaba cada archivo copiado) y las AppImage su contenido (el
+    AppImage ya se analizó al abrirlo)."""
     out = []
     try:
         for line in open(mountinfo, encoding="utf-8", errors="replace"):
             mp = line.split()[4].replace("\\040", " ").replace("\\011", "\t").replace("\\012", "\n")
+            if mp.startswith(("/tmp/", "/var/tmp/")):
+                continue
             if any(mp != r and mp.startswith(r.rstrip("/") + "/") for r in roots):
                 out.append(mp)
     except OSError:
