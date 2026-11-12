@@ -59,9 +59,16 @@ def limpiar_mensajes(mensajes) -> list[dict] | None:
     return out if out and out[-1]["role"] == "user" else None
 
 
+AVISO_ESTUDIANTE = ("Esta IA te ayuda a estudiar. Lo que preguntás no se guarda. Solo si contás que estás en peligro "
+                    "(que alguien te lastima o que querés hacerte daño), el equipo de cuidado de TISMA puede leer esa "
+                    "conversación para ayudarte y avisar a quien corresponda.")
+
+
 class App:
-    def __init__(self, datos: Datos, endpoint: str, modelo: str, ayuda: list[str] | None = None, llamar=None):
+    def __init__(self, datos: Datos, endpoint: str, modelo: str, ayuda: list[str] | None = None, llamar=None,
+                 emergencias=None):
         self.datos, self.endpoint, self.modelo = datos, endpoint, modelo
+        self.emergencias = emergencias
         self.ayuda = ayuda or politica.AYUDA_UY
         self.llamar = llamar or llamar_modelo
 
@@ -95,6 +102,8 @@ class App:
             if a.riesgo:
                 texto += politica.pie_de_ayuda(self.ayuda)   # las líneas de ayuda van SIEMPRE, diga lo que diga el modelo
         self.datos.registrar(cuenta, a.tema, tokens, a.riesgo)
+        if a.riesgo and self.emergencias is not None:
+            self.emergencias.registrar(cuenta, a.riesgo, mensajes, texto)   # sellado: solo lo abre el equipo de TISMA
         return 200, {"id": f"chatcmpl-{int(time.time() * 1000)}", "object": "chat.completion", "model": MODELO,
                      "choices": [{"index": 0, "message": {"role": "assistant", "content": texto},
                                   "finish_reason": "stop"}],
@@ -154,7 +163,7 @@ def handler(app: App):
                 r = app.datos.vincular(str(b["codigo"]), str(b.get("alias") or ""))
                 if not r:
                     return self._send(403, {"error": "El código no es válido o venció: pedile uno nuevo a tu docente"})
-                return self._send(200, {"ficha": r[1], "modelo": MODELO})
+                return self._send(200, {"ficha": r[1], "modelo": MODELO, "aviso": AVISO_ESTUDIANTE})
             if self.path == "/v1/chat/completions":
                 c = self._cuenta("estudiante")
                 if not c:
@@ -188,6 +197,12 @@ def main(argv: list[str] | None = None) -> int:
     pimienta = Path(os.environ.get("TISMA_IA_PIMIENTA_ARCHIVO", "/etc/tisma-ia-escolar/pimienta")).read_bytes()
     datos = Datos(a.db, pimienta)
     datos.purgar()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.puerto), handler(App(datos, a.motor, a.modelo)))
+    from .emergencias import Emergencias
+    # Clave PÚBLICA del equipo de seguridad (la privada nunca va al servidor). Sin ella no arranca: las emergencias
+    # tienen que poder revisarse.
+    publica = Path(os.environ.get("TISMA_IA_EMERGENCIAS_PUBLICA", "/etc/tisma-ia-escolar/emergencias.pub")).read_bytes()
+    em = Emergencias(datos, publica, webhook=os.environ.get("TISMA_IA_EMERGENCIAS_WEBHOOK"))
+    em.purgar()
+    srv = ThreadingHTTPServer(("127.0.0.1", a.puerto), handler(App(datos, a.motor, a.modelo, emergencias=em)))
     srv.serve_forever()
     return 0

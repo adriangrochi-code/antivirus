@@ -13,6 +13,30 @@ API compatible con OpenAI: TISMA Asistente y TISMA Code la usan igual que un mot
 | Qué ve el docente | Solo sus grupos: temas consultados, estudiantes activos y alertas de riesgo (categoría y resumen). **Nunca las conversaciones.** |
 | Qué se guarda | Por mensaje: día, cuenta, tema y tokens. Alertas: categoría y un resumen genérico. El texto no se guarda nunca. Las fichas se guardan como HMAC con una clave del servidor. |
 | Retención | Uso: 90 días. Temas y alertas: 1 año. Lo viejo se borra solo. |
+| Emergencias | Solo ante riesgo de autolesión o abuso. El equipo de cuidado de TISMA recibe un aviso y puede revisar esa conversación para avisar a las autoridades si corresponde. Ver la sección siguiente. |
+
+## Emergencias (equipo de cuidado de TISMA)
+
+**Qué se guarda.** Solo cuando hay señales de autolesión o abuso. El acoso queda en alerta al docente. Se guardan los últimos mensajes de esa conversación, la respuesta y el alias.
+
+**Sellado.** El contenido queda cifrado con la clave pública del equipo de cuidado (X25519 + AES-256-GCM, `python3-cryptography`). La clave privada no está en el servidor: si roban el servidor o la base, no hay nada legible. Cada sello está atado a su emergencia y no se puede pasar a otra.
+
+**Aviso al equipo.** Llega por webhook con número, categoría, institución y hora. Nunca lleva el contenido ni el alias.
+
+**Revisión.** Se hace con la consola (`python3 -m tisma_ia_escolar.consola_emergencias`):
+- Quien revisa se identifica.
+- Cada «ver» queda en la auditoría antes de mostrar nada.
+- La decisión es una de tres: `falso_positivo`, `escuela` o `autoridades`.
+- Al resolver, el contenido se borra. Si nadie lo resuelve, se borra a los 30 días. La auditoría se conserva, sin contenido.
+
+**Transparencia.** El estudiante lo sabe desde el principio. Al vincular el equipo recibe este aviso:
+
+> Lo que preguntás no se guarda. Solo si contás que estás en peligro, el equipo de cuidado de TISMA puede leer esa conversación para ayudarte y avisar a quien corresponda.
+
+**Para que funcione de verdad hace falta:**
+- Un equipo de cuidado con guardias y tiempos de respuesta definidos. Una emergencia sin revisar no ayuda a nadie.
+- Un procedimiento escrito para avisar a las autoridades: 911 ante peligro inmediato y la escuela por su ruta oficial.
+- Revisión legal: interés vital del menor, Ley 18.331, términos aceptados por la institución y las familias.
 
 ## Seguridad de menores
 
@@ -55,12 +79,17 @@ Las reglas se aplican en el servidor, antes y después del modelo. No dependen d
    head -c 48 /dev/urandom > /etc/tisma-ia-escolar/pimienta
    chmod 600 /etc/tisma-ia-escolar/pimienta
    ```
-3. **Servicio:**
+3. **Claves de emergencias:** en el equipo del equipo de cuidado, nunca en el servidor:
+   ```
+   python3 -m tisma_ia_escolar.consola_emergencias generar-claves /ruta/segura/emergencias.key > emergencias.pub
+   ```
+   Copiar `emergencias.pub` a `/etc/tisma-ia-escolar/` y definir `TISMA_IA_EMERGENCIAS_WEBHOOK`.
+4. **Servicio:**
    ```
    python3 -c "from tisma_ia_escolar.servidor import main; main()" --motor http://127.0.0.1:8000/v1 --modelo qwen
    ```
    Escucha solo en `127.0.0.1:8780`. Delante va Caddy o nginx con TLS.
-4. **Alta de la escuela:**
+5. **Alta de la escuela:**
    - `tisma-ia-escolar-admin institucion …`
    - `grupo …`
    - `docente …`
