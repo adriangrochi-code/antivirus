@@ -1,6 +1,7 @@
 # TISMA OS — tema de GRUB (fondo, logo y rótulo se generan en la build: iso/make-branding.py)
-# Todo en proporción a la pantalla y en columna: logo, rótulo y, debajo, el menú, sin solaparse a ninguna
-# resolución (antes el rótulo iba en píxeles fijos y en pantallas de 600-768 px de alto pisaba las opciones).
+# Solo el logo y, debajo, el menú (como el gestor de arranque de Windows): sin rótulo «TISMA», que en la A275 quedaba
+# encima de la caja violeta de la opción elegida. Con Secure Boot GRUB no deja cargar fuentes (usa la suya, sin
+# acentos): los textos del menú van sin tildes.
 title-text: ""
 desktop-image: "background.png"
 desktop-color: "#18171C"
@@ -14,19 +15,11 @@ terminal-box: "terminal_*.png"
     file = "logo.png"
 }
 
-+ image {
-    left = 50%-100
-    top = 7%+112
-    width = 200
-    height = 38
-    file = "wordmark.png"
-}
-
 + boot_menu {
     left = 20%
-    top = 46%
+    top = 36%
     width = 60%
-    height = 38%
+    height = 50%
     item_font = "DejaVu Sans Regular 16"
     selected_item_font = "DejaVu Sans Bold 16"
     item_color = "#9A99A3"

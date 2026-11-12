@@ -484,7 +484,12 @@ insmod gfxterm
 insmod png
 set gfxmode=auto
 terminal_output gfxterm
-for f in /boot/grub/themes/centinela/*.pf2; do loadfont \$f; done
+# Fuentes del tema: con Secure Boot GRUB prohíbe cargarlas («prohibited by secure boot policy», visto en la VM)
+# y usa la suya, que no tiene acentos: por eso las opciones van sin tildes. Sin Secure Boot, DejaVu.
+if [ "\$lockdown" != "y" ]; then
+    loadfont /boot/grub/themes/centinela/dejavu-regular-16.pf2
+    loadfont /boot/grub/themes/centinela/dejavu-bold-16.pf2
+fi
 set theme=/boot/grub/themes/centinela/theme.txt
 set timeout_style=hidden
 set timeout=3
@@ -504,15 +509,15 @@ menuentry "Probar TISMA OS sin instalar" {
     linux /live/vmlinuz $LIVE $SEC tisma.probar
     initrd /live/initrd.img
 }
-menuentry "Instalar TISMA OS (gráficos básicos)" {
+menuentry "Instalar TISMA OS con video simple (si la pantalla queda en negro)" {
     linux /live/vmlinuz $LIVE $SEC nomodeset
     initrd /live/initrd.img
 }
-menuentry "Probar TISMA OS en RAM (más rápido, requiere 8 GB)" {
+menuentry "Probar TISMA OS desde la memoria RAM (requiere 8 GB)" {
     linux /live/vmlinuz $LIVE $SEC toram tisma.probar
     initrd /live/initrd.img
 }
-menuentry "Modo diagnóstico (mensajes del arranque visibles; consola de rescate en Ctrl+Alt+F9)" {
+menuentry "Modo de soporte: ver los mensajes del arranque (consola en Ctrl+Alt+F9)" {
     linux /live/vmlinuz $DIAG tisma.diagnostico systemd.debug_shell=tty9
     initrd /live/initrd.img
 }

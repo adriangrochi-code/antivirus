@@ -296,3 +296,15 @@ def test_touchpad_toca_para_clic():
     # touchpads, incluida la pantalla de inicio de sesión
     t = (ROOT / "etc/xdg/kcminputrc").read_text(encoding="utf-8")
     assert "[Libinput][Defaults][Touchpad]\nTapToClick=true" in t
+
+
+def test_menu_de_arranque_legible_con_secure_boot():
+    import re
+    build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+    # Con Secure Boot GRUB no carga fuentes y la suya no tiene acentos («gr?ficos b?sicos»): opciones sin tildes
+    for titulo in re.findall(r'menuentry "([^"]*)"', build):
+        assert titulo.isascii(), titulo
+    assert 'if [ "\\$lockdown" != "y" ]; then' in build and "for f in /boot/grub/themes" not in build
+    tema = (ROOT / "boot/grub/themes/centinela/theme.txt").read_text(encoding="utf-8")
+    # Sin rótulo «TISMA»: en la A275 quedaba encima de la caja violeta de la opción elegida
+    assert "wordmark" not in tema.split("acentos):", 1)[-1]
