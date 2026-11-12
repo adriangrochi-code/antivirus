@@ -167,7 +167,8 @@ def activar_32bits(run=None) -> str:
 # Usos elegidos en el instalador (página «Tu uso»; los guarda el módulo tismaperfiles de Calamares). «Juegos y
 # creación» son dos listas; los demás usos se llaman igual que su lista.
 ELEGIDOS = os.environ.get("TISMA_PERFILES_ELEGIDOS", "/etc/tisma/perfiles-elegidos")
-LISTAS_DE_USO = {"diario": ["diario"], "estudio": ["estudio"], "ingenieria": ["ingenieria"],
+LISTAS_DE_USO = {"diario": ["diario"], "primaria": ["primaria", "accesibilidad"],
+                 "liceo": ["liceo", "accesibilidad"], "estudio": ["estudio"], "ingenieria": ["ingenieria"],
                  "programacion": ["programacion"], "juegos": ["juegos", "creacion"]}
 
 

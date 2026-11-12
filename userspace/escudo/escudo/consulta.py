@@ -167,34 +167,35 @@ class Consulta:
             self._por_usuario.add(uid)
         carpeta = Path(tempfile.mkdtemp(prefix="consulta-", dir=self.det_dir))
         try:
-            os.chmod(carpeta, 0o755)
-            ruta = carpeta / nombre
-            try:
-                sha = copiar(fd, ruta)
-            except (ValueError, OSError) as e:
-                enviar(conn, {"estado": "error", "mensaje": str(e)})
-                return
-            previo = self.cargar().get(sha)
-            if previo and (previo.get("permitido_por_usuario") or previo.get("veredicto") in
-                           ("limpio", "sospechoso", "malicioso")):
-                veredicto = "limpio" if previo.get("permitido_por_usuario") and previo.get("veredicto") != "malicioso" \
-                    else previo["veredicto"]
-                enviar(conn, {"estado": "listo", "veredicto": veredicto, "motivos": previo.get("motivos", []),
-                              "sha256": sha, "ya_revisado": True})
-                return
-            enviar(conn, {"estado": "analizando", "sha256": sha})
-            with self._total:
-                inf = self.analizador.analyze(str(ruta), sha, uid if uid else 65534, gid if uid else 65534)
-            if inf is None:
-                enviar(conn, {"estado": "error", "mensaje": "el archivo cambió durante la revisión"})
-                return
-            enviar(conn, {"estado": "listo", "veredicto": inf.veredicto, "motivos": inf.motivos[:5], "sha256": sha,
-                          "entorno": inf.entorno, "nota": inf.nota})
+            respuesta = self._revisar(conn, carpeta, fd, uid, gid, nombre)
         finally:
+            import shutil
+            shutil.rmtree(carpeta, ignore_errors=True)      # antes de responder: no queda nada al terminar
             with self._lock:
                 self._por_usuario.discard(uid)
-            import shutil
-            shutil.rmtree(carpeta, ignore_errors=True)
+        enviar(conn, respuesta)
+
+    def _revisar(self, conn: socket.socket, carpeta: Path, fd: int, uid: int, gid: int, nombre: str) -> dict:
+        os.chmod(carpeta, 0o755)
+        ruta = carpeta / nombre
+        try:
+            sha = copiar(fd, ruta)
+        except (ValueError, OSError) as e:
+            return {"estado": "error", "mensaje": str(e)}
+        previo = self.cargar().get(sha)
+        if previo and (previo.get("permitido_por_usuario") or previo.get("veredicto") in
+                       ("limpio", "sospechoso", "malicioso")):
+            veredicto = "limpio" if previo.get("permitido_por_usuario") and previo.get("veredicto") != "malicioso" \
+                else previo["veredicto"]
+            return {"estado": "listo", "veredicto": veredicto, "motivos": previo.get("motivos", []), "sha256": sha,
+                    "ya_revisado": True}
+        enviar(conn, {"estado": "analizando", "sha256": sha})
+        with self._total:
+            inf = self.analizador.analyze(str(ruta), sha, uid if uid else 65534, gid if uid else 65534)
+        if inf is None:
+            return {"estado": "error", "mensaje": "el archivo cambió durante la revisión"}
+        return {"estado": "listo", "veredicto": inf.veredicto, "motivos": inf.motivos[:5], "sha256": sha,
+                "entorno": inf.entorno, "nota": inf.nota}
 
 
 # ---------------------------------------------------------------- cliente (lo usa tisma-abrir-windows)

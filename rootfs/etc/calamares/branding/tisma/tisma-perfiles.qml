@@ -18,6 +18,10 @@ Item {
     readonly property var usos: [
         { id: "diario", nombre: "Uso diario", icono: "tisma-navegador",
           desc: "Navegar, correo, documentos, fotos y música" },
+        { id: "primaria", nombre: "Escuela (primaria)", icono: "tisma-bienvenida",
+          desc: "Aprender jugando: lectura, matemática, dibujo y ciencias (GCompris, Tux Paint)" },
+        { id: "liceo", nombre: "Liceo y UTU", icono: "tisma-tienda",
+          desc: "Ciencias, funciones, geometría, programación y creación" },
         { id: "estudio", nombre: "Estudio y oficina", icono: "tisma-asistente",
           desc: "Documentos, PDF, presentaciones, LaTeX y la IA para estudiar" },
         { id: "ingenieria", nombre: "Ingeniería y diseño", icono: "tisma-solidcraft",

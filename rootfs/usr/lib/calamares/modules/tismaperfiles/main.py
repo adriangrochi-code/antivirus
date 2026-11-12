@@ -6,7 +6,7 @@ import os
 
 import libcalamares
 
-PERFILES = ("diario", "estudio", "ingenieria", "programacion", "juegos")
+PERFILES = ("diario", "primaria", "liceo", "estudio", "ingenieria", "programacion", "juegos")
 
 
 def pretty_name():

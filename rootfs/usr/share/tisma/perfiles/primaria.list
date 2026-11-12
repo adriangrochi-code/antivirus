@@ -1,0 +1,5 @@
+# Uso «Escuela (primaria)»: aprender jugando, de 6 a 12 años (todo de los repositorios firmados de Debian)
+# GCompris (más de 190 actividades), dibujo, matemática, lectura y escritura, geografía y astronomía
+gcompris-qt tuxpaint tuxmath tuxtype pysiogame
+kbruch klettres khangman kanagram kgeography ktouch blinken minuet kturtle
+marble stellarium

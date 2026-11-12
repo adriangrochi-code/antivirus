@@ -49,11 +49,22 @@ APP = {
     "inkscape": ["org.inkscape.Inkscape", "inkscape"], "blender": ["blender"], "gimp": ["org.gimp.GIMP", "gimp"],
     "steam": ["steam"], "rendimiento": ["net.tisma.Rendimiento"], "kdenlive": ["org.kde.kdenlive"],
     "obs": ["com.obsproject.Studio", "obs"],
+    # Escuela y liceo
+    "gcompris": ["org.kde.gcompris", "gcompris-qt"], "tuxpaint": ["tuxpaint"], "tuxmath": ["tuxmath"],
+    "kturtle": ["org.kde.kturtle"], "ktouch": ["org.kde.ktouch"], "stellarium": ["org.stellarium.Stellarium", "stellarium"],
+    "marble": ["org.kde.marble"], "kalzium": ["org.kde.kalzium"], "kmplot": ["org.kde.kmplot"], "step": ["org.kde.step"],
+    "thonny": ["org.thonny.Thonny", "thonny"], "geogebra": ["geogebra"], "krita": ["org.kde.krita", "krita"],
 }
 PERFILES = {
     "diario": {"nombre": "Uso diario", "desc": "Navegar, correo, documentos, fotos y música",
                "apps": ["archivos", "navegador", "correo", "oficina", "musica", "tienda"], "potencia": "equilibrado",
                "listas": ["esenciales", "diario"]},
+    "primaria": {"nombre": "Escuela (primaria)", "desc": "Aprender jugando: lectura, matemática, dibujo y ciencias",
+                 "apps": ["archivos", "navegador", "gcompris", "tuxpaint", "tuxmath", "kturtle", "stellarium"],
+                 "potencia": "equilibrado", "listas": ["primaria", "accesibilidad"]},
+    "liceo": {"nombre": "Liceo y UTU", "desc": "Ciencias, funciones, geometría, programación y creación",
+              "apps": ["archivos", "navegador", "oficina", "kalzium", "kmplot", "geogebra", "thonny", "krita"],
+              "potencia": "equilibrado", "listas": ["liceo", "accesibilidad"]},
     "estudio": {"nombre": "Estudio y oficina", "desc": "Documentos, PDF, presentaciones y la IA para estudiar",
                 "apps": ["archivos", "navegador", "texto", "pdf", "code", "tienda"], "potencia": "equilibrado",
                 "listas": ["esenciales", "estudio"]},
