@@ -379,6 +379,19 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "no encontrado"})
 
 
+
+def abrir(url: str, tamano, httpd) -> None:
+    """Ventana propia de la app (sin pestañas ni barra de direcciones); al cerrarla, la app termina."""
+    try:
+        import sys
+        sys.path.insert(0, "/usr/lib/centinela/python")
+        from centinela.ventana import abrir_ventana
+    except ImportError:
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        return
+    abrir_ventana(url, "tisma-code", tamano,
+                  al_cerrar=lambda: threading.Thread(target=httpd.shutdown, daemon=True).start())
+
 def main(argv: list[str] | None = None) -> int:
     global APP
     ap = argparse.ArgumentParser(prog="tisma-code", description="Agente de programación con IA local")
@@ -393,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_browser:
         print(url, flush=True)
     if not args.no_browser:
-        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        abrir(url, None, httpd)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
