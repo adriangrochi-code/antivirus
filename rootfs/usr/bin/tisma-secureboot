@@ -8,10 +8,13 @@ clave propia de TISMA, que el firmware no conoce: hay que registrarla UNA vez (M
   tisma-secureboot estado    Secure Boot, clave TISMA registrada o no, y qué kernel arrancará
   tisma-secureboot activar   prepara el registro de la clave TISMA: al reiniciar aparece MokManager («Enroll MOK»)
                              y pide la contraseña de un solo uso que se muestra aquí
-  tisma-secureboot elegir    (al arrancar) arranca el kernel TISMA solo si es seguro hacerlo:
+  tisma-secureboot elegir    (al instalar, al arrancar y tras instalar o quitar un kernel) arranca el kernel TISMA
+                             solo si es seguro hacerlo:
                              - Secure Boot desactivado, o
                              - Secure Boot activado, clave TISMA registrada y kernel TISMA firmado con ella;
                              si no, el kernel firmado de Debian (el equipo siempre arranca).
+  tisma-secureboot quitar-minimal   (al instalar) en un equipo real quita el kernel TISMA «minimal», que es solo
+                             para máquinas virtuales: así GRUB no puede quedarse con un kernel que no arranca
 """
 from __future__ import annotations
 
@@ -26,6 +29,8 @@ import tempfile
 CERT = "/usr/share/tisma/secureboot/tisma-mok.der"
 GRUB_CFG = "/etc/default/grub.d/62-tisma-kernel.cfg"
 BOOT = "/boot"
+GRUB_MENU = "/boot/grub/grub.cfg"
+UPDATE_GRUB = "/usr/sbin/update-grub"      # ruta completa: en el entorno del instalador /usr/sbin puede no estar en PATH
 
 
 def sh(argv: list[str], inp: str | None = None) -> tuple[int, str]:
@@ -111,9 +116,42 @@ def elegir(run=sh) -> str:
                 fh.write(want)
         elif cur is not None:
             os.remove(GRUB_CFG)
-        run(["update-grub"])
+    # El menú de GRUB se regenera si la configuración cambió O si el menú no arranca lo elegido: en la A275 (preview
+    # 6) el archivo quedó bien pero el menú seguía con el kernel TISMA primero, y como la configuración ya «estaba
+    # al día» nunca se volvía a generar
+    if want != cur or (elegido and primer_kernel(GRUB_MENU) != os.path.basename(elegido)):
+        rc, out = run([UPDATE_GRUB])
+        if rc:
+            raise RuntimeError("update-grub falló: " + out.strip()[-300:])
     return f"kernel TISMA ({os.path.basename(k)})" if k else \
         f"kernel firmado de Debian ({os.path.basename(elegido)})" if elegido else "lo que elija GRUB"
+
+
+def primer_kernel(menu: str = GRUB_MENU) -> str | None:
+    """Kernel de la entrada por defecto del menú de GRUB (la primera «linux …»), p. ej. «vmlinuz-7.2.12+deb13-amd64»."""
+    try:
+        for linea in open(menu, encoding="utf-8", errors="replace"):
+            partes = linea.split()
+            if len(partes) >= 2 and partes[0] == "linux":
+                return os.path.basename(partes[1])
+    except OSError:
+        pass
+    return None
+
+
+def quitar_minimal(run=sh) -> str:
+    """En un equipo real, desinstala el kernel TISMA «minimal» (solo sirve en máquinas virtuales)."""
+    if in_vm(run):
+        return "máquina virtual: se conserva el kernel TISMA minimal"
+    rc, out = run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n", "linux-image-*-centinela-minimal",
+                   "linux-headers-*-centinela-minimal"])
+    paquetes = [l.split()[0] for l in out.splitlines() if len(l.split()) == 2 and l.split()[1].startswith("ii")]
+    if not paquetes:
+        return "no hay kernel TISMA minimal instalado"
+    rc, out = run(["apt-get", "purge", "-y", "-q", *paquetes])
+    if rc:
+        raise RuntimeError("no se pudo quitar el kernel minimal: " + out.strip()[-300:])
+    return "quitado " + ", ".join(paquetes)
 
 
 def activar(run=sh) -> int:
@@ -167,15 +205,22 @@ def estado(run=sh) -> int:
 
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "estado"
-    if cmd not in ("estado", "activar", "elegir"):
+    if cmd not in ("estado", "activar", "elegir", "quitar-minimal"):
         print(__doc__)
         return 2
     if cmd != "estado" and os.geteuid() != 0:
         print(f"Necesita permisos de administrador: sudo tisma-secureboot {cmd}", file=sys.stderr)
         return 2
-    if cmd == "elegir":
-        print("Arrancará: " + elegir())
-        return 0
+    try:
+        if cmd == "elegir":
+            print("Arrancará: " + elegir())
+            return 0
+        if cmd == "quitar-minimal":
+            print(quitar_minimal())
+            return 0
+    except RuntimeError as e:
+        print(f"tisma-secureboot {cmd}: {e}", file=sys.stderr)
+        return 1
     return activar() if cmd == "activar" else estado()
 
 

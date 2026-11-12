@@ -289,3 +289,10 @@ def test_instalador_al_frente_en_el_usb():
     # Solo en la sesión del USB
     assert "/etc/xdg/kwinrulesrc" in (ROOT / "usr/lib/tisma/sesion-live").read_text(encoding="utf-8")
     assert not (ROOT / "etc/xdg/kwinrulesrc").exists()
+
+
+def test_touchpad_toca_para_clic():
+    # KWin 6.3 usa [Libinput][Defaults][Touchpad] de kcminputrc (que lee también de /etc/xdg) para todos los
+    # touchpads, incluida la pantalla de inicio de sesión
+    t = (ROOT / "etc/xdg/kcminputrc").read_text(encoding="utf-8")
+    assert "[Libinput][Defaults][Touchpad]\nTapToClick=true" in t

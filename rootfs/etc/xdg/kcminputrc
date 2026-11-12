@@ -1,0 +1,6 @@
+# TISMA: el touchpad responde a un toque como clic, como en Windows (en Linux viene apagado y parecía que el
+# touchpad «no andaba»). KWin usa [Libinput][Defaults][Touchpad] como valor de fábrica para todos los touchpads,
+# también en la pantalla de inicio de sesión; lo que cada uno cambie en Preferencias > Touchpad manda.
+[Libinput][Defaults][Touchpad]
+TapToClick=true
+DisableWhileTyping=true

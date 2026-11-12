@@ -1,0 +1,6 @@
+#!/bin/sh
+# TISMA: tras instalar o quitar un kernel (y después de zz-update-grub), vuelve a fijar qué kernel arranca según
+# Secure Boot. Sin esto, un kernel TISMA nuevo (versión más alta) quedaba primero en GRUB aunque no pudiera arrancar.
+[ -x /usr/bin/tisma-secureboot ] || exit 0
+/usr/bin/tisma-secureboot elegir >/dev/null 2>&1 || echo "tisma-secureboot: no se pudo fijar el kernel de arranque" >&2
+exit 0
