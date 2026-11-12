@@ -1,0 +1,2 @@
+# Programas de Windows: Wine (lo pide el doble clic en un .exe; también viene con el perfil de juegos)
+wine wine32:i386 wine64 fonts-wine

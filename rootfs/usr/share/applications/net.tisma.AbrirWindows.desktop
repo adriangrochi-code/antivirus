@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Programa de Windows (revisado por Escudo)
+Comment=Abre programas e instaladores de Windows aislados y sin Internet, después de que Escudo los revise
+Exec=tisma-abrir-windows %f
+Icon=wine
+NoDisplay=true
+Terminal=false
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-dosexec;application/x-msi;application/x-ms-installer;application/x-wine-extension-msp;

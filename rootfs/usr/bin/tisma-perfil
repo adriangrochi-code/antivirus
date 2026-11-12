@@ -30,7 +30,7 @@ HECHO = os.environ.get("TISMA_COMPLETAR_HECHO", "/var/lib/tisma/completar-hecho"
 # Por seguridad el sistema arranca sin llamadas al sistema de 32 bits (52-tisma-32bits.cfg); Steam y Wine las
 # necesitan: el perfil de juegos las vuelve a activar (tras reiniciar)
 MARCA_32 = os.environ.get("TISMA_32BITS", "/etc/tisma/32bits")
-PERFILES_32 = {"juegos"}
+PERFILES_32 = {"juegos", "windows"}
 # Lock::Timeout: si la Bienvenida y tisma-completar coinciden, uno espera al otro en vez de fallar
 APT = ["apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confold", "-o", "Acquire::Retries=3",
        "-o", "DPkg::Lock::Timeout=900"]
@@ -154,7 +154,7 @@ def activar_32bits(run=None) -> str:
     run = run or subprocess.run
     os.makedirs(os.path.dirname(MARCA_32), exist_ok=True)
     with open(MARCA_32, "w") as fh:
-        fh.write("Creado por el perfil de juegos (tisma-perfil): Steam y Wine necesitan programas de 32 bits.\n"
+        fh.write("Creado por tisma-perfil (perfil de juegos o windows): Steam y Wine necesitan programas de 32 bits.\n"
                  "Bórralo y ejecuta update-grub para volver a desactivarlos (más seguro).\n")
     r = run(["update-grub"], capture_output=True, text=True)
     if r.returncode != 0:

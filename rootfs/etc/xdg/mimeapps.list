@@ -1,0 +1,9 @@
+# TISMA: doble clic en un programa de Windows → Escudo lo revisa y se abre aislado (tisma-abrir-windows)
+[Default Applications]
+application/x-ms-dos-executable=net.tisma.AbrirWindows.desktop
+application/x-msdownload=net.tisma.AbrirWindows.desktop
+application/vnd.microsoft.portable-executable=net.tisma.AbrirWindows.desktop
+application/x-dosexec=net.tisma.AbrirWindows.desktop
+application/x-msi=net.tisma.AbrirWindows.desktop
+application/x-ms-installer=net.tisma.AbrirWindows.desktop
+application/x-wine-extension-msp=net.tisma.AbrirWindows.desktop

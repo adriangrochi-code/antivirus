@@ -1,0 +1,6 @@
+# TISMA: oculta el «Wine» de Debian, que abría los .exe con doble clic SIN revisarlos. Los programas de Windows se
+# abren con net.tisma.AbrirWindows (Escudo los revisa y corren aislados). /usr/local/share va antes que /usr/share.
+[Desktop Entry]
+Type=Application
+Name=Wine
+Hidden=true

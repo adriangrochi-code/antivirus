@@ -92,16 +92,31 @@ def cmd_protect(cfg: Config, args) -> int:
         except OSError as e:
             logging.getLogger("escudo").warning("Puerta de primera ejecución desactivada: %s", e)
             gate = None
+    # Consulta «¿puedo abrir este archivo?» para lo que el kernel no ejecuta (programas de Windows con Wine): usa el
+    # mismo análisis que la puerta (firmas, YARA, ML y detonación) aunque fanotify no esté disponible
+    consulta = None
+    if not args.no_detonar and sys.platform.startswith("linux"):
+        from .consulta import Consulta
+        from .primera_ejecucion import Gate as _Gate
+        try:
+            consulta = Consulta(gate or _Gate(quarantine=rtp.quarantine, scanner=rtp.scanner))
+            consulta.start()
+        except OSError as e:
+            logging.getLogger("escudo").warning("Consulta de archivos desactivada: %s", e)
+            consulta = None
     guard = None
     if not args.no_network:
         guard = NetGuard(cfg)
         guard.start()
     activas = ["antivirus en tiempo real"] + (["puerta de primera ejecución"] if gate else []) + \
+        (["consulta de programas de Windows"] if consulta else []) + \
         (["IPS de red"] if guard else [])
     sd_notify("READY=1\nSTATUS=Protección activa: " + ", ".join(activas))
     stop.wait()
     sd_notify("STOPPING=1")
     rtp.stop()
+    if consulta:
+        consulta.stop()
     if gate:
         gate.stop()
     if guard:

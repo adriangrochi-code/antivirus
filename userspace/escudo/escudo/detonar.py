@@ -40,6 +40,21 @@ SECRET_DECOYS = {
     ".electrum/wallets/default_wallet": '{"senuelo": "tisma"}',
     ".local/share/keyrings/login.keyring": "senuelo",
 }
+# Programas de Windows (Wine): lo que buscan los ladrones de contraseñas y carteras en Windows
+WIN_USER = ".wine/drive_c/users/usuario"
+WIN_DECOYS = {
+    f"{WIN_USER}/AppData/Local/Google/Chrome/User Data/Default/Login Data": "SQLite format 3\x00senuelo",
+    f"{WIN_USER}/AppData/Local/Google/Chrome/User Data/Local State": '{"os_crypt": {"encrypted_key": "U0VOVUVMTw=="}}',
+    f"{WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default/Login Data": "SQLite format 3\x00senuelo",
+    f"{WIN_USER}/AppData/Roaming/Mozilla/Firefox/Profiles/senuelo.default/logins.json": '{"logins": []}',
+    f"{WIN_USER}/AppData/Roaming/Exodus/exodus.wallet/seed.seco": "senuelo",
+    f"{WIN_USER}/AppData/Roaming/Electrum/wallets/default_wallet": '{"senuelo": "tisma"}',
+    f"{WIN_USER}/AppData/Roaming/Telegram Desktop/tdata/key_datas": "senuelo",
+}
+# Arranque automático en Windows: claves Run del registro y carpeta Inicio
+WIN_RUN = re.compile(r"^\[(?:Software|Machine\\\\Software)\\\\(?:Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion"
+                     r"\\\\Run(?:Once|Services)?\]", re.I | re.M)
+WIN_STARTUP = "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup"
 DOC_DECOYS = {f"Documentos/{n}": f"Documento señuelo {n}: " + "texto de prueba " * 200
               for n in ("presupuesto.docx", "fotos-vacaciones.txt", "contrato.pdf", "notas.odt", "tesis.tex")}
 PERSISTENCE = re.compile(r"/(\.config/autostart/|\.config/systemd/user/|\.local/share/systemd/user/|\.bashrc$|"
@@ -80,7 +95,7 @@ LINE = re.compile(r'^(?:\[pid\s+)?(\d+)\]?\s+(\w+)\((.*)\)\s+=\s+(-?\w+)')
 def analizar_traza(traza: str, home: str = HOME_FALSO, muestra: str = "") -> Informe:
     inf = Informe()
     high, medium = [], []
-    secret_paths = {f"{home}/{p}" for p in SECRET_DECOYS}
+    secret_paths = {f"{home}/{p}" for p in (*SECRET_DECOYS, *WIN_DECOYS)}
     doc_paths = {f"{home}/{p}" for p in DOC_DECOYS}
     docs_touched, created = set(), set()
     started = not muestra            # lo anterior a ejecutar la muestra es la propia jaula (bwrap): no cuenta
@@ -92,7 +107,9 @@ def analizar_traza(traza: str, home: str = HOME_FALSO, muestra: str = "") -> Inf
         paths = re.findall(r'"((?:[^"\\]|\\.)*)"', args)
         first = paths[0] if paths else ""
         if not started:
-            started = call in ("execve", "execveat") and first == muestra
+            # Con Wine la muestra no se ejecuta con execve: empieza cuando Wine arranca con ella como argumento
+            started = call in ("execve", "execveat") and (first == muestra or (
+                os.path.basename(first).startswith("wine") and muestra and muestra in paths[1:]))
             continue
         if call in ("open", "openat", "creat"):
             if first in secret_paths:
@@ -152,10 +169,46 @@ def analizar_traza(traza: str, home: str = HOME_FALSO, muestra: str = "") -> Inf
     return inf
 
 
+def es_windows(path: str) -> bool:
+    """¿Programa de Windows (PE: «MZ» y cabecera «PE\\0\\0») o instalador MSI?"""
+    try:
+        with open(path, "rb") as fh:
+            cab = fh.read(4096)
+    except OSError:
+        return False
+    if cab[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":           # MSI (documento compuesto OLE)
+        return path.lower().endswith((".msi", ".msp"))
+    if cab[:2] != b"MZ" or len(cab) < 64:
+        return False
+    off = int.from_bytes(cab[60:64], "little")
+    return off + 4 <= len(cab) and cab[off:off + 4] == b"PE\x00\x00"
+
+
+def persistencia_windows(home: Path) -> list[str]:
+    """Tras ejecutar un programa de Windows: ¿se apuntó en el arranque (registro Run o carpeta Inicio)?"""
+    motivos = []
+    pref = home / ".wine"
+    for reg in ("user.reg", "system.reg"):
+        try:
+            texto = (pref / reg).read_text(errors="replace")
+        except OSError:
+            continue
+        for m in WIN_RUN.finditer(texto):
+            fin = texto.find("\n[", m.end())
+            valores = [ln for ln in texto[m.end():fin if fin >= 0 else None].splitlines()
+                       if ln.startswith(('"', "@")) and "winemenubuilder" not in ln.lower()]
+            if valores:
+                motivos.append("intentó arrancar solo con Windows (registro «Run»): " + valores[0][:80])
+    inicio = pref / "drive_c/users/usuario" / WIN_STARTUP
+    if inicio.is_dir() and [f for f in inicio.iterdir() if f.name.lower() != "desktop.ini"]:
+        motivos.append("se copió en la carpeta Inicio de Windows (arranque automático)")
+    return motivos
+
+
 # ---------------------------------------------------------------- entornos de ejecución
 def preparar_home(base: Path) -> Path:
     home = base / "home"
-    for rel, content in {**SECRET_DECOYS, **DOC_DECOYS}.items():
+    for rel, content in {**SECRET_DECOYS, **DOC_DECOYS, **WIN_DECOYS}.items():
         p = home / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
@@ -175,6 +228,9 @@ def sandbox_argv(home: Path, workdir: Path, muestra: str, args: list[str], traza
             "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv",
             "--setenv", "HOME", HOME_FALSO, "--setenv", "USER", "usuario", "--setenv", "LANG", "es_ES.UTF-8",
             "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--chdir", HOME_FALSO,
+            # Programas de Windows: prefijo propio y desechable, sin pedir Mono/Gecko ni crear accesos en el menú
+            "--setenv", "WINEPREFIX", f"{HOME_FALSO}/.wine", "--setenv", "WINEDEBUG", "-all",
+            "--setenv", "WINEDLLOVERRIDES", "mscoree,mshtml,winemenubuilder.exe=d",
             muestra, *args]
 
 
@@ -213,7 +269,19 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
         home = preparar_home(base)
         # La traza queda FUERA de lo que ve el programa (si no, podría reescribirla para ocultarse)
         traza = base / "traza.txt"
-        vm = vm_disponible() if usar_vm is None else usar_vm
+        windows = es_windows(str(workdir / name))
+        wine = shutil.which("wine")
+        if windows:
+            if not wine:
+                return Informe(veredicto="sospechoso", sha256=digest, entorno="sin Wine",
+                               nota="programa de Windows: sin Wine no se puede observar qué hace",
+                               motivos=["no se pudo observar (falta Wine en el sistema)"])
+            vm = False                               # la máquina virtual de análisis no trae Wine
+            segundos = max(segundos, 120)            # Wine crea su «Windows» la primera vez: tarda más
+            args = [f"/tmp/muestra/{name}", *args] if not name.lower().endswith((".msi", ".msp")) else \
+                ["msiexec", "/i", f"/tmp/muestra/{name}", "/qn", *args]
+        else:
+            vm = vm_disponible() if usar_vm is None else usar_vm
         if vm:
             (base / "orden.json").write_text(json.dumps({"muestra": name, "args": args}))
             cmd = vm_argv(base, segundos, kvm=os.access("/dev/kvm", os.W_OK))
@@ -223,7 +291,7 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
                        "-p", f"RuntimeMaxSec={segundos + 600}", "--", *cmd]
             entorno = "máquina virtual"
         else:
-            cmd = sandbox_argv(home, workdir, f"/tmp/muestra/{name}", args, traza)
+            cmd = sandbox_argv(home, workdir, wine if windows else f"/tmp/muestra/{name}", args, traza)
             if uid is not None:                      # con la identidad del usuario, nunca como root
                 for p in base.rglob("*"):
                     os.lchown(p, uid, gid if gid is not None else uid)
@@ -236,11 +304,17 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
             pass                                     # el tiempo de observación terminó: es lo normal
         texto = traza.read_text(errors="replace") if traza.exists() else ""
         inf = analizar_traza(texto, HOME_FALSO, f"/tmp/muestra/{name}")
+        if windows:
+            entorno = "aislamiento con Wine"
+            persist = persistencia_windows(home)
+            if persist:
+                inf.motivos = list(dict.fromkeys(persist + inf.motivos))
+                inf.veredicto = "malicioso"
         inf.entorno, inf.sha256, inf.segundos = entorno, digest, round(time.time() - t0, 1)
         if not texto:
             inf.nota = "no se pudo observar la ejecución (sin traza)"
             inf.veredicto = "sospechoso" if inf.veredicto == "limpio" else inf.veredicto
-        elif not vm and not se_ejecuto(texto, f"/tmp/muestra/{name}"):
+        elif not vm and not se_ejecuto(texto, f"/tmp/muestra/{name}", wine=windows):
             # Fallar CERRADO: si el aislamiento no llegó a arrancar la muestra (p. ej. bubblewrap no pudo montar
             # /proc dentro de un servicio con ProtectKernelTunables), la traza solo tiene el fallo del
             # aislamiento y la muestra «no hizo nada»: antes eso salía «limpio» y se le dejaba ejecutarse.
@@ -251,8 +325,10 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
         shutil.rmtree(base, ignore_errors=True)
 
 
-def se_ejecuto(traza: str, ruta: str) -> bool:
-    """¿La traza muestra que la propia muestra se ejecutó (execve con éxito)?"""
+def se_ejecuto(traza: str, ruta: str, wine: bool = False) -> bool:
+    """¿La traza muestra que la propia muestra se ejecutó (execve con éxito)? Con Wine: que Wine abrió el programa."""
+    if wine:
+        return re.search(r'open(at)?\([^"]*"' + re.escape(ruta) + r'"[^)]*\)\s*=\s*\d+', traza, re.M) is not None
     return re.search(r'execve(at)?\([^"]*"' + re.escape(ruta) + r'".*\)\s*=\s*0\s*$', traza, re.M) is not None
 
 
