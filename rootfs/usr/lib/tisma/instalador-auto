@@ -7,4 +7,4 @@ grep -qwE "tisma\.probar|tisma\.diagnostico" /proc/cmdline && exit 0
 [ -e "${XDG_RUNTIME_DIR:-/tmp}/tisma-instalador-abierto" ] && exit 0
 touch "${XDG_RUNTIME_DIR:-/tmp}/tisma-instalador-abierto"
 sleep 2     # que el escritorio termine de dibujarse
-exec /usr/bin/calamares-install-debian
+exec /usr/lib/tisma/instalar-tisma

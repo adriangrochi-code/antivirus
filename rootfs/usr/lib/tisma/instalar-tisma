@@ -1,0 +1,13 @@
+#!/bin/sh
+# Abre el instalador. Si un intento anterior falló, Calamares deja el disco nuevo montado y abierto (LUKS) y el
+# siguiente intento no puede usarlo («particiones ya montadas»): se limpia antes (solo en la sesión del USB, donde
+# el usuario es administrador sin contraseña; un volumen que siga en uso no se toca).
+if grep -qw "boot=live" /proc/cmdline; then
+    awk '$2 ~ "^/tmp/calamares-root-[^/]*$" {print $2}' /proc/mounts | while read -r m; do
+        sudo -n umount -R "$m" 2>/dev/null || sudo -n umount -lR "$m" 2>/dev/null
+    done
+    for d in /dev/mapper/luks-*; do
+        [ -e "$d" ] && sudo -n cryptsetup close "${d##*/}" 2>/dev/null
+    done
+fi
+exec /usr/bin/calamares-install-debian

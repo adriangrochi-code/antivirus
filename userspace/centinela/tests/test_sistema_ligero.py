@@ -103,6 +103,13 @@ def test_installer_pages_like_windows():
     assert yaml.safe_load((ROOT / "etc/calamares/modules/finished.conf").read_text())["restartNowMode"] == "always"
     r = yaml.safe_load((ROOT / "etc/calamares/modules/shellprocess-region.conf").read_text())
     assert r["dontChroot"] is True and any("instalar-region ${ROOT}" in c for c in r["script"])
+    # Quitar lo del USB sin fallar por paquetes que TISMA no trae (la instalación fallaba al final)
+    pk = yaml.safe_load((ROOT / "etc/calamares/modules/packages.conf").read_text())
+    ops = pk["operations"]
+    assert all(set(o) == {"try_remove"} for o in ops) and "live-boot" in ops[0]["try_remove"]
+    # El icono y el arranque automático usan el lanzador que limpia un intento fallido anterior
+    assert "Exec=/usr/lib/tisma/instalar-tisma" in (ROOT / "usr/share/tisma/live/instalar-tisma.desktop").read_text()
+    assert "exec /usr/lib/tisma/instalar-tisma" in (ROOT / "usr/lib/tisma/instalador-auto").read_text()
 
 
 def test_dns_blocks_malware_with_live_resolvers():
