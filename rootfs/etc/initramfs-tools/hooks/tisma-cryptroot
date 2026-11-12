@@ -1,0 +1,12 @@
+#!/bin/sh
+# TISMA: la pantalla de arranque pide la contraseña del disco en español y sin el identificador interno
+# («Please unlock disk luks-876aa88d-…» → «Contraseña del disco de TISMA»). Solo cambia la COPIA del initramfs,
+# después del hook de cryptsetup; si el texto de Debian cambia, no hace nada.
+PREREQ="cryptroot"
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+f="$DESTDIR/lib/cryptsetup/functions"
+[ -f "$f" ] || exit 0
+grep -q 'keyscriptarg="Please unlock disk $CRYPTTAB_NAME: "' "$f" || exit 0
+sed -i 's|keyscriptarg="Please unlock disk $CRYPTTAB_NAME: "|keyscriptarg="Contraseña del disco de TISMA: "|' "$f"
+exit 0

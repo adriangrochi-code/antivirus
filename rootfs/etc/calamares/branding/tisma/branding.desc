@@ -1,7 +1,8 @@
 # Instalador TISMA OS (Calamares). Imágenes generadas por iso/make-branding.py a partir de branding/*.svg
 ---
 componentName:   tisma
-welcomeStyleCalamares: true
+# false: «Te damos la bienvenida al instalador de TISMA OS» (no «…a Calamares, el instalador de…»)
+welcomeStyleCalamares: false
 welcomeExpandingLogo: true
 # Pantalla completa, como el instalador de Windows (se sale con «Cancelar» para probar el sistema)
 windowExpanding: fullscreen

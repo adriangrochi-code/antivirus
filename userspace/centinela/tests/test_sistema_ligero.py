@@ -150,3 +150,14 @@ def test_pantalla_de_inicio_en_wayland():
     c.read(ROOT / "etc/sddm.conf.d/10-tisma-wayland.conf")
     assert c["General"]["DisplayServer"] == "wayland"
     assert c["Wayland"]["CompositorCommand"].startswith("kwin_wayland")
+
+
+def test_lanzadores_fijos_existen_siempre():
+    """Un lanzador anclado de una app que no está sale como «?» en la barra de tareas."""
+    import re
+    lay = (ROOT / "usr/share/plasma/look-and-feel/org.centinela.desktop/contents/layouts/"
+                  "org.kde.plasma.desktop-layout.js").read_text()
+    paquetes = (ROOT.parent / "iso/packages.list").read_text().split()
+    for app in re.findall(r'"applications:([^"]+)\.desktop"', lay):
+        en_rootfs = (ROOT / "usr/share/applications" / f"{app}.desktop").exists()
+        assert en_rootfs or (app == "org.kde.dolphin" and "dolphin" in paquetes), app

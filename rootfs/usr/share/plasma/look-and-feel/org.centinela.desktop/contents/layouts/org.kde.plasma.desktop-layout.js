@@ -14,12 +14,12 @@ start.writeConfig("favoritesPortedToKAstats", "true");
 
 var tasks = panel.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];
+// Solo apps que SIEMPRE están en la base: un lanzador de algo no instalado sale como «?» (LibreOffice se descarga
+// al instalar y en el USB no está; el laminador no va en la base). La Bienvenida añade el resto según tu uso.
 tasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
     "applications:net.tisma.Navegador.desktop",
-    "applications:libreoffice-startcenter.desktop",
     "applications:net.tisma.Code.desktop",
-    "applications:net.tisma.Tisma.desktop",
     "applications:tisma-tienda.desktop"
 ]);
 // Vista previa de ventanas al pasar el ratón (como Aero Peek)
