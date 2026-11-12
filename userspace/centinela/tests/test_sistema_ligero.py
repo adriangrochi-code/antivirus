@@ -273,3 +273,19 @@ def test_compartir_carpeta_seguro():
     users = (ROOT / "etc/calamares/modules/users.conf").read_text(encoding="utf-8")
     assert "name: sambashare" in users and "must_exist: false" in users
     assert "tisma-compartir.path" in (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+
+
+def test_instalador_al_frente_en_el_usb():
+    import configparser as cp
+    reglas = cp.ConfigParser(interpolation=None)
+    reglas.read(ROOT / "usr/share/tisma/live/kwinrulesrc", encoding="utf-8")
+    r = reglas["tisma-instalador"]
+    assert reglas["General"]["rules"] == "tisma-instalador" and reglas["General"]["count"] == "1"
+    # Ventana de Calamares: sin prevención de robo de foco (forzado), sin pantalla completa, maximizada
+    assert r["wmclass"] == "calamares" and r["wmclassmatch"] == "1"
+    assert (r["fsplevel"], r["fsplevelrule"]) == ("0", "2")
+    assert (r["fullscreen"], r["fullscreenrule"]) == ("false", "2")
+    assert r["maximizehoriz"] == r["maximizevert"] == "true"
+    # Solo en la sesión del USB
+    assert "/etc/xdg/kwinrulesrc" in (ROOT / "usr/lib/tisma/sesion-live").read_text(encoding="utf-8")
+    assert not (ROOT / "etc/xdg/kwinrulesrc").exists()

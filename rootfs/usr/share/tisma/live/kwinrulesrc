@@ -1,0 +1,20 @@
+# Solo la sesión del USB (lo instala /usr/lib/tisma/sesion-live en /etc/xdg): el instalador se abre al frente, con
+# el foco y maximizado. Sin esto quedaba debajo de la barra de tareas, con «Siguiente» tapado hasta hacerle clic
+# (probado en la máquina virtual con la preview 6).
+[General]
+count=1
+rules=tisma-instalador
+
+[tisma-instalador]
+Description=Instalador de TISMA: con foco y maximizado (los botones siempre a la vista)
+wmclass=calamares
+wmclassmatch=1
+wmclasscomplete=false
+fsplevel=0
+fsplevelrule=2
+fullscreen=false
+fullscreenrule=2
+maximizehoriz=true
+maximizehorizrule=3
+maximizevert=true
+maximizevertrule=3
