@@ -1,0 +1,8 @@
+#!/bin/sh
+# Ajustes SOLO de la sesión del USB (se escriben en su memoria; el instalador copia la imagen, no la sesión, así que
+# nunca llegan al sistema instalado):
+# * El instalador se abre sin pedir contraseña (en la sesión live el usuario ya es administrador sin contraseña).
+# * La pantalla no se bloquea: a mitad de instalar pedía una contraseña («live») que nadie conoce.
+set -e
+install -D -m 644 /usr/share/tisma/live/49-tisma-live-instalador.rules /etc/polkit-1/rules.d/49-tisma-live-instalador.rules
+printf '[Daemon]\nAutolock=false\nLockOnResume=false\n' > /etc/xdg/kscreenlockerrc

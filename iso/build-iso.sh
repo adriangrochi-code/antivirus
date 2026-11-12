@@ -453,7 +453,7 @@ fi
 log "Kernel de la sesión live: $KVER${TVER:+ · kernel TISMA: $TVER}"
 cp -r "$CHROOT/boot/grub/themes" "$ISODIR/boot/grub/"
 
-LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es timezone=Europe/Madrid hostname=tisma username=tisma"
+LIVE="boot=live components quiet splash locales=es_ES.UTF-8 keyboard-layouts=es timezone=Europe/Madrid hostname=tisma username=tisma user-fullname=TISMA"
 # Los MISMOS parámetros de seguridad que el sistema instalado (una sola fuente: 50-centinela.cfg), más los de
 # 32 bits (la sesión live no trae el perfil de juegos). Antes la live tenía su propia lista y le faltaban varios.
 SEC="$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash \(.*\)"$/\1/p' "$REPO/rootfs/etc/default/grub.d/50-centinela.cfg")"
