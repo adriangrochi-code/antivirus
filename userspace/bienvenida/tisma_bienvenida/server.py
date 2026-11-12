@@ -228,7 +228,7 @@ def elegidos_al_instalar() -> list[str]:
         return []
 
 
-MAX_ANCLADAS = 10        # iconos anclados en la barra: lo demás sigue en el menú
+MAX_ANCLADAS = 6         # pocos iconos en la barra (más simple); lo demás sigue en el menú
 
 
 def combinar(perfiles: list[str]) -> dict:

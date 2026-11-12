@@ -1,0 +1,11 @@
+# TISMA: el explorador de archivos no muestra las particiones del propio sistema (raíz cifrada, arranque, EFI, swap)
+# del disco interno. Antes salían en «Dispositivos» como «TISMA», «TISMA» y «TISMA-arranque»: confunde y un clic
+# de más podía desmontar o tocar el arranque. Solo las oculta de la vista (UDISKS_IGNORE): el sistema las sigue usando.
+# Lo que se conecta por USB (memorias, discos externos, el USB de TISMA) se ve siempre.
+SUBSYSTEM!="block", GOTO="tisma_ocultar_fin"
+ENV{ID_BUS}=="usb", GOTO="tisma_ocultar_fin"
+ENV{ID_FS_LABEL}=="TISMA|TISMA-arranque", ENV{UDISKS_IGNORE}="1"
+ENV{ID_PART_ENTRY_NAME}=="TISMA|TISMA-arranque", ENV{UDISKS_IGNORE}="1"
+ENV{ID_PART_ENTRY_TYPE}=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b", ENV{UDISKS_IGNORE}="1"
+ENV{ID_FS_TYPE}=="swap", ENV{UDISKS_IGNORE}="1"
+LABEL="tisma_ocultar_fin"

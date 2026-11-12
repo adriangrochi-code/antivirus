@@ -391,6 +391,17 @@ EOF
 # Lanzador del instalador en el escritorio live (el instalador lo quita del sistema instalado: shellprocess@region).
 # Antes se copiaba de install-debian.desktop, que en trixie se llama calamares-install-debian.desktop: la preview 5
 # no tenía icono para instalar. Ejecutable: si no, Plasma pregunta si abrirlo o ejecutarlo.
+# Nombres simples en el menú y la barra: el explorador se llama «Archivos» (copia en /usr/local, que tiene prioridad;
+# las actualizaciones del paquete no la pisan).
+if [[ -f "$CHROOT/usr/share/applications/org.kde.dolphin.desktop" ]]; then
+    install -d "$CHROOT/usr/local/share/applications"
+    sed -E -e '/^\[Desktop Action/,$b' -e 's/^Name(\[[^]]*\])?=.*/Name\1=Archivos/' \
+        "$CHROOT/usr/share/applications/org.kde.dolphin.desktop" > "$CHROOT/usr/local/share/applications/org.kde.dolphin.desktop"
+fi
+# Sin carpeta «Plantillas» en la carpeta personal: las plantillas de «Crear nuevo» viven en /usr/share/templates.
+if [[ -f "$CHROOT/etc/xdg/user-dirs.defaults" ]]; then
+    sed -i 's/^TEMPLATES=/#TEMPLATES=/' "$CHROOT/etc/xdg/user-dirs.defaults"
+fi
 # En «Escritorio», no «Desktop»: si existe ~/Desktop al crear el usuario, xdg-user-dirs lo adopta y queda una carpeta en
 # inglés entre Documentos, Descargas, Imágenes… (visto en la VM)
 install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT/etc/skel/Escritorio/instalar-tisma.desktop"

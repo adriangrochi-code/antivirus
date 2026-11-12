@@ -10,7 +10,17 @@ try { panel.hiding = "none"; } catch (e) {}
 var start = panel.addWidget("org.kde.plasma.kickoff");
 start.currentConfigGroup = ["General"];
 start.writeConfig("icon", "/usr/share/centinela/branding/logo.svg");
-start.writeConfig("favoritesPortedToKAstats", "true");
+// Favoritos del menú: pocos y con nombres claros. Kickoff los pasa a su base de favoritos la primera vez
+// (por eso «favoritesPortedToKAstats» en false); sin esto mostraba los de fábrica con nombres técnicos.
+start.writeConfig("favorites", [
+    "applications:net.tisma.Navegador.desktop",
+    "applications:org.kde.dolphin.desktop",
+    "applications:tisma-tienda.desktop",
+    "applications:systemsettings.desktop",
+    "applications:net.tisma.Guia.desktop",
+    "applications:net.tisma.Seguridad.desktop"
+]);
+start.writeConfig("favoritesPortedToKAstats", "false");
 
 var tasks = panel.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];
@@ -19,7 +29,6 @@ tasks.currentConfigGroup = ["General"];
 tasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
     "applications:net.tisma.Navegador.desktop",
-    "applications:net.tisma.Code.desktop",
     "applications:tisma-tienda.desktop"
 ]);
 // Vista previa de ventanas al pasar el ratón

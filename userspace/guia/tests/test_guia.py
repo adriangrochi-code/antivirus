@@ -78,3 +78,11 @@ def test_en_el_menu_y_en_la_bienvenida():
     desk = (ROOT / "rootfs/usr/share/applications/net.tisma.Guia.desktop").read_text()
     assert "Exec=tisma-guia" in desk and "Icon=tisma-guia" in desk
     assert 'data-abrir="guia"' in (ROOT / "userspace/bienvenida/tisma_bienvenida/static/index.html").read_text()
+
+
+def test_inicio_corto_con_temas_que_existen():
+    import re
+    html = (ROOT / "userspace/guia/tisma_guia/static/index.html").read_text()
+    ids = re.findall(r'"(\w+)"', re.search(r"PRINCIPALES = \[(.*?)\]", html).group(1))
+    assert 4 <= len(ids) <= 8
+    assert set(ids) <= {l["id"] for l in LECCIONES}

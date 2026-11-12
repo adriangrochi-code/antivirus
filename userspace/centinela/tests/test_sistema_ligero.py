@@ -160,7 +160,8 @@ def test_lanzadores_fijos_existen_siempre():
     paquetes = (ROOT.parent / "iso/packages.list").read_text().split()
     for app in re.findall(r'"applications:([^"]+)\.desktop"', lay):
         en_rootfs = (ROOT / "usr/share/applications" / f"{app}.desktop").exists()
-        assert en_rootfs or (app == "org.kde.dolphin" and "dolphin" in paquetes), app
+        de_paquete = {"org.kde.dolphin": "dolphin", "systemsettings": "kde-plasma-desktop"}.get(app)
+        assert en_rootfs or (de_paquete and de_paquete in paquetes), app
 
 
 def test_atajos_de_windows():
