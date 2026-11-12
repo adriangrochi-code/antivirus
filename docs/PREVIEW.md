@@ -23,12 +23,12 @@ ni para equipos con datos importantes sin copia.**
   programación, juegos y creación) y «Elegir todo»; al terminar se descargan sumadas todas sus aplicaciones
   (sin Internet, en el primer arranque con conexión). Lo mismo en la Bienvenida. Lo elegido queda en
   `/etc/tisma/perfiles-elegidos`; si la descarga se cortó, `sudo tisma-perfil completar` la retoma.
-  **Más como Windows**: Dolphin ve los equipos y carpetas compartidas de la red de Windows; clic derecho >
+  **Más fácil**: Dolphin ve los equipos y carpetas compartidas de la red local (SMB); clic derecho >
   Propiedades > Compartir comparte una carpeta con la red local (el puerto solo se abre a la red de casa y
   mientras haya algo compartido); miniaturas de fotos, vídeos y PDF; teléfonos por USB; teclas de brillo,
   suspender por inactividad y aviso de batería baja (en la A275 faltaban). En el USB, el instalador se abre al
   frente con «Siguiente» a la vista.
-- **Novedades de la preview 6 (instalar y usar como Windows)**: el USB arranca directo al instalador, sin menú (Esc
+- **Novedades de la preview 6 (instalar y usar sin complicaciones)**: el USB arranca directo al instalador, sin menú (Esc
   durante 3 s muestra las opciones; si el equipo ya tiene TISMA instalado, arranca ese sistema). El instalador se
   abre solo y pregunta tres cosas: dónde instalar, la contraseña del disco y tu cuenta; la hora y los formatos
   salen de tu ubicación y el teclado es el del USB. Al terminar se reinicia solo. La contraseña del disco la pide
@@ -43,10 +43,10 @@ ni para equipos con datos importantes sin copia.**
   pantalla de inicio de sesión no arrancaba (ahora va sobre Wayland), la sesión del USB bloqueaba la pantalla a
   mitad de instalar y el navegador pedía «crear una cartera». Además: iconos propios para cada app de TISMA y menú
   de arranque rediseñado.
-  **Uso como Windows** (probado en la máquina virtual): atajos de Windows (Win+E archivos, Win+R ejecutar, Win+I
-  preferencias, Win+L bloquear, Win+D escritorio, Win+Shift+S recortar, Win+V portapapeles, Win+↑/↓ maximizar o
-  minimizar, Ctrl+Shift+Esc monitor del sistema); clic derecho > Crear nuevo > documento de Word, hoja de Excel o
-  presentación de PowerPoint; al entrar no se reabren las ventanas de la sesión anterior; la carpeta del
+  **Uso familiar** (probado en la máquina virtual): atajos de siempre con la tecla del logo (Logo+E archivos,
+  Logo+R ejecutar, Logo+I preferencias, Logo+L bloquear, Logo+D escritorio, Logo+Shift+S recortar, Logo+V
+  portapapeles, Logo+↑/↓ maximizar o minimizar, Ctrl+Shift+Esc monitor del sistema); clic derecho > Crear nuevo >
+  documento de texto, hoja de cálculo o presentación; al entrar no se reabren las ventanas de la sesión anterior; la carpeta del
   escritorio se llama «Escritorio» (antes quedaba «Desktop» en inglés). La contraseña del disco se pide en
   español, el instalador ya no dice «Calamares» y la barra de tareas no muestra iconos rotos.
 - **Novedades de la preview 5**: Escudo protege antes de que aparezca la pantalla de inicio de sesión; la puerta

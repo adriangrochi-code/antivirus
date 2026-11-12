@@ -34,7 +34,7 @@ from . import profile as prof
 
 EXTENSIONES = (".exe", ".msi", ".msp")
 MENU = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "applications/tisma-windows"
-TITULO = "Programas de Windows"
+TITULO = "Programas .exe"
 CARPETAS = ("DESKTOP", "DOWNLOAD", "DOCUMENTS", "PICTURES", "MUSIC", "VIDEOS")
 MARCA_32 = Path("/etc/tisma/32bits")
 
@@ -94,7 +94,7 @@ def carpetas_usuario(xdg=None) -> list[str]:
 def perfil(nombre: str, carpetas: list[str] | None = None) -> prof.Profile:
     """El aislamiento de UN programa de Windows: su $HOME privado (con su prefijo de Wine) más las carpetas de
     documentos; con Internet, gráficos, sonido y mandos. validate() rechaza cualquier ruta prohibida."""
-    p = prof.Profile(nombre=nombre, exec="/usr/bin/wine", descripcion="Programa de Windows aislado", red=True,
+    p = prof.Profile(nombre=nombre, exec="/usr/bin/wine", descripcion="Programa .exe aislado", red=True,
                      gpu=True, audio=True, mandos=True, x11=True, portales=False,
                      rw=carpetas if carpetas is not None else carpetas_usuario(),
                      env={"WINEPREFIX": f"{Path.home()}/.wine", "WINEDEBUG": "-all"})
@@ -153,7 +153,7 @@ def decidir(r: dict, nombre: str, ruta_original: Path, permitir=None) -> bool:
     """¿Se abre? Muestra el motivo si no."""
     if r.get("estado") != "listo":
         error(f"No se abrió «{nombre}»: {r.get('mensaje') or 'Escudo no pudo revisarlo'}.\n\n"
-              "Por seguridad, los programas de Windows solo se abren después de que Escudo los revise.")
+              "Por seguridad, los programas .exe solo se abren después de que Escudo los revise.")
         return False
     v = r.get("veredicto")
     motivos = "\n".join(f"• {m}" for m in (r.get("motivos") or [])[:5])
@@ -181,16 +181,16 @@ def wine_listo(programa: Path | None = None, instalar=None, cmdline: str | None 
     """Wine instalado y, si el programa es de 32 bits, los 32 bits activos. Sin preguntas: como Windows."""
     instalar = instalar or instalar_windows
     if not shutil.which("wine"):
-        avisar("Preparando el equipo para abrir programas de Windows (solo la primera vez, unos minutos)…")
+        avisar("Preparando el equipo para abrir programas .exe (solo la primera vez, unos minutos)…")
         if not instalar() or not shutil.which("wine"):
-            error("No se pudo preparar el equipo para programas de Windows. Revisa la conexión a Internet e "
+            error("No se pudo preparar el equipo para programas .exe. Revisa la conexión a Internet e "
                   "inténtalo de nuevo.")
             return False
     if programa is not None and es_32bits(programa) and bits32_apagados(cmdline):
         if not MARCA_32.exists():
             instalar()                              # activa los 32 bits para el próximo arranque
         if preguntar(f"«{programa.name}» necesita reiniciar el equipo una vez para poder abrirse (como al terminar "
-                     "de instalar algo en Windows).", "Reiniciar ahora", "Más tarde"):
+                     "de instalar un programa).", "Reiniciar ahora", "Más tarde"):
             subprocess.call(["systemctl", "reboot"])
         return False
     return True
@@ -227,7 +227,7 @@ def menu_instalados(nombre: str, home_app: Path, menu: Path = MENU) -> list[Path
         # La ruta de Windows va en un campo propio (escapado como valor de .desktop), no en Exec: el acceso se pasa
         # a sí mismo (%k) y el lanzador lee de él a qué aislamiento y programa corresponde
         destino.write_text("[Desktop Entry]\nType=Application\n"
-                           f"Name={nombre_vis}\nComment=Programa de Windows\n"
+                           f"Name={nombre_vis}\nComment=Programa .exe\n"
                            "Exec=tisma-abrir-windows --acceso %k\nIcon=wine\nCategories=Wine;\n"
                            f"X-TISMA-Perfil={nombre}\nX-TISMA-Exe={win.replace(chr(92), chr(92) * 2)}\n",
                            encoding="utf-8")
@@ -296,7 +296,7 @@ def ejecutar(p: prof.Profile, args: list[str]) -> int:
 def abrir(ruta: Path) -> int:
     ruta = ruta.resolve()
     if not ruta.is_file() or ruta.suffix.lower() not in EXTENSIONES:
-        error(f"«{ruta.name}» no es un programa de Windows (.exe o .msi).")
+        error(f"«{ruta.name}» no es un programa .exe ni un instalador .msi.")
         return 2
     if not wine_listo(ruta):
         return 1

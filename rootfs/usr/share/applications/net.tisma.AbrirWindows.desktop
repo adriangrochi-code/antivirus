@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Programa de Windows (revisado por Escudo)
-Comment=Abre programas e instaladores de Windows aislados y sin Internet, después de que Escudo los revise
+Name=Programa .exe (revisado por Escudo)
+Comment=Abre programas .exe e instaladores .msi aislados, después de que Escudo los revise
 Exec=tisma-abrir-windows %f
 Icon=wine
 NoDisplay=true

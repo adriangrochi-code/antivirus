@@ -134,11 +134,11 @@ def escribir_zip(ruta: Path, partes: dict[str, str]) -> None:
 
 # (archivo de la plantilla, nombre en el menú, pregunta al crearlo, icono, contenido)
 PLANTILLAS = [
-    ("Documento de Word.docx", "Documento de Word...", "Nombre del documento:",
+    ("Documento de texto.docx", "Documento de texto (.docx)...", "Nombre del documento:",
      "application-vnd.openxmlformats-officedocument.wordprocessingml.document", docx),
-    ("Hoja de cálculo de Excel.xlsx", "Hoja de cálculo de Excel...", "Nombre de la hoja de cálculo:",
+    ("Hoja de cálculo.xlsx", "Hoja de cálculo (.xlsx)...", "Nombre de la hoja de cálculo:",
      "application-vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx),
-    ("Presentación de PowerPoint.pptx", "Presentación de PowerPoint...", "Nombre de la presentación:",
+    ("Presentación.pptx", "Presentación (.pptx)...", "Nombre de la presentación:",
      "application-vnd.openxmlformats-officedocument.presentationml.presentation", pptx),
 ]
 

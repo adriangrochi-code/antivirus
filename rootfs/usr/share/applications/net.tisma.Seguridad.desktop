@@ -2,7 +2,7 @@
 Type=Application
 Name=TISMA Seguridad
 GenericName=Seguridad y mantenimiento
-Comment=Buscar virus, revisar el equipo, proteger los USB y revisar un Windows, con botones
+Comment=Buscar virus, revisar el equipo, proteger los USB y revisar el otro sistema del equipo, con botones
 Exec=tisma-seguridad-panel
 StartupWMClass=tisma-seguridad
 Icon=tisma-seguridad
