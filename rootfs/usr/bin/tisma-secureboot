@@ -57,6 +57,12 @@ def tisma_kernels(boot: str = BOOT) -> list[str]:
                                                                             for x in re.split(r"(\d+)", p)])
 
 
+def debian_kernels(boot: str = BOOT) -> list[str]:
+    """Kernels de Debian (firmados por Debian: arrancan siempre con Secure Boot), del más viejo al más nuevo."""
+    ks = [k for k in glob.glob(f"{boot}/vmlinuz-*") if "-centinela-" not in k and not k.endswith(".old")]
+    return sorted(ks, key=lambda p: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", p)])
+
+
 def signed_by_tisma(kernel: str, run=sh, cert: str = CERT) -> bool:
     if not os.path.exists(cert):
         return False
@@ -92,7 +98,12 @@ def elegir(run=sh) -> str:
     ks = tisma_kernels()
     enrolled = cert_enrolled(run) if sb else False
     k = choose(sb, enrolled, ks, {x: signed_by_tisma(x, run) for x in ks} if sb else {}, in_vm(run))
-    want = (f'# Generado por tisma-secureboot elegir\nGRUB_TOP_LEVEL="{k}"\n') if k else None
+    # Siempre explícito: sin GRUB_TOP_LEVEL, GRUB arranca el kernel de versión MÁS ALTA, que suele ser el de TISMA
+    # (7.3 > 7.2 de Debian): con Secure Boot y la clave sin registrar daba «bad shim signature» en el primer
+    # arranque tras instalar (visto en QEMU)
+    debian = debian_kernels()
+    elegido = k or (debian[-1] if debian else None)
+    want = (f'# Generado por tisma-secureboot elegir\nGRUB_TOP_LEVEL="{elegido}"\n') if elegido else None
     cur = open(GRUB_CFG).read() if os.path.exists(GRUB_CFG) else None
     if want != cur:
         if want:
@@ -101,7 +112,8 @@ def elegir(run=sh) -> str:
         elif cur is not None:
             os.remove(GRUB_CFG)
         run(["update-grub"])
-    return f"kernel TISMA ({os.path.basename(k)})" if k else "kernel firmado de Debian"
+    return f"kernel TISMA ({os.path.basename(k)})" if k else \
+        f"kernel firmado de Debian ({os.path.basename(elegido)})" if elegido else "lo que elija GRUB"
 
 
 def activar(run=sh) -> int:
