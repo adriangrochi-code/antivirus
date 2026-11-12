@@ -93,7 +93,7 @@ def test_installer_pages_like_windows():
     import yaml
     st = yaml.safe_load((ROOT / "etc/calamares/settings.conf").read_text())
     show = st["sequence"][0]["show"]
-    assert show == ["welcome", "partition", "users", "summary"]     # sin región ni teclado
+    assert show == ["welcome", "partition", "users", "packagechooserq@perfiles", "summary"]   # sin región ni teclado
     ex = st["sequence"][1]["exec"]
     assert "shellprocess@region" in ex and ex.index("shellprocess@region") < ex.index("users")
     assert not {"locale", "keyboard", "localecfg"} & set(ex)

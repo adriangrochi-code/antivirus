@@ -1,0 +1,7 @@
+# TISMA: guarda los usos elegidos en el instalador (página «Tu uso») para descargarlos al final de la
+# instalación o, sin conexión, en el primer arranque con red (tisma-perfil completar).
+---
+type:       "job"
+name:       "tismaperfiles"
+interface:  "python"
+script:     "main.py"

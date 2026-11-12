@@ -65,7 +65,7 @@ PERFILES = {
                      "potencia": "equilibrado", "listas": ["programacion"]},
     "juegos": {"nombre": "Juegos y creación", "desc": "Steam, grabación y edición de vídeo, rendimiento",
                "apps": ["archivos", "navegador", "steam", "obs", "kdenlive", "rendimiento"], "potencia": "rendimiento",
-               "listas": ["juegos"]},
+               "listas": ["juegos", "creacion"]},
 }
 ABRIR = {"code": ["tisma-code"], "tienda": ["plasma-discover"], "rendimiento": ["tisma-rendimiento"],
          "ajustes": ["systemsettings"]}
@@ -164,6 +164,17 @@ def apply_theme(modo: str, acento: str) -> dict:
         _ok([ci, icons])
     write_conf(tema=modo, acento=acento)
     return {"ok": ok, "salida": out}
+
+
+# Usos marcados en el instalador (página «Tu uso»): la Bienvenida parte de ellos
+ELEGIDOS_INSTALADOR = Path(os.environ.get("TISMA_PERFILES_ELEGIDOS", "/etc/tisma/perfiles-elegidos"))
+
+
+def elegidos_al_instalar() -> list[str]:
+    try:
+        return [x for x in ELEGIDOS_INSTALADOR.read_text(encoding="utf-8").split() if x in PERFILES]
+    except OSError:
+        return []
 
 
 MAX_ANCLADAS = 10        # iconos anclados en la barra: lo demás sigue en el menú
@@ -342,7 +353,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"tema": c.get("tema", "oscuro"), "acento": c.get("acento", "violeta"),
                                     "perfil": c.get("perfil", ""), "acentos": ACENTOS,
                                     "perfiles_elegidos": [x for x in (c.get("perfiles") or
-                                                                      ([c["perfil"]] if c.get("perfil") else []))
+                                                                      ([c["perfil"]] if c.get("perfil") else []) or
+                                                                      elegidos_al_instalar())
                                                           if x in PERFILES],
                                     "perfiles": {k: {"nombre": v["nombre"], "desc": v["desc"]} for k, v in PERFILES.items()},
                                     "usuario": nombre_de_pila(), "live": live_session()})

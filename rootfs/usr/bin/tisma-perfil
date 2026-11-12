@@ -5,8 +5,10 @@
   tisma-perfil instalar <perfil> [...]     (administrador) los descarga de los repositorios firmados de Debian
   tisma-perfil estado                      progreso de la última instalación (lo lee la Bienvenida)
   tisma-perfil faltan <perfil> [...]       qué falta por instalar (JSON)
-  tisma-perfil completar                   (administrador) lo de la base que no va en la ISO (perfil «esenciales»):
-                                           lo usan el instalador y tisma-completar.service; deja una marca al terminar
+  tisma-perfil completar                   (administrador) lo de la base que no va en la ISO (perfil «esenciales»)
+                                           y las apps de los usos elegidos en el instalador (/etc/tisma/perfiles-
+                                           elegidos); lo usan el instalador y tisma-completar.service (reintenta sin
+                                           red); deja una marca al terminar
 
 Perfiles: /usr/share/tisma/perfiles/<nombre>.list. Solo se aceptan esos nombres: nada de lo que llega por línea
 de órdenes se pasa a apt salvo los paquetes de esas listas. Una línea «@nombre» es un componente que no está en
@@ -160,6 +162,27 @@ def activar_32bits(run=None) -> str:
     return "Reinicia el equipo para usar Steam y Wine (activa los programas de 32 bits)."
 
 
+# Usos elegidos en el instalador (página «Tu uso»; los guarda el módulo tismaperfiles de Calamares). «Juegos y
+# creación» son dos listas; los demás usos se llaman igual que su lista.
+ELEGIDOS = os.environ.get("TISMA_PERFILES_ELEGIDOS", "/etc/tisma/perfiles-elegidos")
+LISTAS_DE_USO = {"diario": ["diario"], "estudio": ["estudio"], "ingenieria": ["ingenieria"],
+                 "programacion": ["programacion"], "juegos": ["juegos", "creacion"]}
+
+
+def listas_elegidas(ruta: str | None = None) -> list[str]:
+    """Listas de los usos elegidos al instalar (sin repetir; lo desconocido se ignora)."""
+    try:
+        usos = open(ruta or ELEGIDOS, encoding="utf-8").read().split()
+    except OSError:
+        return []
+    out = []
+    for u in usos:
+        for lista in LISTAS_DE_USO.get(u, []):
+            if lista not in out:
+                out.append(lista)
+    return out
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "listar"
     if cmd == "listar":
@@ -185,7 +208,7 @@ def main(argv: list[str]) -> int:
             return 2
         if os.path.exists(HECHO):
             return 0
-        rc = instalar(["esenciales"])
+        rc = instalar(["esenciales", *listas_elegidas()])
         if rc == 0:
             os.makedirs(os.path.dirname(HECHO), exist_ok=True)
             open(HECHO, "w").close()

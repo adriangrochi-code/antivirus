@@ -118,7 +118,7 @@ def test_profile_apps_install_with_pkexec_and_report_progress(srv, monkeypatch, 
     assert req(port, "GET", "/api/faltan?perfil=../x")[0] == 400
     assert json.loads(req(port, "GET", "/api/instalacion")[1])["fase"] == "ninguna"
     assert json.loads(req(port, "POST", "/api/instalar", {"perfil": "juegos"})[1])["ok"] is True
-    assert ["pkexec", "tisma-perfil", "instalar", "juegos"] in calls
+    assert ["pkexec", "tisma-perfil", "instalar", "juegos", "creacion"] in calls
     assert json.loads(req(port, "POST", "/api/instalar", {"perfil": "diario"})[1])["ok"] is False   # una a la vez
     st = json.loads(req(port, "GET", "/api/instalacion")[1])
     assert st["fase"] == "esperando permiso" and st["activo"] is True
@@ -145,7 +145,7 @@ def test_varios_usos_a_la_vez(srv, monkeypatch):
     """Juegos + programación + …: se suman las listas de apps y se instala todo junto."""
     port, calls = srv
     c = server.combinar(["diario", "juegos", "programacion"])
-    assert c["listas"] == ["esenciales", "diario", "juegos", "programacion"]
+    assert c["listas"] == ["esenciales", "diario", "juegos", "creacion", "programacion"]
     assert c["potencia"] == "rendimiento"                          # alguno lo pide
     assert len(c["apps"]) <= server.MAX_ANCLADAS and len(set(c["apps"])) == len(c["apps"])
     todo = server.combinar(list(server.PERFILES))
@@ -161,4 +161,4 @@ def test_varios_usos_a_la_vez(srv, monkeypatch):
     monkeypatch.setattr(server, "INSTALANDO", {})
     assert json.loads(req(port, "POST", "/api/instalar", {"perfiles": ["diario", "juegos"]})[1])["ok"]
     inst = next(x for x in calls if x[:3] == ["pkexec", "tisma-perfil", "instalar"])
-    assert inst[3:] == ["esenciales", "diario", "juegos"]
+    assert inst[3:] == ["esenciales", "diario", "juegos", "creacion"]

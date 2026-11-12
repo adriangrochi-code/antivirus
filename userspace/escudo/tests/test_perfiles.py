@@ -141,3 +141,47 @@ def test_32bit_is_off_by_default_in_grub(tmp_path):
     out = subprocess.run(["sh", "-c", cfg.replace("/etc/tisma/32bits", str(tmp_path / "si")) +
                           '\necho "$GRUB_CMDLINE_LINUX_DEFAULT"'], capture_output=True, text=True).stdout
     assert "ia32_emulation" not in out
+
+
+def test_usos_elegidos_al_instalar_se_suman(tmp_path, monkeypatch):
+    """Página «Tu uso» del instalador: varios usos (o «Todo») y se descargan sumados con la base."""
+    import sys
+    import re
+    import types
+    import yaml
+    # Módulo de Calamares con un libcalamares falso
+    escritos = {}
+    gs = types.SimpleNamespace(value=lambda k: {"packagechooser_perfiles": "juegos,programacion,juegos",
+                                                "rootMountPoint": str(tmp_path)}.get(k))
+    fake = types.SimpleNamespace(globalstorage=gs, utils=types.SimpleNamespace(debug=lambda m: escritos.update(m=m)))
+    monkeypatch.setitem(sys.modules, "libcalamares", fake)
+    spec = importlib.util.spec_from_file_location(
+        "tismaperfiles", ROOT / "rootfs/usr/lib/calamares/modules/tismaperfiles/main.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    assert m.elegidos("todo") == list(m.PERFILES) and m.elegidos("") == [] and m.elegidos("root,diario") == ["diario"]
+    assert m.run() is None
+    elegido = tmp_path / "etc/tisma/perfiles-elegidos"
+    assert elegido.read_text().split() == ["juegos", "programacion"]
+    # tisma-perfil completar: la base + las listas de esos usos («juegos» trae también «creacion»)
+    tp = mod
+    assert tp.listas_elegidas(str(elegido)) == ["juegos", "creacion", "programacion"]
+    # Mismos usos en el instalador, en tisma-perfil y en la Bienvenida, con las mismas listas
+    sys.path.insert(0, str(ROOT / "userspace/bienvenida"))
+    from tisma_bienvenida import server as bv
+    assert set(m.PERFILES) == set(tp.LISTAS_DE_USO) == set(bv.PERFILES)
+    for uso, listas in tp.LISTAS_DE_USO.items():
+        assert [x for x in bv.PERFILES[uso]["listas"] if x != "esenciales"] == listas, uso
+        for lista in listas:
+            assert (ROOT / f"rootfs/usr/share/tisma/perfiles/{lista}.list").exists()
+    # Orden del instalador: página antes del resumen; se guarda antes de descargar
+    st = yaml.safe_load((ROOT / "rootfs/etc/calamares/settings.conf").read_text())
+    show, exe = st["sequence"][0]["show"], st["sequence"][1]["exec"]
+    assert show.index("packagechooserq@perfiles") < show.index("summary")
+    assert exe.index("tismaperfiles") < exe.index("shellprocess@tisma")
+    pc = yaml.safe_load((ROOT / "rootfs/etc/calamares/modules/packagechooserq-perfiles.conf").read_text())
+    assert pc["method"] == "legacy"   # guarda «a,b» tal cual en packagechooser_perfiles (lo que lee tismaperfiles)
+    qml = ROOT / ("rootfs" + pc["qmlFilename"])
+    assert qml.exists()
+    # Las tarjetas de la página son exactamente los usos (casillas, un clic marca o desmarca)
+    assert set(re.findall(r'id: "(\w+)", nombre:', qml.read_text())) == set(m.PERFILES)
