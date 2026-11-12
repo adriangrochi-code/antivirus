@@ -227,3 +227,17 @@ def test_escritorio_como_windows():
     assert "/etc/skel/Escritorio/instalar-tisma.desktop" in build and "/etc/skel/Desktop" not in build
     region = (ROOT / "etc/calamares/modules/shellprocess-region.conf").read_text(encoding="utf-8")
     assert "rmdir ${ROOT}/etc/skel/Escritorio" in region
+
+
+def test_explorador_y_energia_como_windows():
+    paquetes = (ROOT.parent / "iso/packages.list").read_text(encoding="utf-8").split()
+    # Sin «Recommends» faltaban: energía (brillo, suspender, batería), miniaturas, MTP y la red de Windows
+    for p in ("powerdevil", "kio-extras", "ffmpegthumbs", "kdegraphics-thumbnailers", "dolphin-plugins"):
+        assert p in paquetes, p
+    nft = (ROOT / "etc/nftables.conf").read_text(encoding="utf-8")
+    # WS-Discovery solo desde la red local, nunca abierto a cualquiera
+    reglas = [l.strip() for l in nft.splitlines() if "3702" in l and not l.strip().startswith("#")]
+    assert len(reglas) == 2 and all(r.startswith(("ip saddr {", "ip6 saddr {")) for r in reglas)
+    assert "policy drop" in nft
+    # Los compiladores no quedan en la imagen
+    assert "purge -y -q clang-19 clang-tools-19" in (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")

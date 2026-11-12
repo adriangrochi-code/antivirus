@@ -290,6 +290,9 @@ if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
 fi
 if [[ "${TISMA_ISO_COMPLETA:-0}" != 1 ]] && ((${#compilar[@]})); then
     in_chroot apt-get purge -y -q "${compilar[@]}" || true
+    # clang-19 y clang-tools-19 se requieren entre sí y el autoremove no los quitaba (~150 MB con libclang en la
+    # preview 5). Ningún programa de la imagen los usa; el perfil «programación» los vuelve a instalar.
+    in_chroot apt-get purge -y -q clang-19 clang-tools-19 2>/dev/null || true
     in_chroot apt-get autoremove --purge -y -q || true
 fi
 fi

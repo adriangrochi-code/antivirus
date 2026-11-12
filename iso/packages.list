@@ -43,6 +43,14 @@ konsole dolphin ark kate okular gwenview kde-spectacle kcalc
 libpam-kwallet5 xwayland
 bluedevil kscreen kdeconnect partitionmanager filelight kfind kwalletmanager kinfocenter kcharselect
 plasma-browser-integration kde-config-sddm plasma-disks plasma-vault kdialog
+# Recomendados de Plasma y Dolphin que faltaban (la imagen se construye sin «Recommends»):
+# powerdevil: energía (teclas de brillo, apagar la pantalla, suspender, aviso de batería baja).
+# kio-extras: miniaturas, teléfonos por USB (MTP), carpetas compartidas de Windows (smb://) en «Red».
+# ffmpegthumbs, kdegraphics-thumbnailers: miniaturas de vídeos y PDF, como el Explorador.
+# dolphin-plugins: montar una imagen ISO con clic derecho. kde-config-screenlocker, kmenuedit: sus páginas de
+# Preferencias. qt6-image-formats-plugins: WebP, TIFF… en todas las apps
+powerdevil kio-extras ffmpegthumbs kdegraphics-thumbnailers dolphin-plugins kde-config-screenlocker kmenuedit
+qt6-image-formats-plugins
 # (LibreOffice y las fuentes CJK: rootfs/usr/share/tisma/perfiles/esenciales.list, se descargan al instalar)
 hunspell-es hyphen-es mythes-es
 vlc haruna elisa ffmpeg libavcodec-extra gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
