@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from . import contexto, harness, kits, memory, review, tools
+from . import contexto, exactas, harness, kits, memory, review, tools
 from . import devtools
 from .docs import DocSpace
 
@@ -741,6 +741,12 @@ class Session:
         if self._loops.check(name, args):
             return reply("Aviso: es la tercera vez seguida que haces exactamente esta llamada. "
                          "Cambia de enfoque: lee otro archivo, revisa el error o pregunta al usuario.", False, args)
+        if name in exactas.NOMBRES:
+            try:
+                out, ok = exactas.run(self.ws.root, name, args)
+            except exactas.ExactaError as e:
+                return reply(f"Error: {e}", False, args)
+            return reply(out, ok, args)
         if name in ("hope", "hope_ayuda", "consejo"):
             if not self.hope:
                 return reply("Error: las herramientas de Hope no están instaladas.", False, args)

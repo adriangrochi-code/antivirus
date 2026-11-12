@@ -25,9 +25,14 @@ KITS: dict[str, dict] = {
                    "tools": {"mapa_repo", "simbolo", "diagnosticos", "formatear", "git"},
                    "claves": r"c[oó]digo|funci[oó]n|clase|m[eé]todo|bug|error|test|prueba|compila|refactor|"
                              r"repositorio|commit|git|lint|programa|script|\.py\b|\.js\b|\.ts\b|\.rs\b|\.c\b|api"},
-    "calculo": {"desc": "cálculo exacto, unidades, ecuaciones, consejo de 4 agentes (Hope)",
-                "tools": {"hope", "hope_ayuda", "consejo"},
+    "calculo": {"desc": "cálculo exacto, unidades, álgebra, numérico, estadística, lógica, bits, fechas, "
+                        "constantes; con Hope, su catálogo y el consejo de 4 agentes",
+                "tools": {"calcular", "unidades", "algebra", "numerico", "estadistica", "logica", "bits", "fechas",
+                          "huella", "constantes", "hope", "hope_ayuda", "consejo"},
                 "claves": r"calcul|cu[aá]nto|ecuaci|unidad|integral|deriva|matriz|resistenc|potencia|fuerza|"
+                          r"estad[ií]st|promedio|media\b|desviaci|regresi|probabil|hexadecimal|\bhex\b|bits?\b|"
+                          r"complemento a dos|ieee|sha256|\bhash|checksum|fecha|d[ií]as entre|zona horaria|"
+                          r"constante|demostr|satisfac|\bz3\b|"
                           r"presi[oó]n|caudal|tensi[oó]n|voltaje|corriente|energ[ií]a|masa|densidad|\d\s*(mm|cm|kg|"
                           r"n|w|v|a|hz|pa|bar|°c|kw|mpa)\b"},
     "ingenieria": {"desc": "simular y comprobar: OpenSCAD, mallas, gmsh, OpenFOAM, ngspice, KiCad, Verilog, "
@@ -58,7 +63,7 @@ KITS: dict[str, dict] = {
 
 VENTANA_GRANDE = 65536
 
-CORTO = {"desarrollo": "git, símbolos, linters", "calculo": "cálculo exacto (Hope)", "ingenieria": "simular y medir",
+CORTO = {"desarrollo": "git, símbolos, linters", "calculo": "cálculo exacto", "ingenieria": "simular y medir",
          "cad": "CAD 3D", "documentos": "tus documentos", "inversa": "ingeniería inversa",
          "investigacion": "investigar/recrear", "especialistas": "modelos especializados"}
 

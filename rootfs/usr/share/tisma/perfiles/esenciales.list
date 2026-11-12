@@ -4,3 +4,5 @@ libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreof
 libreoffice-l10n-es libreoffice-help-es
 # Fuentes chinas, japonesas y coreanas (páginas web y documentos en esos idiomas)
 fonts-noto-cjk
+# Cálculo exacto de TISMA Code (álgebra simbólica y unidades): numpy y scipy ya van en la ISO
+python3-sympy python3-pint
