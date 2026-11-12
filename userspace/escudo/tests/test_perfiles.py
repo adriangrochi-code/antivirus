@@ -111,7 +111,7 @@ def test_installer_downloads_base_extras_after_final_sources():
     ex = next(p["exec"] for p in s["sequence"] if "exec" in p)
     assert ex.index("sources-final") < ex.index("shellprocess@tisma") < ex.index("umount")
     sp = yaml.safe_load((ROOT / "rootfs/etc/calamares/modules/shellprocess-tisma.conf").read_text())
-    assert sp["script"] == ["-/usr/bin/tisma-perfil completar"] and sp["timeout"] >= 1800   # «-»: sin red no falla
+    assert sp["script"] == ["-/usr/bin/tisma-secureboot elegir", "-/usr/bin/tisma-perfil completar"] and sp["timeout"] >= 1800   # «-»: sin red no falla
     unit = (ROOT / "rootfs/etc/systemd/system/tisma-completar.service").read_text()
     assert "ConditionPathExists=!/var/lib/tisma/completar-hecho" in unit and "!boot=live" in unit
 
