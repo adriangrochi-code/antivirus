@@ -10,8 +10,12 @@ Before=display-manager.service
 ProtectSystem=strict
 ReadWritePaths=/var/lib/centinela /etc/sysctl.d /etc/udev/rules.d /etc/systemd /etc/default/grub.d -/etc/centinela /boot/grub /var/cache -/etc/initramfs-tools -/etc/xdg -/etc/environment.d
 Type=oneshot
+# La pantalla de arranque explica la espera (solo pasa la primera vez tras instalar)
+# «+»: fuera del aislamiento (PrivateNetwork no deja ver el socket de plymouth); solo para el aviso
+ExecStartPre=-+/usr/bin/plymouth display-message "--text=Adaptando TISMA a tu equipo (solo la primera vez)…"
 ExecStart=/usr/bin/centinela setup --quick
 ExecStartPost=/usr/bin/touch /var/lib/centinela/plan-applied
+ExecStartPost=-+/usr/bin/plymouth display-message --text=
 TimeoutStartSec=300
 # Solo al registro: en pantalla tapaba el arranque con cientos de líneas (visto en QEMU)
 StandardOutput=journal
