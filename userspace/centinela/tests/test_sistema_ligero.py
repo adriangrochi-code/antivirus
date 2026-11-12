@@ -141,3 +141,12 @@ def test_iconos_de_apps_distintos_y_existentes():
     import xml.dom.minidom
     for n in ic.APPS:
         xml.dom.minidom.parseString(ic.icono(n))                              # SVG válido
+
+
+def test_pantalla_de_inicio_en_wayland():
+    """Sin servidor X en la imagen, sddm con X11 no arrancaba en el sistema instalado (pantalla negra)."""
+    import configparser
+    c = configparser.ConfigParser()
+    c.read(ROOT / "etc/sddm.conf.d/10-tisma-wayland.conf")
+    assert c["General"]["DisplayServer"] == "wayland"
+    assert c["Wayland"]["CompositorCommand"].startswith("kwin_wayland")

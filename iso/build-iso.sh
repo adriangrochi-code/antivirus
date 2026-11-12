@@ -306,6 +306,8 @@ ENDURECIDO=(-O2 -static-pie -fPIE -pthread -fstack-protector-strong -fstack-clas
 gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
 gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
+# Centinela escribe aquí el ajuste de gráficos para todas las sesiones (con ProtectSystem no podría crearla)
+mkdir -p "$CHROOT/etc/environment.d"
 chmod 700 "$CHROOT/var/lib/escudo"
 
 # DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
@@ -385,7 +387,7 @@ install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT
 # faltaron user-setup (sin usuario en el USB: pantalla negra), dosfstools y squashfs-tools (la instalación fallaba)
 # y cryptsetup-initramfs (un sistema cifrado no arrancaba). Si falta algo, la ISO no se genera.
 for orden in calamares calamares-install-debian unsquashfs rsync mkfs.fat mkfs.ext4 mkfs.btrfs cryptsetup sfdisk \
-             grub-install efibootmgr os-prober blkid mkswap update-initramfs locale-gen useradd chpasswd; do
+             grub-install efibootmgr os-prober blkid mkswap update-initramfs locale-gen useradd chpasswd sddm kwin_wayland; do
     in_chroot sh -c "command -v $orden" >/dev/null || die "falta «$orden» en la imagen (el instalador fallaría)"
 done
 for f in /usr/lib/user-setup/user-setup-apply /usr/share/initramfs-tools/hooks/cryptroot \
