@@ -51,6 +51,8 @@ plasma-browser-integration kde-config-sddm plasma-disks plasma-vault kdialog
 # Preferencias. qt6-image-formats-plugins: WebP, TIFF… en todas las apps
 powerdevil kio-extras ffmpegthumbs kdegraphics-thumbnailers dolphin-plugins kde-config-screenlocker kmenuedit
 qt6-image-formats-plugins
+# Clic derecho > Propiedades > Compartir (la primera vez instala Samba; ver /etc/samba/smb.conf y tisma-compartir)
+kdenetwork-filesharing samba-common-bin
 # (LibreOffice y las fuentes CJK: rootfs/usr/share/tisma/perfiles/esenciales.list, se descargan al instalar)
 hunspell-es hyphen-es mythes-es
 vlc haruna elisa ffmpeg libavcodec-extra gstreamer1.0-plugins-good gstreamer1.0-plugins-bad

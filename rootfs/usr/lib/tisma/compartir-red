@@ -1,0 +1,35 @@
+#!/bin/sh
+# TISMA: «Compartir carpeta» abre lo justo y solo mientras haga falta. Lo lanza tisma-compartir.path cada vez que
+# cambia lo compartido desde Dolphin (y al arrancar o recargar el cortafuegos).
+# - Hay algo compartido: Samba escucha en la red y el cortafuegos abre el 445 SOLO a la red local (@compartir).
+# - No hay nada: el puerto se cierra y Samba vuelve a escuchar solo en el propio equipo (127.0.0.1), que es lo
+#   que Dolphin necesita para crear un recurso compartido nuevo.
+DIR=/var/lib/samba/usershares
+RED=/etc/samba/tisma-red.conf
+CABECERA="# Lo escribe /usr/lib/tisma/compartir-red: vacío si no hay nada compartido (Samba solo en 127.0.0.1)"
+hay=0
+if [ -d "$DIR" ]; then
+    for f in "$DIR"/*; do
+        [ -f "$f" ] && { hay=1; break; }
+    done
+fi
+if [ "$hay" = 1 ]; then
+    nuevo="$CABECERA
+[global]
+   bind interfaces only = no"
+else
+    nuevo="$CABECERA"
+fi
+antes=$(cat "$RED" 2>/dev/null)
+if [ "$nuevo" != "$antes" ]; then
+    printf '%s\n' "$nuevo" > "$RED.tmp" && mv "$RED.tmp" "$RED"
+    # Cambiar dónde escucha requiere reiniciar smbd (solo si está instalado y en marcha)
+    systemctl try-restart smbd.service 2>/dev/null || true
+fi
+if [ "$hay" = 1 ] && systemctl is-active --quiet smbd.service; then
+    nft add element inet centinela compartir '{ 445 }'
+    echo "Carpetas compartidas: Samba en la red, puerto 445 abierto solo a la red local"
+else
+    nft flush set inet centinela compartir 2>/dev/null || true
+    echo "Nada compartido: puerto 445 cerrado, Samba (si está) solo en 127.0.0.1"
+fi

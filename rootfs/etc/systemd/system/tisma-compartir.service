@@ -1,0 +1,16 @@
+# TISMA: abre Samba y el puerto 445 (solo red local) si hay carpetas compartidas; si no, los cierra.
+# También al arrancar y cada vez que se recarga el cortafuegos (que vacía el conjunto @compartir).
+[Unit]
+Description=TISMA: carpetas compartidas con la red local
+After=nftables.service
+ConditionPathIsDirectory=/var/lib/samba/usershares
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/compartir-red
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

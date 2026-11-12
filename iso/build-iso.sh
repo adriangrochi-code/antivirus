@@ -332,6 +332,7 @@ in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda
 in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
 # Lo que no va en la ISO (LibreOffice…): el instalador lo descarga; si no había red, al primer arranque con red
 in_chroot systemctl enable tisma-completar.service 2>/dev/null || true
+in_chroot systemctl enable tisma-compartir.path tisma-compartir.service 2>/dev/null || true
 in_chroot systemctl enable tisma-drivers.timer 2>/dev/null || true
 # Driver gráfico en prueba (GPU AMD GCN 1/2 → amdgpu): confirmar o descartar tras arrancar
 in_chroot systemctl enable centinela-graficos.timer 2>/dev/null || true

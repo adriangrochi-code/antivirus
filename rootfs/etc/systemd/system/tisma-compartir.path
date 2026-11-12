@@ -1,0 +1,10 @@
+# TISMA: cada vez que compartes o dejas de compartir una carpeta desde Dolphin, abre o cierra Samba y el puerto
+[Unit]
+Description=TISMA: vigilar las carpetas compartidas
+
+[Path]
+PathChanged=/var/lib/samba/usershares
+Unit=tisma-compartir.service
+
+[Install]
+WantedBy=paths.target

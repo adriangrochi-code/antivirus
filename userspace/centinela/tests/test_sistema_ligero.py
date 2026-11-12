@@ -241,3 +241,35 @@ def test_explorador_y_energia_como_windows():
     assert "policy drop" in nft
     # Los compiladores no quedan en la imagen
     assert "purge -y -q clang-19 clang-tools-19" in (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+
+
+def test_compartir_carpeta_seguro():
+    smb = (ROOT / "etc/samba/smb.conf").read_text(encoding="utf-8")
+    for linea in ("server min protocol = SMB3", "map to guest = never", "usershare allow guests = no",
+                  "disable netbios = yes", "usershare owner only = yes", "hosts deny = ALL",
+                  "restrict anonymous = 1",
+                  "hosts allow = 127.0.0.1 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fe80::/10 fc00::/7"):
+        assert linea in smb, linea
+    # Sin nada compartido Samba solo escucha en el propio equipo (Dolphin lo necesita para crear el recurso: con
+    # smbd parado «net usershare add» falla, visto en la VM); tisma-red.conf lo abre a la red. NetBIOS nunca.
+    assert "interfaces = lo" in smb and "bind interfaces only = yes" in smb
+    glob, plantilla = smb.split("\n[tisma-plantilla]")
+    ultima = [l.strip() for l in glob.splitlines() if l.strip() and not l.strip().startswith("#")][-1]
+    assert ultima == "include = /etc/samba/tisma-red.conf"   # al final de [global]: lo incluido gana
+    # Cifrado solo en lo compartido (en [global] rompe «net usershare add»)
+    assert "smb encrypt" not in glob and "smb encrypt = desired" in plantilla and "-valid = no" in plantilla and "path =" in plantilla
+    assert "usershare template share = tisma-plantilla" in glob
+    assert "bind interfaces only" not in (ROOT / "etc/samba/tisma-red.conf").read_text(encoding="utf-8")
+    assert "ConditionPathExists=/etc/tisma/netbios-activado" in (
+        ROOT / "etc/systemd/system/nmbd.service.d/60-tisma-sin-netbios.conf").read_text(encoding="utf-8")
+    # El 445 solo se abre a la red local, mediante el conjunto que maneja tisma-compartir
+    nft = (ROOT / "etc/nftables.conf").read_text(encoding="utf-8")
+    reglas = [l.strip() for l in nft.splitlines() if "@compartir" in l and not l.strip().startswith("#")]
+    assert len(reglas) == 2 and all(r.startswith(("ip saddr {", "ip6 saddr {")) for r in reglas)
+    assert "445" not in "".join(l for l in nft.splitlines() if not l.strip().startswith("#"))
+    script = (ROOT / "usr/lib/tisma/compartir-red").read_text(encoding="utf-8")
+    assert "nft add element inet centinela compartir '{ 445 }'" in script and "nft flush set" in script
+    assert "bind interfaces only = no" in script and "try-restart smbd" in script
+    users = (ROOT / "etc/calamares/modules/users.conf").read_text(encoding="utf-8")
+    assert "name: sambashare" in users and "must_exist: false" in users
+    assert "tisma-compartir.path" in (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
