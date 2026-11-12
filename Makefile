@@ -51,6 +51,7 @@ test:
 	cd userspace/rendimiento && python3 -m pytest -q tests
 	cd userspace/copias && python3 -m pytest -q tests
 	cd userspace/bienvenida && python3 -m pytest -q tests
+	cd nube/ia-escolar && python3 -m pytest -q tests
 
 # ISO mínima (sin escritorio) y su prueba de arranque en QEMU: valida construcción, servicios y protecciones
 iso-minima:
