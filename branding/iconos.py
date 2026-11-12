@@ -66,6 +66,10 @@ APPS: dict[str, tuple[str, str, str]] = {
     "seguridad": ("#FB923C", "#EA580C",
                   f'<path d="M128 56 L188 78 V126 C188 162 162 186 128 200 C94 186 68 162 68 126 V78 Z" {TRAZO}/>'
                   f'<path d="M100 128 L120 148 L158 108" {TRAZO}/>'),
+    # Guía: libro abierto
+    "guia": ("#A3E635", "#65A30D",
+             f'<path d="M128 84 C108 70 82 66 58 70 V178 C82 174 108 178 128 192 C148 178 174 174 198 178 V70 '
+             f'C174 66 148 70 128 84 Z M128 84 V192" {TRAZO}/>'),
     # Tienda: bolsa
     "tienda": ("#F472B6", "#DB2777",
                f'<path d="M72 100 H184 L174 192 H82 Z" {TRAZO}/>'

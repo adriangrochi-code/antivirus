@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Guía TISMA
+GenericName=Aprende a usar tu equipo
+Comment=Paso a paso: el menú, wifi, archivos, instalar programas, imprimir, seguridad y más
+Exec=tisma-guia
+StartupWMClass=tisma-guia
+Icon=tisma-guia
+Categories=Utility;Documentation;Education;
+Keywords=ayuda;guia;tutorial;aprender;como;manual;

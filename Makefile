@@ -50,6 +50,7 @@ test:
 	cd userspace/sandbox && python3 -m pytest -q tests
 	cd userspace/rendimiento && python3 -m pytest -q tests
 	cd userspace/seguridad && python3 -m pytest -q tests
+	cd userspace/guia && python3 -m pytest -q tests
 	cd userspace/copias && python3 -m pytest -q tests
 	cd userspace/bienvenida && python3 -m pytest -q tests
 	cd nube/ia-escolar && python3 -m pytest -q tests

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 324 372" width="324" height="372">
+  <defs>
+    <linearGradient id="pl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A55BE8"/><stop offset="1" stop-color="#5B1FA6"/>
+    </linearGradient>
+    <linearGradient id="pr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E3FDD"/><stop offset="1" stop-color="#4A1690"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexágono -->
+  <path d="M150 0 L300 87 L300 261 L150 348 L0 261 L0 87 Z" fill="none" stroke="#E6E6EA" stroke-width="9" stroke-linejoin="miter"/>
+  <!-- Caras grises de la pirámide -->
+  <path d="M150 26 L14 256 L68 249 Z" fill="#D7D7DA"/>
+  <path d="M150 26 L286 256 L232 249 Z" fill="#E2E2E5"/>
+  <path d="M14 256 L150 343 L150 282 L68 249 Z" fill="#C9C9CD"/>
+  <path d="M286 256 L150 343 L150 282 L232 249 Z" fill="#E9E9EC"/>
+  <!-- Núcleo violeta -->
+  <path d="M150 26 L68 249 L150 282 Z" fill="url(#pl)"/>
+  <path d="M150 26 L232 249 L150 282 Z" fill="url(#pr)"/>
+  <!-- Aristas -->
+  <g stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" fill="none">
+    <path d="M150 26 L68 249 L150 282 L232 249 Z"/>
+    <path d="M150 26 V343"/>
+    <path d="M68 249 L14 256 M232 249 L286 256"/>
+  </g>
+</svg>
