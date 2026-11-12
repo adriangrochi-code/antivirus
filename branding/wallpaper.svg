@@ -1,42 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" width="3840" height="2160">
+  <!-- TISMA Cristal (oscuro): aurora suave, sin líneas ni cuadrícula. Limpio y tranquilo para la vista. -->
   <defs>
-    <radialGradient id="bg" cx="0.5" cy="0.42" r="0.8">
-      <stop offset="0" stop-color="#34323B"/><stop offset="0.55" stop-color="#232227"/><stop offset="1" stop-color="#131216"/>
-    </radialGradient>
-    <linearGradient id="streakA" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9145E6" stop-opacity="0"/>
-      <stop offset="0.45" stop-color="#A866F2" stop-opacity="0.9"/>
-      <stop offset="1" stop-color="#4A9CF0" stop-opacity="0"/>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B1A21"/><stop offset="1" stop-color="#121117"/>
     </linearGradient>
-    <linearGradient id="streakB" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#4A9CF0" stop-opacity="0"/>
-      <stop offset="0.6" stop-color="#8CC8F0" stop-opacity="0.7"/>
-      <stop offset="1" stop-color="#9145E6" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/>
-    </linearGradient>
-    <mask id="gridmask"><rect x="0" y="1180" width="3840" height="980" fill="url(#fade)"/></mask>
-    <filter id="blur40" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>
-    <filter id="blur8"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="grano"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 1 0"/></filter>
+    <filter id="niebla" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="260"/></filter>
   </defs>
-  <rect width="3840" height="2160" fill="url(#bg)"/>
-
-  <!-- Cama en perspectiva (como el visor del slicer) -->
-  <g mask="url(#gridmask)" stroke="#5A5866" stroke-width="3" opacity="0.55">
-    <path d="M1920 1180 L-1600 2160 M1920 1180 L-800 2160 M1920 1180 L0 2160 M1920 1180 L640 2160 M1920 1180 L1280 2160 M1920 1180 L1920 2160 M1920 1180 L2560 2160 M1920 1180 L3200 2160 M1920 1180 L3840 2160 M1920 1180 L4640 2160 M1920 1180 L5440 2160"/>
-    <path d="M0 1240 H3840 M0 1320 H3840 M0 1430 H3840 M0 1580 H3840 M0 1790 H3840 M0 2080 H3840"/>
+  <rect width="3840" height="2160" fill="url(#fondo)"/>
+  <g filter="url(#niebla)">
+    <ellipse cx="1050" cy="1520" rx="1250" ry="620" fill="#7C3AED" opacity="0.55"/>
+    <ellipse cx="2900" cy="1180" rx="1050" ry="560" fill="#2563EB" opacity="0.42"/>
+    <ellipse cx="2050" cy="560" rx="900" ry="380" fill="#C084FC" opacity="0.22"/>
+    <ellipse cx="3350" cy="1900" rx="650" ry="330" fill="#14B8A6" opacity="0.18"/>
   </g>
-  <path d="M0 1180 H3840" stroke="#9145E6" stroke-width="4" opacity="0.8"/>
-  <path d="M0 1180 H3840" stroke="#A866F2" stroke-width="30" opacity="0.35" filter="url(#blur8)"/>
-
-  <!-- Destellos estilo Aero -->
-  <g filter="url(#blur40)">
-    <path d="M-200 1050 C 900 700, 1700 1250, 2600 820 S 3700 600, 4100 760" stroke="url(#streakA)" stroke-width="110" fill="none" opacity="0.75"/>
-    <path d="M-200 1150 C 1000 950, 2000 1300, 3000 980 S 3800 900, 4100 1000" stroke="url(#streakB)" stroke-width="60" fill="none" opacity="0.6"/>
-  </g>
-  <g>
-    <path d="M-200 1050 C 900 700, 1700 1250, 2600 820 S 3700 600, 4100 760" stroke="url(#streakA)" stroke-width="6" fill="none" opacity="0.9"/>
-    <path d="M-200 1150 C 1000 950, 2000 1300, 3000 980 S 3800 900, 4100 1000" stroke="url(#streakB)" stroke-width="3" fill="none" opacity="0.8"/>
-  </g>
+  <!-- Grano muy fino: evita los escalones (bandeado) en los degradados -->
+  <rect width="3840" height="2160" filter="url(#grano)" opacity="0.035"/>
 </svg>

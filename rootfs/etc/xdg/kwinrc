@@ -1,4 +1,4 @@
-# Efectos estilo Aero: cristal desenfocado, translucidez, transiciones suaves
+# TISMA Cristal: cristal desenfocado suave, transiciones cortas
 [Plugins]
 blurEnabled=true
 contrastEnabled=true
@@ -17,10 +17,10 @@ NoiseStrength=3
 [Effect-translucency]
 MoveResize=85
 Inactive=100
-Menus=92
-DropdownMenus=92
-PopupMenus=92
-ComboboxPopups=92
+Menus=96
+DropdownMenus=96
+PopupMenus=96
+ComboboxPopups=96
 
 [org.kde.kdecoration2]
 library=org.kde.breeze
@@ -28,6 +28,6 @@ theme=Breeze
 ButtonsOnRight=IAX
 
 [Windows]
-# Aero Snap: arrastrar al borde para acoplar
+# Acoplar: arrastrar una ventana al borde la ajusta a media pantalla
 ElectricBorderMaximize=true
 ElectricBorderTiling=true

@@ -36,7 +36,7 @@ CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tisma
 
 ACENTOS = {"violeta": "#9145E6", "azul": "#3D8BFD", "verde": "#2FB37A", "naranja": "#F08A24", "rosa": "#E0457B",
            "grafito": "#6E6C78"}
-TEMAS = {"oscuro": ("CentinelaAero", "Papirus-Dark"), "claro": ("TismaClaro", "Papirus-Light")}
+TEMAS = {"oscuro": ("TismaCristal", "Papirus-Dark"), "claro": ("TismaClaro", "Papirus-Light")}
 
 # Lanzadores: para cada app, nombres posibles del .desktop (cambian entre versiones de Debian)
 APP = {
@@ -188,6 +188,17 @@ def current_scheme() -> str:
         except OSError:
             continue
     return ""
+
+
+ESQUEMAS_VIEJOS = {"CentinelaAero": "TismaCristal"}     # nombres anteriores del tema → los de TISMA Cristal
+
+
+def migrar_tema() -> bool:
+    """Quien instaló una versión anterior tiene guardado el esquema viejo (ya no existe): pasa al nuevo solo."""
+    nuevo = ESQUEMAS_VIEJOS.get(current_scheme())
+    if not nuevo:
+        return False
+    return _ok(["plasma-apply-colorscheme", nuevo])[0]
 
 
 def apply_theme(modo: str, acento: str) -> dict:
@@ -480,6 +491,7 @@ def main(argv=None) -> int:
     ap.add_argument("--si-primera-vez", action="store_true", help="solo si no se completó antes (inicio de sesión)")
     a = ap.parse_args(argv)
     if a.si_primera_vez:
+        migrar_tema()                                   # barato: solo lee kdeglobals
         c = read_conf()
         if c.get("hecha") or c.get("mostrada") or Path("/run/live").exists():
             return 0                                    # ya vista (aunque se cerrase con la X), o sesión live

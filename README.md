@@ -11,7 +11,7 @@ y se genera un kernel y una configuración a su medida. La seguridad va integrad
 | `userspace/escudo` | Antivirus (firmas, YARA, ML, comportamiento y puerta de primera ejecución; cuarentena comprimida, solo root) e IPS de red (fuerza bruta SSH/RDP, escaneos) con bloqueo en nftables |
 | `userspace/tisma-code` | Agente de programación con IA **100 % local** (estilo Claude Code) con arnés para modelos locales, documentos locales y herramientas de Hope |
 | `userspace/asistente` | TISMA Asistente: doble palmada → saludo con voz local → rutina de trabajo |
-| `rootfs/`, `branding/`, `iso/` | Capa del sistema endurecida, tema **TISMA Aero** (KDE Plasma 6, paleta de TISMA, estilo clásico de escritorio modernizado) y construcción de la ISO |
+| `rootfs/`, `branding/`, `iso/` | Capa del sistema endurecida, tema **TISMA Cristal** (KDE Plasma 6, paleta de TISMA, estilo clásico de escritorio modernizado) y construcción de la ISO |
 
 ## Kernel adaptado al hardware
 

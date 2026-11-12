@@ -3,10 +3,10 @@
     "KPlugin": {
         "Authors": [{ "Name": "TISMA OS" }],
         "Category": "",
-        "Description": "Oscuro grafito y violeta con cristal Aero y barra de tareas clásica",
+        "Description": "Moderno y limpio: grafito y violeta con cristal suave, aurora de fondo y barra de tareas flotante",
         "Id": "org.centinela.desktop",
         "License": "GPL-2.0+",
-        "Name": "TISMA Aero",
+        "Name": "TISMA Cristal",
         "Version": "0.1"
     },
     "X-Plasma-APIVersion": "2"

@@ -21,6 +21,16 @@ def svg(src: Path, dst: Path, width: int) -> None:
     subprocess.run(["rsvg-convert", "-w", str(width), str(src), "-o", str(dst)], check=True)
 
 
+def svg_jpg(src: Path, dst: Path, width: int) -> None:
+    """Fondos: JPEG de alta calidad (4:4:4). El grano fino que evita el bandeado no se comprime en PNG (pesaba 5×)."""
+    from PIL import Image
+    tmp = dst.with_suffix(".tmp.png")
+    svg(src, tmp, width)
+    with Image.open(tmp) as im:
+        im.convert("RGB").save(dst, "JPEG", quality=92, subsampling=0, optimize=True, progressive=True)
+    tmp.unlink()
+
+
 def main(branding: Path, root: Path) -> None:
     grub = root / "boot/grub/themes/centinela"
     grub.mkdir(parents=True, exist_ok=True)
@@ -40,16 +50,19 @@ def main(branding: Path, root: Path) -> None:
         solid_png(grub / f"terminal_{part}.png", (28, 27, 32, 235))
 
     wp = root / "usr/share/wallpapers/Centinela"
+    # Plasma elige solo: «images» con el tema claro, «images_dark» con el oscuro (aurora de TISMA Cristal)
     (wp / "contents/images").mkdir(parents=True, exist_ok=True)
-    for w, h in ((1920, 1080), (2560, 1440), (3840, 2160)):
-        svg(branding / "wallpaper.svg", wp / f"contents/images/{w}x{h}.png", w)
+    (wp / "contents/images_dark").mkdir(parents=True, exist_ok=True)
+    for w, h in ((1920, 1080), (3840, 2160)):              # Plasma escala al resto de pantallas
+        svg_jpg(branding / "wallpaper-claro.svg", wp / f"contents/images/{w}x{h}.jpg", w)
+        svg_jpg(branding / "wallpaper.svg", wp / f"contents/images_dark/{w}x{h}.jpg", w)
     (wp / "metadata.json").write_text(
         '{"KPlugin": {"Id": "Centinela", "Name": "Centinela", "License": "CC-BY-SA-4.0",'
         ' "Authors": [{"Name": "TISMA OS"}]}}\n')
 
     b = root / "usr/share/centinela/branding"
     b.mkdir(parents=True, exist_ok=True)
-    for f in ("logo.svg", "logo-light.svg", "wordmark.svg", "wallpaper.svg"):
+    for f in ("logo.svg", "logo-light.svg", "wordmark.svg", "wallpaper.svg", "wallpaper-claro.svg"):
         (b / f).write_bytes((branding / f).read_bytes())
     icons = root / "usr/share/icons/hicolor"
     for size in (16, 32, 48, 64, 128, 256):
@@ -94,7 +107,7 @@ def main(branding: Path, root: Path) -> None:
     sddm = root / "usr/share/sddm/themes/breeze"
     sddm.mkdir(parents=True, exist_ok=True)
     (sddm / "theme.conf.user").write_text(
-        "[General]\nbackground=/usr/share/wallpapers/Centinela/contents/images/3840x2160.png\n"
+        "[General]\nbackground=/usr/share/wallpapers/Centinela/contents/images_dark/3840x2160.jpg\n"
         "type=image\naccentColor=#9145E6\n")
 
 

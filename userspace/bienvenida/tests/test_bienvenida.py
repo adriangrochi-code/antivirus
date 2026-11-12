@@ -21,7 +21,7 @@ def srv(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "RUN", lambda argv, **k: calls.append(argv) or R())
     monkeypatch.setattr(server, "POPEN", lambda argv, **k: calls.append(argv))
     monkeypatch.setattr(server, "CONF", tmp_path / "tisma" / "bienvenida.json")
-    monkeypatch.setattr(server, "current_scheme", lambda: "CentinelaAero")
+    monkeypatch.setattr(server, "current_scheme", lambda: "TismaCristal")
     apps = tmp_path / "apps"
     apps.mkdir()
     for n in ("org.kde.dolphin", "chromium", "thunderbird", "libreoffice-startcenter", "org.kde.elisa"):
@@ -178,3 +178,13 @@ def test_escritorio_simple_para_chicos(monkeypatch, tmp_path):
     llamadas.clear()
     server.escritorio_chicos(False)
     assert any("Inter,10," in " ".join(a) for a in llamadas) and any("gridUnit * 2.6" in " ".join(a) for a in llamadas)
+
+
+def test_tema_viejo_pasa_a_tisma_cristal(monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(server, "_ok", lambda argv, timeout=60: llamadas.append(argv) or (True, ""))
+    monkeypatch.setattr(server, "current_scheme", lambda: "CentinelaAero")
+    assert server.migrar_tema() and llamadas == [["plasma-apply-colorscheme", "TismaCristal"]]
+    monkeypatch.setattr(server, "current_scheme", lambda: "TismaCristal")
+    llamadas.clear()
+    assert not server.migrar_tema() and not llamadas

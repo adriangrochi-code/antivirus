@@ -22,7 +22,7 @@ tasks.writeConfig("launchers", [
     "applications:net.tisma.Code.desktop",
     "applications:tisma-tienda.desktop"
 ]);
-// Vista previa de ventanas al pasar el ratón (como Aero Peek)
+// Vista previa de ventanas al pasar el ratón
 tasks.writeConfig("showToolTips", "true");
 tasks.writeConfig("highlightWindows", "true");
 
@@ -35,7 +35,7 @@ var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
 clock.writeConfig("showDate", "true");
 clock.writeConfig("dateDisplayFormat", "BelowTime");
-// Botón "mostrar escritorio" en la esquina, como en Windows 7
+// Botón "mostrar escritorio" en la esquina
 var peek = panel.addWidget("org.kde.plasma.showdesktop");
 peek.currentConfigGroup = ["General"];
 peek.writeConfig("peekingEnabled", "true");
