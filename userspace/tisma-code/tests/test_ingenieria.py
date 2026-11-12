@@ -92,8 +92,9 @@ def test_openfoam_needs_case_and_has_long_timeout(ws):
 def test_missing_program_is_explained(ws, monkeypatch):
     monkeypatch.setattr(ingenieria.shutil, "which", lambda b: None)
     (ws.root / "c").mkdir()
-    with pytest.raises(tools.ToolError, match="centinela-apps simulacion"):
+    with pytest.raises(tools.ToolError, match="Componentes → Simulación") as e:      # un botón, no una orden
         tools.execute(ws, "ingenieria", {"accion": "openfoam", "archivo": "c"})
+    assert "sudo" not in str(e.value)
     assert "Instaladas" in tools.execute(ws, "ingenieria_guia", {})
 
 

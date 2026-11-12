@@ -160,7 +160,8 @@ def activar_32bits(run=None) -> str:
                  "Bórralo y ejecuta update-grub para volver a desactivarlos (más seguro).\n")
     r = run(["update-grub"], capture_output=True, text=True)
     if r.returncode != 0:
-        return "No se pudo actualizar GRUB: ejecuta «sudo update-grub» y reinicia para usar Steam y Wine."
+        return ("No se pudo terminar de preparar los programas de 32 bits. Vuelve a intentarlo desde la Bienvenida; "
+                "si sigue fallando, reinicia el equipo y reinténtalo.")
     return "Reinicia el equipo para usar Steam y Wine (activa los programas de 32 bits)."
 
 

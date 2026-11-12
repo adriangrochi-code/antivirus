@@ -2,12 +2,15 @@
 # Compara el kernel en uso con el último parche de su rama LTS; si hay uno nuevo, avisa al
 # escritorio (vía las alertas de Escudo). La vía de entrada nº1 es explotar fallos sin parchear.
 set -eu
+# El kernel firmado de Debian (el de los equipos reales) recibe sus parches con las actualizaciones automáticas de
+# seguridad de Debian: no hay nada que hacer a mano. Solo se avisa con el kernel TISMA, que se compila aparte.
+case "$(uname -r)" in *centinela*) ;; *) exit 0 ;; esac
 running="$(uname -r | cut -d- -f1)"
 branch="$(echo "$running" | cut -d. -f1-2)"
 latest="$(/usr/lib/centinela/kernel/latest-lts.sh "$branch" 2>/dev/null || true)"
 [ -n "$latest" ] || exit 0
 if [ "$latest" != "$running" ]; then
     mkdir -p /run/escudo
-    printf '{"kind":"kernel","severity":"high","detail":"Hay un parche de seguridad del kernel: %s (usas %s)","action":"Actualiza con: sudo centinela build-kernel --install"}\n' \
+    printf '{"kind":"kernel","severity":"high","detail":"Hay un parche de seguridad del kernel: %s (usas %s)","action":"Pulsa «Actualizar ahora»: se prepara en segundo plano y se usa al reiniciar.","boton":"actualizar_kernel"}\n' \
         "$latest" "$running" >> /run/escudo/alertas.jsonl
 fi

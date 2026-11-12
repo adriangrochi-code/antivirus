@@ -363,12 +363,19 @@ $("#dirChip").onclick = () => $("#dirPop").classList.contains("on") ? closePops(
 /* ---------- modelo ---------- */
 async function openModels() {
   const m = await api("/api/models/local");
+  let comps = {};
+  try { comps = await api("/api/componentes"); } catch (e) {}
   const cur = state.config.model;
   $("#modelPop").innerHTML = `<div class="tt">En el motor local</div>` +
     (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
      `<div class="it" style="cursor:default;color:var(--faint)">${m.strata && !m.strata.ok ? esc(m.strata.motivo) : "Motor apagado: abre Strata o usa un modelo descargado"}</div>`) +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
       m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small></div>`).join("") : "") +
+    (Object.keys(comps).length ? `<hr><div class="tt">Componentes</div>` + Object.entries(comps).map(([k, c]) =>
+      `<div class="it" ${c.estado === "no" || c.estado === "error" ? `data-comp="${esc(k)}"` : 'style="cursor:default"'}>` +
+      `${c.estado === "instalado" ? "✓" : c.estado === "instalando" ? "⏳" : "＋"} ${esc(c.nombre)}<small>${
+        c.estado === "instalado" ? "instalado" : c.estado === "instalando" ? "instalando…" :
+        c.estado === "error" ? "falló: reintentar" : "instalar"}</small><small>${esc(c.desc)}</small></div>`).join("") : "") +
     `<hr><div class="it" id="addModel">＋ Añadir modelo…</div>`;
   $("#modelPop").querySelectorAll("[data-m]").forEach(el => el.onclick = () => setModel(state.config.endpoint, el.dataset.m));
   $("#modelPop").querySelectorAll("[data-serve]").forEach(el => el.onclick = async () => {
@@ -377,6 +384,22 @@ async function openModels() {
     catch (e) { put(esc(e.message), "err"); }
   });
   $("#addModel").onclick = () => { closePops(); openModal(); };
+  $("#modelPop").querySelectorAll("[data-comp]").forEach(el => el.onclick = async () => {
+    const k = el.dataset.comp, nombre = comps[k].nombre;
+    closePops();
+    try {
+      await api("/api/componentes/instalar", {nombre: k});
+      put(`Instalando ${esc(nombre)}: el sistema te pedirá la contraseña de administrador. Te aviso al terminar.`, "note");
+      const t = setInterval(async () => {
+        const c = (await api("/api/componentes"))[k];
+        if (c.estado === "instalando") return;
+        clearInterval(t);
+        put(c.estado === "instalado" ? `${esc(nombre)} instalado: ya lo puedo usar.` :
+            `No se pudo instalar ${esc(nombre)}. Revisa la conexión a Internet y vuelve a intentarlo.`,
+            c.estado === "instalado" ? "note" : "err");
+      }, 5000);
+    } catch (e) { put(esc(e.message), "err"); }
+  });
   $("#modelPop").querySelectorAll("[data-hilos]").forEach(el => el.onclick = async ev => {
     ev.stopPropagation(); closePops();
     try { await api("/api/motor/optimizar", {path: el.dataset.hilos}); } catch (e) { put(esc(e.message), "err"); }

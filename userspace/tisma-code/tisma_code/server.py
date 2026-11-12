@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import secrets
+import subprocess
 import threading
 import time
 import webbrowser
@@ -35,6 +36,7 @@ class App:
         self.base = 0
         self.cond = threading.Condition()
         self.downloads = models.Downloads(on_progress=lambda d: self.push({"type": "download", **d}))
+        self.instalando: dict = {}
         self.server = models.LocalServer()
         self.hw = models.hardware()
         self.config = {"endpoint": DEFAULT_ENDPOINT, "model": "", "recent": [], "network": False}
@@ -42,6 +44,37 @@ class App:
             self.config.update(json.loads(CONFIG.read_text()))
         except (OSError, ValueError):
             pass
+
+    # Componentes que se instalan aparte (versión y SHA-256 fijados en centinela-apps): con un botón, sin terminal
+    COMPONENTES = {"strata": ("Strata", "IA local para equipos con GPU dedicada y ≥32 GB (~300 MB)",
+                              "/opt/strata/VERSION"),
+                   "rea": ("REA", "análisis de binarios e ingeniería inversa (~200 MB)",
+                           "/usr/lib/node_modules/rea-agents"),
+                   "craft": ("Craft Anything", "CAD por código y recrear objetos (~35 MB)",
+                             "/opt/craft-anything/VERSION"),
+                   "solidcraft": ("SolidCraft", "CAD paramétrico 3D", "/var/lib/dpkg/info/solidcraft.list"),
+                   "simulacion": ("Simulación", "OpenFOAM, FEniCSx, Netgen y ParaView (~1 GB)", "/usr/bin/paraview")}
+
+    def componentes(self) -> dict:
+        out = {}
+        for k, (nombre, desc, marca) in self.COMPONENTES.items():
+            proc = self.instalando.get(k)
+            estado = ("instalando" if proc and proc.poll() is None else
+                      "instalado" if Path(marca).exists() else
+                      "error" if proc and proc.returncode not in (0, None) else "no")
+            out[k] = {"nombre": nombre, "desc": desc, "estado": estado}
+        return out
+
+    def instalar_componente(self, k: str) -> dict:
+        if k not in self.COMPONENTES:
+            return {"ok": False, "error": "componente desconocido"}
+        proc = self.instalando.get(k)
+        if proc and proc.poll() is None:
+            return {"ok": True, "estado": "instalando"}
+        # pkexec muestra la ventana de contraseña del sistema; la orden es fija (lista de arriba)
+        self.instalando[k] = subprocess.Popen(["pkexec", "/usr/bin/centinela-apps", k], stdout=subprocess.DEVNULL,
+                                              stderr=subprocess.DEVNULL, start_new_session=True)
+        return {"ok": True, "estado": "instalando"}
 
     def llm(self):
         """Cliente del motor con la clave de llama-server si el endpoint es el servidor propio."""
@@ -293,6 +326,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"downloaded": models.local_models(),
                                         "endpoint": models.endpoint_models(APP.config["endpoint"]),
                                         "strata": models.strata_status(APP.hw), "motor": APP.motor_brief()})
+            if url.path == "/api/componentes":
+                return self._send(200, APP.componentes())
             if url.path == "/api/motor":
                 from . import motor
                 return self._send(200, {"actual": APP.motor_brief(),
@@ -353,6 +388,8 @@ class Handler(BaseHTTPRequestHandler):
                 if url.path == "/api/hope/tool":
                     return self._send(200, {"result": APP.session.hope.run(b["nombre"], b["entrada"])})
                 return self._send(200, APP.session.hope.council(b["problema"], b.get("tema") or "general"))
+            if url.path == "/api/componentes/instalar":
+                return self._send(200, APP.instalar_componente(str(b.get("nombre") or "")))
             if url.path == "/api/especialistas/instalar":
                 from . import especialistas
                 entry, gguf = especialistas.install(str(b["id"]))

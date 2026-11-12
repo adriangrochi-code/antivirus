@@ -459,7 +459,7 @@ def choose_engine(hw: dict, strata_alive: bool) -> dict:
                 "abrir": True}
     if st["ok"]:
         return {"motor": "llama.cpp", "motivo": "Este equipo puede con Strata (modelos más grandes): instálalo con "
-                "«sudo centinela-apps strata» (~300 MB). Mientras tanto, llama.cpp", "instalar": "strata"}
+                "un clic en el menú del modelo → Componentes → Strata (~300 MB). Mientras tanto, llama.cpp", "instalar": "strata"}
     return {"motor": "llama.cpp", "motivo": st["motivo"]}
 
 

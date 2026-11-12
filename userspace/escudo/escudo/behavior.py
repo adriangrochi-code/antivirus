@@ -68,6 +68,7 @@ class Alert:
     exe: str | None = None
     action: str = "alerta"
     time: float = field(default_factory=time.time)
+    boton: str | None = None        # acción con botón en el escritorio (lista fija del notificador), p. ej. «permitir»
 
 
 def emit(alert: Alert, path: Path = ALERTS) -> None:

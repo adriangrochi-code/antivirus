@@ -168,3 +168,37 @@ def test_docs_subdir_symlink_is_refused(tmp_path):
     except ToolError:
         pass
     assert list(outside.iterdir()) == []
+
+
+def test_componentes_con_un_boton_y_solo_de_la_lista(monkeypatch):
+    """Instalar Strata, REA, Craft… con un clic: orden fija con pkexec, nunca algo que mande la página."""
+    from tisma_code import server
+    lanzados = []
+
+    class P:
+        def __init__(self, argv, **k):
+            lanzados.append(argv)
+            self.returncode = None
+
+        def poll(self):
+            return None
+    monkeypatch.setattr(server.subprocess, "Popen", P)
+    app = server.App.__new__(server.App)
+    app.instalando = {}
+    assert app.instalar_componente("rea") == {"ok": True, "estado": "instalando"}
+    assert lanzados == [["pkexec", "/usr/bin/centinela-apps", "rea"]]
+    assert app.instalar_componente("rea; rm -rf /")["ok"] is False and len(lanzados) == 1
+    assert app.instalar_componente("rea")["estado"] == "instalando" and len(lanzados) == 1   # no lo lanza dos veces
+    assert app.componentes()["rea"]["estado"] == "instalando"
+
+
+def test_ningun_mensaje_pide_la_terminal():
+    """Lo que ve el usuario (o el modelo, que se lo repite) nunca le pide escribir órdenes."""
+    import re
+    raiz = Path(__file__).resolve().parents[1] / "tisma_code"
+    malos = []
+    for f in raiz.glob("*.py"):
+        for n, linea in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"[\"'«].{0,80}\bsudo [a-z]", linea) and not linea.lstrip().startswith("#"):
+                malos.append(f"{f.name}:{n}")
+    assert not malos, malos

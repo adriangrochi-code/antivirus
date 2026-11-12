@@ -10,12 +10,13 @@ import os
 import select
 import shutil
 import subprocess
+import threading
 import time
 
 DIR = os.environ.get("ESCUDO_ALERTAS_DIR", "/run/escudo")
 PATH = DIR + "/alertas.jsonl"
 ICON = {"critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
-TITLE = {"kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
+TITLE = {"primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}
@@ -41,15 +42,55 @@ def inotify(path: str):
         return None
 
 
-def notify(line: str) -> None:
+def _permitir(a: dict) -> list[str] | None:
+    exe = a.get("exe")
+    if not isinstance(exe, str) or not os.path.isabs(exe) or not os.path.isfile(exe) or "\n" in exe:
+        return None
+    return ["pkexec", "/usr/bin/escudo", "permitir", exe]
+
+
+# Botones de las notificaciones: SOLO estas acciones, con su orden armada aquí (nunca texto de la alerta).
+# pkexec pide la contraseña de administrador con la ventana del sistema: nada de terminal.
+ACCIONES = {
+    "permitir": ("Permitir", _permitir, "Listo: ya puedes abrirlo con normalidad.",
+                 "No se pudo permitir (hacen falta permisos de administrador)."),
+    "actualizar_kernel": ("Actualizar ahora", lambda a: ["pkexec", "/usr/bin/centinela", "build-kernel", "--install"],
+                          "Actualización del kernel preparada: se usará al reiniciar el equipo.",
+                          "No se pudo actualizar el kernel. Se volverá a intentar más tarde."),
+}
+
+
+def _con_boton(a: dict, base: list[str], titulo: str, body: str, run=subprocess.run) -> None:
+    """Notificación con botón: espera a que se pulse (en su propio hilo) y entonces hace la acción."""
+    etiqueta, orden, ok_txt, mal_txt = ACCIONES[a["boton"]]
+    argv = orden(a)
+    if not argv:
+        run(base + [titulo, body], check=False)
+        return
+    r = run(base + ["--action", f"{a['boton']}={etiqueta}", "--wait", titulo, body], capture_output=True,
+            text=True, check=False)
+    if (r.stdout or "").strip() != a["boton"]:
+        return                                         # cerrada o ignorada: no se hace nada
+    hecho = run(argv, check=False).returncode == 0
+    run(["notify-send", "-a", "Escudo", "-i", "security-high" if hecho else "dialog-warning", titulo,
+         ok_txt if hecho else mal_txt], check=False)
+
+
+def notify(line: str, run=subprocess.run) -> threading.Thread | None:
     try:
         a = json.loads(line)
     except ValueError:
-        return
+        return None
     urgency = "critical" if a.get("severity") in ("critical", "high") else "normal"
     body = f"{a.get('detail', '')}\n{a.get('action', '')}"[:400]
-    subprocess.run(["notify-send", "-a", "Escudo", "-u", urgency, "-i", ICON.get(a.get("severity"), "security-medium"),
-                    TITLE.get(a.get("kind"), "Escudo"), body], check=False)
+    titulo = TITLE.get(a.get("kind"), "Escudo")
+    base = ["notify-send", "-a", "Escudo", "-u", urgency, "-i", ICON.get(a.get("severity"), "security-medium")]
+    if a.get("boton") in ACCIONES:
+        t = threading.Thread(target=_con_boton, args=(a, base, titulo, body, run), daemon=True)
+        t.start()
+        return t
+    run(base + [titulo, body], check=False)
+    return None
 
 
 def ident(path: str):

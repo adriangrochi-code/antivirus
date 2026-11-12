@@ -296,8 +296,8 @@ def run(ws, accion: str, archivo: str, salida: str = "", opciones: dict | None =
     if accion not in BIN:
         raise ToolError(f"Acción desconocida: {accion}. Opciones: {', '.join(sorted(BIN))}")
     if not shutil.which(BIN[accion]):
-        hint = (" (instálalo con: sudo centinela-apps simulacion)" if accion in ("openfoam",) else
-                " (viene con el perfil Ingeniería: sudo tisma-perfil instalar ingenieria, o desde la Bienvenida)")
+        hint = (" (se instala con un clic en TISMA Code: menú del modelo → Componentes → Simulación)" if accion in ("openfoam",) else
+                " (viene con el uso Ingeniería: Bienvenida → Tu uso → Ingeniería y diseño)")
         raise ToolError(f"{BIN[accion]} no está instalado{hint}")
     p = ws.resolve(archivo)                       # dentro del proyecto (resolución segura de rutas)
     if EXT[accion][0] and not str(p).endswith(EXT[accion]):

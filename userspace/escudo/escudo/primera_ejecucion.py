@@ -285,7 +285,8 @@ class Gate:
         elif inf.veredicto == "sospechoso":
             self.alert(Alert("primera_ejecucion", "medium", f"{name}: comportamiento sospechoso: " +
                              "; ".join(inf.motivos[:3]), None, path,
-                             f"Si confías en él: sudo escudo permitir \"{path}\""))
+                             "No lo abras si no confías en quién te lo dio. Si confías, pulsa «Permitir».",
+                             boton="permitir"))
         else:
             action = "bloqueado"
             if self.quarantine is not None:

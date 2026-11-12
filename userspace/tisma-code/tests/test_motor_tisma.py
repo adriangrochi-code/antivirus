@@ -141,7 +141,8 @@ def test_choose_model_and_engine(modeldir, monkeypatch):
     assert motor.choose_engine(A275, True)["motor"] == "strata"
     monkeypatch.setattr(motor, "strata_installed", lambda: False)          # no viene en la ISO: se ofrece
     big = motor.choose_engine({"ram_mb": 32000, "vram_mb": 12288, "gpus": [{"name": "x"}]}, False)
-    assert big["motor"] == "llama.cpp" and big["instalar"] == "strata" and "centinela-apps strata" in big["motivo"]
+    assert big["motor"] == "llama.cpp" and big["instalar"] == "strata" and "Componentes → Strata" in big["motivo"]
+    assert "sudo" not in big["motivo"]
     assert "instalar" not in motor.choose_engine(A275, False)               # el A275 no puede con Strata
 
 

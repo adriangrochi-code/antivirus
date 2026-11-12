@@ -78,7 +78,7 @@ class REATools:
         self.workdir = safe_dir(ws.root, ".tisma", "rea")
         cmd = command or rea_command() or []
         if not cmd:
-            raise MCPError("REA no está instalado: sudo centinela-apps rea (~200 MB, o el perfil Programación)")
+            raise MCPError("REA no está instalado: se instala con un clic en TISMA Code: menú del modelo → Componentes → REA (~200 MB), o con el uso Programación de la Bienvenida")
         env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp/rea-home", "LANG": "C.UTF-8",
                "REA_MCP_INPUT_SCHEMA_PROFILE": "compact", "REA_MCP_OUTPUT_SCHEMA_PROFILE": "compact",
                "NO_UPDATE_NOTIFIER": "1", "NODE_OPTIONS": ""}

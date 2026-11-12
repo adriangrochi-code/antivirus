@@ -33,8 +33,8 @@ def _opcional(nombre: str):
 
 
 def falta(paquete: str) -> Fallo:
-    return Fallo(f"Esta herramienta necesita {paquete}, que no está instalado. Pídele al usuario que lo instale "
-                 f"(«sudo apt install {paquete}»; viene con la base del sistema instalado o con el perfil ingeniería).")
+    return Fallo(f"Esta herramienta necesita {paquete}, que todavía no está instalado. Viene con la base del sistema "
+                 "(se descarga sola en cuanto hay Internet) o con el uso Ingeniería de la Bienvenida.")
 
 
 # ---------------------------------------------------------------- números

@@ -102,7 +102,7 @@ class CraftTools:
         safe_dir(self.workdir, "config")
         cmd = command or craft_command() or []
         if not cmd:
-            raise MCPError("Craft Anything no está instalado: sudo centinela-apps craft (~35 MB, o el perfil Ingeniería)")
+            raise MCPError("Craft Anything no está instalado: se instala con un clic en TISMA Code: menú del modelo → Componentes → Craft Anything (~35 MB), o con el uso Ingeniería de la Bienvenida")
         env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp/craft-home", "LANG": "C.UTF-8",
                "CRAFT_ANYTHING_CONFIG_DIR": str(self.workdir / "config"),
                "CRAFT_ANYTHING_MCP_ALL_TOOLS": "1",            # el catálogo se filtra aquí (craft_buscar)
