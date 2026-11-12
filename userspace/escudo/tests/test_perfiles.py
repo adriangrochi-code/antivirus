@@ -163,6 +163,7 @@ def test_usos_elegidos_al_instalar_se_suman(tmp_path, monkeypatch):
     assert m.run() is None
     elegido = tmp_path / "etc/tisma/perfiles-elegidos"
     assert elegido.read_text().split() == ["juegos", "programacion"]
+    assert oct(elegido.stat().st_mode & 0o777) == "0o644"
     # tisma-perfil completar: la base + las listas de esos usos («juegos» trae también «creacion»)
     tp = mod
     assert tp.listas_elegidas(str(elegido)) == ["juegos", "creacion", "programacion"]

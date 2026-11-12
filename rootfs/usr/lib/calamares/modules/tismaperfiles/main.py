@@ -31,5 +31,6 @@ def run():
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     with open(ruta, "w", encoding="utf-8") as fh:
         fh.write("".join(p + "\n" for p in perfiles))
+    os.chmod(ruta, 0o644)              # el instalador corre con umask 002: que solo root pueda cambiarlo
     libcalamares.utils.debug("Usos elegidos: " + (", ".join(perfiles) or "ninguno"))
     return None
