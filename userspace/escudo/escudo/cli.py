@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import logging
 import signal
 import sys
@@ -104,12 +105,28 @@ def cmd_protect(cfg: Config, args) -> int:
         except OSError as e:
             logging.getLogger("escudo").warning("Consulta de archivos desactivada: %s", e)
             consulta = None
+    # Teclados falsos (USB que se hacen pasar por teclado para escribir órdenes): se detectan por cómo escriben
+    teclados = None
+    try:
+        from . import teclados as T
+
+        def avisar_teclado(nombre, ident, motivo):
+            behavior.emit(behavior.Alert("teclado_falso", "critical", f"«{nombre}» se presentó como teclado y {motivo}. Lo "
+                                "bloqueamos antes de que pudiera hacer algo.", None, ident,
+                                "Si era tuyo (por ejemplo, un lector de códigos de barras), pulsa «Era mío».",
+                                boton="permitir_teclado"))
+        teclados = T.Guardia(avisar_teclado)
+        teclados.start()
+    except (ImportError, OSError) as e:
+        logging.getLogger("escudo").warning("Protección de teclados falsos desactivada: %s", e)
+        teclados = None
     guard = None
     if not args.no_network:
         guard = NetGuard(cfg)
         guard.start()
     activas = ["antivirus en tiempo real"] + (["puerta de primera ejecución"] if gate else []) + \
         (["consulta de programas de Windows"] if consulta else []) + \
+        (["teclados falsos"] if teclados else []) + \
         (["IPS de red"] if guard else [])
     sd_notify("READY=1\nSTATUS=Protección activa: " + ", ".join(activas))
     stop.wait()
@@ -147,6 +164,24 @@ def cmd_permitir(cfg: Config, args) -> int:
         return 2
     from .primera_ejecucion import permitir
     print(f"Permitido: {args.path} (SHA-256 {permitir(args.path)[:16]}…)")
+    return 0
+
+
+def cmd_teclado(cfg: Config, args) -> int:
+    """El usuario dice que un teclado bloqueado era suyo (p. ej. un lector de códigos de barras)."""
+    import subprocess
+    from . import teclados as T
+    if os.geteuid() != 0:
+        print("Necesita permisos de administrador", file=sys.stderr)
+        return 1
+    T.Registro().permitir(args.ident)              # valida el formato
+    vid_pid = ":".join(args.ident.split(":")[:2])
+    r = subprocess.run(["usbguard", "list-devices", "--blocked"], capture_output=True, text=True)
+    for ln in r.stdout.splitlines():
+        m = re.match(r"^(\d+): block id " + re.escape(vid_pid) + r"\b", ln)
+        if m:
+            subprocess.run(["usbguard", "allow-device", m.group(1)], check=False)
+    print("Permitido: desconéctalo y vuelve a conectarlo si no responde.")
     return 0
 
 
@@ -351,6 +386,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("permitir", help="Permitir un programa marcado como sospechoso (administrador)")
     s.add_argument("path")
     s.set_defaults(func=cmd_permitir)
+
+    s = sub.add_parser("teclado", help="Teclados USB bloqueados por escribir como un robot")
+    s.add_argument("accion", choices=["permitir"])
+    s.add_argument("ident", help="vendor:producto[:serie], como lo muestra el aviso")
+    s.set_defaults(func=cmd_teclado)
 
     s = sub.add_parser("quarantine", help="Gestionar la cuarentena")
     s.add_argument("action", choices=["list", "restore", "delete", "purge"])

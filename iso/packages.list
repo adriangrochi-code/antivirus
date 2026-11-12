@@ -97,6 +97,8 @@ intel-microcode amd64-microcode
 lxc python3-gbinder
 # --- Herramientas de seguridad ---
 clamav clamav-freshclam rkhunter chkrootkit lynis aide auditd usbguard
+# Escudo: teclados falsos (USB que se hacen pasar por teclado) — leer y reenviar teclas (BSD)
+python3-evdev
 opensnitch python3-opensnitch-ui keepassxc nmap
 # --- Tisma engine (laminador): dependencias de ejecución ---
 libgl1 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libssl3t64 unzip git

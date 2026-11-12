@@ -7,6 +7,7 @@ despertaba la CPU 86.400 veces al día sin ninguna alerta. Sin inotify, vuelve a
 import ctypes
 import json
 import os
+import re
 import select
 import shutil
 import subprocess
@@ -16,7 +17,7 @@ import time
 DIR = os.environ.get("ESCUDO_ALERTAS_DIR", "/run/escudo")
 PATH = DIR + "/alertas.jsonl"
 ICON = {"critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
-TITLE = {"primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
+TITLE = {"teclado_falso": "USB falso bloqueado", "primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}
@@ -54,6 +55,11 @@ def _permitir(a: dict) -> list[str] | None:
 ACCIONES = {
     "permitir": ("Permitir", _permitir, "Listo: ya puedes abrirlo con normalidad.",
                  "No se pudo permitir (hacen falta permisos de administrador)."),
+    "permitir_teclado": ("Era mío", lambda a: ["pkexec", "/usr/bin/escudo", "teclado", "permitir", a["exe"]]
+                         if isinstance(a.get("exe"), str) and re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{4}(:[\w.-]{0,64})?",
+                                                                          a["exe"]) else None,
+                         "Listo: ese dispositivo ya puede usarse. Si no responde, desconéctalo y vuelve a conectarlo.",
+                         "No se pudo permitir (hacen falta permisos de administrador)."),
     "actualizar_kernel": ("Actualizar ahora", lambda a: ["pkexec", "/usr/bin/centinela", "build-kernel", "--install"],
                           "Actualización del kernel preparada: se usará al reiniciar el equipo.",
                           "No se pudo actualizar el kernel. Se volverá a intentar más tarde."),
