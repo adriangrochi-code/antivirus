@@ -22,6 +22,12 @@ ni para equipos con datos importantes sin copia.**
   dosfstools y squashfs-tools), un sistema cifrado no arrancaba (faltaba cryptsetup-initramfs), OpenSnitch
   bloqueaba el DNS y la hora, el DNS no volvía si se arrancaba sin red y no había icono para instalar. Si el
   arranque no llega a la pantalla de inicio, a los 4 minutos se muestra en pantalla qué falló.
+  Probada instalando de verdad en una máquina virtual UEFI con Secure Boot, lo que destapó y corrigió más fallos:
+  la protección de Escudo bloqueaba al instalador, faltaban herramientas para crear la partición EFI y copiar el
+  sistema, el paso final de paquetes fallaba, el primer arranque elegía un kernel que Secure Boot rechaza, la
+  pantalla de inicio de sesión no arrancaba (ahora va sobre Wayland), la sesión del USB bloqueaba la pantalla a
+  mitad de instalar y el navegador pedía «crear una cartera». Además: iconos propios para cada app de TISMA y menú
+  de arranque rediseñado.
 - **Novedades de la preview 5**: Escudo protege antes de que aparezca la pantalla de inicio de sesión; la puerta
   de primera ejecución y el análisis en aislamiento funcionan dentro del servicio (antes se apagaban o daban
   «limpio»); YARA y los modelos de IA se descargan solos; detecta malware sin archivo, carga de eBPF y puertas
