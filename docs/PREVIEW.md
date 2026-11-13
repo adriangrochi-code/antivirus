@@ -13,6 +13,16 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 9 (actualizar sin perder nada)**: si el equipo ya tiene TISMA, al arrancar el USB
+  sale «Pulsa Esc para arrancar desde el USB» (antes arrancaba el disco sin avisar y no había forma de llegar a
+  actualizar). Desde el USB, la ventana **Actualizar TISMA** actualiza el sistema conservando archivos, cuentas,
+  wifi, ajustes y programas (los que la versión nueva no trae se reinstalan solos con internet); guarda la versión
+  anterior para **volver a ella** con un botón, y también ofrece **Formatear e instalar de cero**. Si algo falla
+  a mitad, el equipo queda como estaba. Probado de punta a punta en una máquina virtual con disco cifrado.
+  El kernel TISMA se actualiza solo (con el equipo enchufado y libre) y solo avisa «reinicia cuando quieras».
+  Avisos de Escudo en lenguaje simple. TISMA Code: ya no se queda en bucle con modelos pequeños ni muestra el
+  texto técnico de sus herramientas, y tiene **Ajustes** con las descargas y su progreso. Arranque sin recuadro
+  de consola ni cursor parpadeando.
 - **Novedades de la preview 8 (más simple)**: tema TISMA Cristal (claro y oscuro) con fondos nuevos; **Guía TISMA**
   con 6 temas grandes al inicio y el resto en «Ver todos los temas»; **TISMA Seguridad** con botones (sin
   terminal); barra de tareas con pocos iconos (Archivos, Navegador, Tienda); menú con favoritos de nombre claro;
