@@ -25,6 +25,24 @@ CONFIG = Path.home() / ".config/tisma-code/config.json"
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1"   # Strata
 
 
+def enchufado(base: str = "/sys/class/power_supply") -> bool:
+    """¿Corriente? Sin batería (equipo de escritorio) cuenta como enchufado."""
+    try:
+        fuentes = os.listdir(base)
+    except OSError:
+        return True
+    hay_bateria = False
+    for f in fuentes:
+        try:
+            tipo = open(os.path.join(base, f, "type")).read().strip()
+            if tipo == "Mains" and open(os.path.join(base, f, "online")).read().strip() == "1":
+                return True
+            hay_bateria |= tipo == "Battery"
+        except OSError:
+            continue
+    return not hay_bateria
+
+
 class App:
     def __init__(self):
         self.token = secrets.token_urlsafe(24)      # de la API: solo dentro de la página y en una cookie HttpOnly
@@ -39,6 +57,7 @@ class App:
         self.instalando: dict = {}
         self.server = models.LocalServer()
         self.hw = models.hardware()
+        self.ultimo_uso = time.monotonic()
         self.config = {"endpoint": DEFAULT_ENDPOINT, "model": "", "recent": [], "network": False}
         try:
             self.config.update(json.loads(CONFIG.read_text()))
@@ -141,7 +160,26 @@ class App:
         c = self.server.config or {}
         self.push({"type": "info", "message": f"Motor TISMA: llama.cpp con {Path(rec['path']).name} — "
                    f"{c.get('motivo', '')}" + ("" if c.get("medido") else
-                                                ". Pulsa «⚙ optimizar» para medir la configuración más rápida.")})
+                                                ". Cuando el equipo esté libre y enchufado se ajustará solo para ir "
+                                                "más rápido.")})
+        if not c.get("medido"):
+            threading.Thread(target=self.optimizar_cuando_libre, args=(rec["path"],), daemon=True).start()
+
+    LIBRE_S = 300
+
+    def optimizar_cuando_libre(self, path: str, espera=time.sleep, reloj=time.monotonic) -> bool:
+        """Mide la configuración más rápida SOLA (antes había que encontrar «⚙ optimizar»): cuando TISMA Code lleva
+        5 minutos sin usarse y el equipo está enchufado (medir carga la CPU y gasta batería). Una sola vez por
+        modelo: lo medido queda guardado para este equipo."""
+        while True:
+            espera(60)
+            sesion = self.session
+            ocupado = sesion is not None and sesion._busy.locked()
+            if reloj() - self.ultimo_uso >= self.LIBRE_S and not ocupado and enchufado():
+                if self.server.model != Path(path).name:
+                    return False                   # se cambió de modelo: ya no toca
+                self.optimize(path)
+                return True
 
     _optimizing = threading.Lock()
 
@@ -396,6 +434,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/message":
                 if not APP.session:
                     return self._send(400, {"error": "Elige primero una carpeta de proyecto"})
+                APP.ultimo_uso = time.monotonic()
                 threading.Thread(target=APP.session.send, args=(b["text"],), daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/approve":

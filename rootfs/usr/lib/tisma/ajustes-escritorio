@@ -1,0 +1,16 @@
+#!/bin/sh
+# Ajustes del escritorio que se aplican UNA vez por usuario al entrar (también a quien actualiza TISMA: el diseño
+# inicial del panel solo se aplica a cuentas nuevas). Cada ajuste tiene su marca: subir el número lo reaplica.
+set -u
+MARCAS="${XDG_CONFIG_HOME:-$HOME/.config}/tisma/escritorio"
+mkdir -p "$MARCAS"
+for i in $(seq 1 30); do                     # espera a que el escritorio esté listo
+    gdbus introspect --session --dest org.kde.plasmashell --object-path /PlasmaShell >/dev/null 2>&1 && break
+    sleep 2
+done
+aplicar() {   # aplicar <marca> <script.js>
+    [ -e "$MARCAS/$1" ] && return 0
+    gdbus call --session --dest org.kde.plasmashell --object-path /PlasmaShell \
+        --method org.kde.PlasmaShell.evaluateScript "$(cat "$2")" >/dev/null 2>&1 && touch "$MARCAS/$1"
+}
+aplicar bandeja-1 /usr/share/tisma/escritorio/bandeja.js

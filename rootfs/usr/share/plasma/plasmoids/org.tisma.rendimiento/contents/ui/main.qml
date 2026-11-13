@@ -19,7 +19,8 @@ PlasmoidItem {
         ? "CPU " + estado.cpu.uso + " % · " + tempCpu + " °C · RAM " + (estado.memoria.used_mb / 1024).toFixed(1) + " GB · perfil " + estado.perfil
         : "Cargando…"
     // Aviso visual (icono en estado de atención) si el equipo se calienta de más
-    Plasmoid.status: tempCpu >= 90 ? PlasmaCore.Types.NeedsAttentionStatus : PlasmaCore.Types.ActiveStatus
+    // Detrás de la flecha de la bandeja salvo que el equipo se caliente (barra con pocos iconos)
+    Plasmoid.status: tempCpu >= 90 ? PlasmaCore.Types.NeedsAttentionStatus : PlasmaCore.Types.PassiveStatus
 
     P5Support.DataSource {
         id: ejecutar

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Ajustes del escritorio de TISMA
+Exec=/usr/lib/tisma/ajustes-escritorio
+NoDisplay=true
+X-KDE-autostart-phase=2
+OnlyShowIn=KDE;

@@ -190,3 +190,32 @@ def test_engine_runs_jailed_with_models_readonly_and_gpu(modeldir, monkeypatch):
     monkeypatch.setattr(models.shutil, "which", lambda n: None)
     with pytest.raises(RuntimeError):
         models.jail_engine(["llama-server"])                                 # sin bubblewrap no arranca
+
+
+def test_se_optimiza_solo_cuando_esta_libre(monkeypatch, tmp_path):
+    """Antes había que encontrar «⚙ optimizar»; ahora se mide solo, con el equipo libre y enchufado."""
+    from tisma_code import server
+    app = server.App.__new__(server.App)
+    app.session, app.ultimo_uso = None, 0.0
+    app.server = type("S", (), {"model": "m.gguf"})()
+    hechas = []
+    app.optimize = lambda p: hechas.append(p)
+    t = [0.0]
+    def espera(s):
+        t[0] += s
+    monkeypatch.setattr(server, "enchufado", lambda: t[0] >= 600)        # a batería los primeros 10 min
+    assert app.optimizar_cuando_libre("/x/m.gguf", espera=espera, reloj=lambda: t[0]) is True
+    assert hechas == ["/x/m.gguf"] and t[0] >= 600
+    app.server.model = "otro.gguf"
+    assert app.optimizar_cuando_libre("/x/m.gguf", espera=espera, reloj=lambda: t[0]) is False
+
+
+def test_enchufado(tmp_path):
+    from tisma_code import server
+    assert server.enchufado(str(tmp_path / "no")) is True                 # sin datos: escritorio
+    (tmp_path / "BAT0").mkdir(); (tmp_path / "BAT0" / "type").write_text("Battery\n")
+    (tmp_path / "AC").mkdir(); (tmp_path / "AC" / "type").write_text("Mains\n")
+    (tmp_path / "AC" / "online").write_text("0\n")
+    assert server.enchufado(str(tmp_path)) is False
+    (tmp_path / "AC" / "online").write_text("1\n")
+    assert server.enchufado(str(tmp_path)) is True
