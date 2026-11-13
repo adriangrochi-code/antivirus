@@ -490,7 +490,7 @@ SEC="$SEC ia32_emulation=0 vdso32=0"
 # (marca /tisma-instalado en su partición de arranque: el USB se quedó puesto tras instalar), arranca el sistema
 # instalado. Esc durante los 3 s muestra las opciones (probar sin instalar, gráficos básicos, diagnóstico…).
 # El arranque silencioso ya viene en SEC (50-centinela.cfg); el modo diagnóstico lo quita para ver los mensajes
-SILENCIO="loglevel=3 rd.udev.log_level=3 systemd.show_status=false"
+SILENCIO="loglevel=3 rd.udev.log_level=3 systemd.show_status=false vt.global_cursor_default=0"
 [[ "$SEC" == *"$SILENCIO"* ]] || die "50-centinela.cfg ya no trae los parámetros de arranque silencioso"
 DIAG="${LIVE/ quiet splash/} ${SEC/$SILENCIO /}"
 cat > "$ISODIR/boot/grub/grub.cfg" <<FINMENU
@@ -509,12 +509,24 @@ set theme=/boot/grub/themes/centinela/theme.txt
 set timeout_style=hidden
 set timeout=3
 set default=instalar
+# Con TISMA ya instalado: como los DVD de instalación, unos segundos para elegir arrancar desde el USB (instalar,
+# actualizar o formatear); si no se toca nada, arranca el sistema instalado (el USB olvidado puesto). Antes
+# arrancaba el instalado SIN avisar y no había forma visible de llegar a actualizar (visto en la A275).
+# GRUB solo deja interrumpir la espera con Esc. Sin tildes: con Secure Boot la fuente de GRUB no las tiene.
 if search --no-floppy --set=instalado --file /tisma-instalado; then
-    set default=disco
     menuentry "Arrancar TISMA OS (instalado en este equipo)" --id disco {
         set root=\$instalado
         configfile /grub/grub.cfg
     }
+    echo ""
+    echo "    Pulsa Esc para arrancar desde el USB (instalar o actualizar TISMA)..."
+    if sleep --interruptible 6; then
+        set default=disco
+        set timeout=0
+    else
+        set default=instalar
+        set timeout=0
+    fi
 fi
 menuentry "Instalar TISMA OS" --id instalar {
     linux /live/vmlinuz $LIVE $SEC

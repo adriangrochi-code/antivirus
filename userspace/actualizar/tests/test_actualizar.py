@@ -127,3 +127,48 @@ def test_piezas_del_sistema():
     assert "/usr/lib/tisma/actualizar-instalado" in pol
     assert "tisma_actualizar" in (ROOT / "iso/build-iso.sh").read_text()
     assert set(motor.PAQUETES_LIVE) >= {"live-boot", "calamares-settings-debian"}
+
+
+def test_usb_deja_elegir_con_tisma_instalado():
+    """Antes, con TISMA instalado, el USB arrancaba el sistema del disco sin avisar: no se podía actualizar."""
+    b = (ROOT / "iso/build-iso.sh").read_text()
+    assert "sleep --interruptible" in b and "Pulsa Esc para arrancar desde el USB" in b
+    tema = (ROOT / "rootfs/boot/grub/themes/centinela/theme.txt").read_text().splitlines()
+    assert not any(l.startswith("terminal-box") for l in tema)        # sin recuadro negro de consola
+    assert "vt.global_cursor_default=0" in (ROOT / "rootfs/etc/default/grub.d/50-centinela.cfg").read_text()
+
+
+def test_nombre_del_disco_como_el_instalado():
+    """Con otro nombre, el arranque rehecho no pedía la contraseña del disco y se reiniciaba en bucle."""
+    ct = "# x\nluks-1234abcd UUID=1234abcd-0000 none luks,discard\n"
+    assert motor.nombre_crypttab(ct, "1234abcd-0000", "/dev/sda3") == "luks-1234abcd"
+    assert motor.nombre_crypttab(ct, "otro", "/dev/sda3") is None
+    assert motor.nombre_crypttab("raiz /dev/sda3 none luks\n", "", "/dev/sda3") == "raiz"
+    assert motor.nombre_crypttab("$(rm) UUID=u none\n", "u", "/dev/x") is None
+
+
+def test_montados_bajo():
+    m = ("/dev/x /tmp/w/top btrfs rw 0 0\n/dev/x /tmp/w/raiz btrfs rw 0 0\nproc /tmp/w/raiz/proc proc rw 0 0\n"
+         "/dev/y /tmp/wotro ext4 rw 0 0\n/dev/z /tmp/w/con\\040espacio ext4 rw 0 0\n")
+    r = motor.montados_bajo("/tmp/w", m)
+    assert r[0] == "/tmp/w/raiz/proc" and set(r) == {"/tmp/w/top", "/tmp/w/raiz", "/tmp/w/raiz/proc",
+                                                      "/tmp/w/con espacio"}
+
+
+def test_nunca_borra_lo_montado(tmp_path, monkeypatch):
+    """Si algo sigue montado en la carpeta de trabajo, no se borra NADA (antes se vació el sistema nuevo)."""
+    a = motor.Actualizacion({"cifrado": False, "raiz": "/dev/x"}, salida=io.StringIO())
+    sistema = os.path.join(a.w, "raiz", "usr")
+    os.makedirs(sistema)
+    open(os.path.join(sistema, "importante"), "w").write("x")
+    monkeypatch.setattr(motor, "montados_bajo", lambda base, m=None: [os.path.join(a.w, "raiz")])
+    monkeypatch.setattr(motor.subprocess, "run", lambda *x, **k: None)
+    assert a.limpiar_trabajo() is False
+    assert os.path.exists(os.path.join(sistema, "importante"))
+    # Sin montajes: solo se quitan carpetas vacías, nunca archivos
+    monkeypatch.setattr(motor, "montados_bajo", lambda base, m=None: [])
+    a.limpiar_trabajo()
+    assert os.path.exists(os.path.join(sistema, "importante"))
+    os.unlink(os.path.join(sistema, "importante"))
+    a.limpiar_trabajo()
+    assert not os.path.exists(a.w)

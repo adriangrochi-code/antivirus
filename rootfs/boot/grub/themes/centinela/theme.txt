@@ -5,7 +5,8 @@
 title-text: ""
 desktop-image: "background.png"
 desktop-color: "#18171C"
-terminal-box: "terminal_*.png"
+# Sin caja de terminal: al elegir una opción GRUB mostraba un recuadro negro como de consola (visto en la VM).
+# Sin caja, lo poco que escribe al cargar queda sobre el fondo con el logo, como un arranque normal.
 
 + image {
     left = 50%-44

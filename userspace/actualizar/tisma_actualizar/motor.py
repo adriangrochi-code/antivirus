@@ -169,6 +169,25 @@ def rutas_etc(raiz_vieja: str) -> list[str]:
     return salida
 
 
+def montados_bajo(base: str, mounts: str | None = None) -> list[str]:
+    """Puntos de montaje en «base» o debajo, del más profundo al menos (para desmontar en orden)."""
+    if mounts is None:
+        try:
+            mounts = open("/proc/self/mounts").read()
+        except OSError:
+            return []
+    base = os.path.realpath(base).rstrip("/")
+    salida = []
+    for linea in mounts.splitlines():
+        campos = linea.split()
+        if len(campos) < 2:
+            continue
+        punto = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), campos[1])
+        if punto == base or punto.startswith(base + "/"):
+            salida.append(punto)
+    return sorted(set(salida), key=lambda p: -p.count("/"))
+
+
 def puntos_fstab(fstab: str) -> list[tuple[str, str]]:
     """(punto de montaje o archivo de swap, tipo) de cada línea de /etc/fstab."""
     salida = []
@@ -183,6 +202,17 @@ def puntos_fstab(fstab: str) -> list[tuple[str, str]]:
     return salida
 
 
+def nombre_crypttab(crypttab: str, uuid: str, dispositivo: str) -> str | None:
+    """Nombre con el que el sistema instalado abre su disco (primera columna de /etc/crypttab)."""
+    for linea in crypttab.splitlines():
+        campos = linea.split()
+        if len(campos) >= 2 and not campos[0].startswith("#"):
+            if (uuid and campos[1] in (f"UUID={uuid}", f"/dev/disk/by-uuid/{uuid}")) or campos[1] == dispositivo:
+                if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", campos[0]):
+                    return campos[0]
+    return None
+
+
 # ---------------------------------------------------------------- el trabajo
 
 class Actualizacion:
@@ -192,6 +222,7 @@ class Actualizacion:
         self.top, self.raiz = os.path.join(self.w, "top"), os.path.join(self.w, "raiz")
         self.montajes: list[str] = []
         self.fecha = time.strftime("%Y%m%d-%H%M")
+        self.mapeo = MAPEO
 
     def avisar(self, paso, texto, pct=None):
         aviso(paso, texto, pct, self.salida)
@@ -202,25 +233,76 @@ class Actualizacion:
         self.montajes.append(punto)
 
     def desmontar_todo(self):
+        """Desmonta todo lo de la carpeta de trabajo y COMPRUEBA que no quede nada montado. Si «umount -R» falla
+        (algo ocupado), se usa el desmontaje diferido (-l). Devuelve lo que siga montado (normalmente nada)."""
         for punto in reversed(self.montajes):
             subprocess.run(["umount", "-R", punto], capture_output=True)
         self.montajes.clear()
+        for punto in montados_bajo(self.w):
+            subprocess.run(["umount", "-R", punto], capture_output=True)
+        for punto in montados_bajo(self.w):
+            subprocess.run(["umount", "-lR", punto], capture_output=True)
+        return montados_bajo(self.w)
+
+    def limpiar_trabajo(self):
+        """Borra la carpeta de trabajo SOLO si no queda nada montado dentro. Antes se borraba con rmtree aunque el
+        sistema nuevo siguiera montado y se llevaba por delante su contenido (visto en la máquina virtual)."""
+        quedan = self.desmontar_todo()
+        if quedan:
+            sys.stderr.write(f"aviso: no se borra {self.w}: sigue montado {quedan}\n")
+            return False
+        kernels = os.path.join(self.w, "kernels")
+        if os.path.isdir(kernels) and not montados_bajo(kernels):
+            shutil.rmtree(kernels, ignore_errors=True)
+        for base, dirs, archivos in os.walk(self.w, topdown=False):
+            if archivos:
+                continue                           # nunca se borran archivos aquí: solo carpetas vacías
+            try:
+                os.rmdir(base)
+            except OSError:
+                pass
+        return True
 
     # 1
     def abrir(self, clave: bytes | None) -> str:
+        """Abre el disco cifrado con EL MISMO nombre que usa el sistema instalado (/etc/crypttab). Con otro nombre,
+        al rehacer el arranque el paso que pide la contraseña no se incluía y el equipo se reiniciaba en bucle
+        (visto en la máquina virtual)."""
         if not self.d["cifrado"]:
             return self.d["raiz"]
-        if os.path.exists(f"/dev/mapper/{MAPEO}"):
-            subprocess.run(["cryptsetup", "close", MAPEO], capture_output=True)
+        nombre = self._abrir_luks(MAPEO, clave)
+        uuid = subprocess.run(["blkid", "-s", "UUID", "-o", "value", self.d["raiz"]], capture_output=True,
+                              text=True).stdout.strip()
+        tmp = os.path.join(self.w, "leer")
+        os.makedirs(tmp, exist_ok=True)
+        propio = None
         try:
-            self.run(["cryptsetup", "open", "--type", "luks", "--key-file=-", self.d["raiz"], MAPEO], entrada=clave)
+            self.run(["mount", "-o", "ro,subvol=/@", nombre, tmp])
+            try:
+                propio = nombre_crypttab(open(os.path.join(tmp, "etc/crypttab"), errors="replace").read(),
+                                         uuid, self.d["raiz"])
+            except OSError:
+                propio = None
+        finally:
+            subprocess.run(["umount", tmp], capture_output=True)
+        if propio and propio != MAPEO:
+            subprocess.run(["cryptsetup", "close", MAPEO], capture_output=True)
+            nombre = self._abrir_luks(propio, clave)
+            self.mapeo = propio
+        return nombre
+
+    def _abrir_luks(self, nombre: str, clave: bytes | None) -> str:
+        if os.path.exists(f"/dev/mapper/{nombre}"):
+            subprocess.run(["cryptsetup", "close", nombre], capture_output=True)
+        try:
+            self.run(["cryptsetup", "open", "--type", "luks", "--key-file=-", self.d["raiz"], nombre], entrada=clave)
         except subprocess.CalledProcessError:
             raise Fallo("La contraseña del disco no es correcta.")
-        return f"/dev/mapper/{MAPEO}"
+        return f"/dev/mapper/{nombre}"
 
     def comprobar(self):
         actual = os.path.join(self.top, ACTUAL)
-        rel = os.path.join(actual, "etc/os-release")
+        rel = os.path.join(actual, "usr/lib/os-release")      # /etc/os-release es un enlace
         if not os.path.isfile(rel) or "TISMA" not in open(rel, errors="replace").read():
             raise Fallo("No encontré TISMA instalado en ese disco.")
         libre = os.statvfs(self.top)
@@ -369,6 +451,8 @@ class Actualizacion:
         for fs, punto, opc in (("/dev", "dev", ["--rbind"]), ("/proc", "proc", ["--bind"]),
                                ("/sys", "sys", ["--rbind"]), ("/run", "run", ["--bind"])):
             self.montar(fs, os.path.join(raiz, punto), *opc)
+            # Esclavo: así «umount -R» puede desmontarlo sin tocar ni quedar atado a los montajes del USB
+            subprocess.run(["mount", "--make-rslave", os.path.join(raiz, punto)], capture_output=True)
         entorno = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "DEBIAN_FRONTEND": "noninteractive", "LANG": "C.UTF-8"}
         instalados = paquetes_instalados(open(os.path.join(raiz, "var/lib/dpkg/status"), errors="replace").read())
         quitar = [p for p in PAQUETES_LIVE if p in instalados]
@@ -381,6 +465,12 @@ class Actualizacion:
         for version in sorted(modulos):
             accion = "-u" if os.path.exists(os.path.join(boot, f"initrd.img-{version}")) else "-c"
             self.run(["update-initramfs", accion, "-k", version], raiz=raiz, env=entorno)
+            if self.d["cifrado"]:
+                # Red de seguridad: sin el desbloqueo del disco dentro, ese arranque no llegaría a pedir la
+                # contraseña. Mejor deshacer la actualización que dejar un equipo que no arranca.
+                contenido = self.run(["lsinitramfs", f"/boot/initrd.img-{version}"], raiz=raiz, env=entorno)
+                if "cryptroot/crypttab" not in contenido:
+                    raise RuntimeError(f"initramfs {version} sin desbloqueo del disco")
         subprocess.run(["chroot", raiz, "/usr/bin/tisma-secureboot", "elegir"], capture_output=True, env=entorno)
         self.run(["update-grub"], raiz=raiz, env=entorno)
 
@@ -415,9 +505,8 @@ class Actualizacion:
             self.avisar("listo", "¡Listo! Quita el USB y reinicia el equipo.", 100)
         finally:
             self.desmontar_todo()
-            if self.d["cifrado"]:
-                subprocess.run(["cryptsetup", "close", MAPEO], capture_output=True)
-            shutil.rmtree(self.w, ignore_errors=True)
+            if self.limpiar_trabajo() and self.d["cifrado"]:
+                subprocess.run(["cryptsetup", "close", self.mapeo], capture_output=True)
 
     def volver(self, clave: bytes | None):
         """Botón «Volver a la versión anterior»: cambia @ por la última @tisma-anterior-* y su arranque."""
@@ -432,9 +521,8 @@ class Actualizacion:
             self.avisar("listo", "Listo: al reiniciar tendrás la versión anterior.", 100)
         finally:
             self.desmontar_todo()
-            if self.d["cifrado"]:
-                subprocess.run(["cryptsetup", "close", MAPEO], capture_output=True)
-            shutil.rmtree(self.w, ignore_errors=True)
+            if self.limpiar_trabajo() and self.d["cifrado"]:
+                subprocess.run(["cryptsetup", "close", self.mapeo], capture_output=True)
 
 
 def main(argv=None) -> int:
