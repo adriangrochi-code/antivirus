@@ -1,6 +1,6 @@
 [Unit]
 Description=TISMA: elegir el kernel de arranque según Secure Boot (kernel TISMA solo si es seguro)
-After=local-fs.target
+After=local-fs.target tisma-fase2.target
 ConditionPathExists=/sys/firmware/efi
 
 [Service]
@@ -9,4 +9,5 @@ ExecStart=/usr/bin/tisma-secureboot elegir
 Nice=10
 
 [Install]
-WantedBy=multi-user.target
+# Elige el kernel del PRÓXIMO arranque: no hace falta antes del escritorio (fase 2, sin quitar CPU al arranque)
+WantedBy=tisma-fase2.target

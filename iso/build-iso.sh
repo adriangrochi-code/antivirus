@@ -380,6 +380,8 @@ done
 for u in bluetooth ModemManager clamav-freshclam; do
     in_chroot systemctl disable "$u.service" 2>/dev/null || true
 done
+# lxc-net: red virtual de contenedores LXC que nada usa (Waydroid trae la suya); solo quitaba tiempo al arranque
+in_chroot systemctl disable lxc-net.service 2>/dev/null || true
 in_chroot systemctl enable cups.socket avahi-daemon.socket 2>/dev/null || true
 in_chroot systemctl disable cups.service avahi-daemon.service 2>/dev/null || true
 if [[ $WAYDROID == 1 ]]; then in_chroot systemctl disable waydroid-container 2>/dev/null || true; fi
@@ -435,7 +437,7 @@ if [[ -n "${TISMA_SB_KEY:-}" && -n "${TISMA_SB_CERT:-}" ]]; then
 else
     log "Sin TISMA_SB_KEY: el kernel TISMA no se firma (con Secure Boot activado arrancará el de Debian)"
 fi
-in_chroot systemctl enable tisma-secureboot.service 2>/dev/null || true
+in_chroot systemctl reenable tisma-secureboot.service 2>/dev/null || true
 # Pantalla de arranque con el logo (el tema lo genera make-branding.py a partir de «spinner»)
 in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/tisma ] && plymouth-set-default-theme tisma' \
     || log "AVISO: sin tema de arranque TISMA"

@@ -1,4 +1,5 @@
 [General]
+BrowserApplication=net.tisma.Navegador.desktop
 ColorScheme=TismaCristal
 AccentColor=145,69,230
 # Tipografía moderna y legible (Inter) y monoespaciada para terminal y código (JetBrains Mono)

@@ -350,12 +350,17 @@ def test_menu_limpio(tmp_path):
     assert m.aplicar(str(tmp_path)) == ["chromium.desktop", "com.github.jeromerobert.pdfarranger.desktop"]
     local = tmp_path / "usr/local/share/applications"
     c = (local / "chromium.desktop").read_text()
-    assert c.count("NoDisplay=true") == 1 and "NoDisplay=false" not in c
+    # No se oculta nada: va a «Opciones avanzadas» (categoría propia) y la acción no se toca
+    assert "Categories=X-TISMA-Avanzado;" in c and "NoDisplay=false" in c
+    assert m.avanzado("[Desktop Entry]\nCategories=System;Qt\n") == "[Desktop Entry]\nCategories=System;Qt;X-TISMA-Avanzado;\n"
+    assert m.avanzado(m.avanzado("[Desktop Entry]\nCategories=A;\n")).count("X-TISMA-Avanzado") == 1
     p = (local / "com.github.jeromerobert.pdfarranger.desktop").read_text()
     assert "Name[es]=Organizar PDF" in p and "[Desktop Action new]\nName[es]=Ventana nueva" in p
     menu = (ROOT / "etc/xdg/menus/applications-merged/tisma.menu").read_text()
     for borrada in ("Science", "Graphics", "System", "Development", "Help", "Waydroid"):
         assert f"<Name>{borrada}</Name><Deleted/>" in menu
+    assert menu.count("<Exclude><Category>X-TISMA-Avanzado</Category></Exclude>") == 6
+    assert "Name=Opciones avanzadas" in (ROOT / "usr/share/desktop-directories/tisma-avanzado.directory").read_text()
     assert (ROOT / "usr/share/desktop-directories/tisma-herramientas.directory").read_text().count("Name=Herramientas")
     assert "lanzadores.py" in (ROOT.parent / "iso/build-iso.sh").read_text()
 
@@ -365,3 +370,13 @@ def test_bandeja_y_ajustes_una_vez():
     assert "hiddenItems" in js and "shownItems" not in js and "extraItems" not in js   # lo que la vaciaba
     s = (ROOT / "usr/lib/tisma/ajustes-escritorio").read_text()
     assert "bandeja-1" in s and (ROOT / "etc/xdg/autostart/tisma-ajustes-escritorio.desktop").exists()
+
+
+def test_arranque_sin_estorbos():
+    """Lo que no hace falta antes del escritorio va en la fase 2 o no arranca solo."""
+    sb = (ROOT / "etc/systemd/system/tisma-secureboot.service").read_text()
+    assert "WantedBy=tisma-fase2.target" in sb and "multi-user" not in sb
+    b = (ROOT.parent / "iso/build-iso.sh").read_text()
+    assert "systemctl disable lxc-net.service" in b and "systemctl reenable tisma-secureboot.service" in b
+    for f in ("print-applet.desktop", "orca-autostart.desktop"):
+        assert "Hidden=true" in (ROOT / "etc/xdg/autostart" / f).read_text()

@@ -7,3 +7,9 @@ application/x-dosexec=net.tisma.AbrirWindows.desktop
 application/x-msi=net.tisma.AbrirWindows.desktop
 application/x-ms-installer=net.tisma.AbrirWindows.desktop
 application/x-wine-extension-msp=net.tisma.AbrirWindows.desktop
+# Navegador predeterminado: TISMA Navegador (Chromium aislado). Sin esto, los enlaces y el favorito «navegador»
+# del menú abrían Chromium SIN aislar.
+x-scheme-handler/http=net.tisma.Navegador.desktop
+x-scheme-handler/https=net.tisma.Navegador.desktop
+text/html=net.tisma.Navegador.desktop
+application/xhtml+xml=net.tisma.Navegador.desktop

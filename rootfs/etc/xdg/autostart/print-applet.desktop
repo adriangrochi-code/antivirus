@@ -1,0 +1,8 @@
+[Desktop Entry]
+# TISMA: no arranca solo al entrar (menos espera al iniciar sesión). print-applet repite los avisos de
+# impresora que ya da Plasma; el lector de pantalla lo
+# lanza la accesibilidad de Plasma (kaccess) cuando se activa, no este autoarranque de GNOME.
+Type=Application
+Name=print-applet
+Exec=true
+Hidden=true

@@ -2,17 +2,22 @@
 "http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
 <!-- TISMA: menú de inicio con pocas categorías claras (antes eran 12, con «Desarrollo», «Ayuda» o «Waydroid»).
      Ciencia va dentro de Educación; Gráficos, dentro de Multimedia; Sistema, Utilidades y Desarrollo, en
-     «Herramientas». Lo que se quita del menú sigue apareciendo al buscar. -->
+     «Herramientas». Lo técnico va a «Avanzado»; todo sigue apareciendo al buscar. -->
 <Menu>
 	<Name>Applications</Name>
 	<Menu>
 		<Name>Education</Name>
 		<Include><Category>Science</Category></Include>
+		<Exclude><Category>X-TISMA-Avanzado</Category></Exclude>
 	</Menu>
 	<Menu>
 		<Name>Multimedia</Name>
 		<Include><Category>Graphics</Category></Include>
+		<Exclude><Category>X-TISMA-Avanzado</Category></Exclude>
 	</Menu>
+	<Menu><Name>Internet</Name><Exclude><Category>X-TISMA-Avanzado</Category></Exclude></Menu>
+	<Menu><Name>Office</Name><Exclude><Category>X-TISMA-Avanzado</Category></Exclude></Menu>
+	<Menu><Name>Games</Name><Exclude><Category>X-TISMA-Avanzado</Category></Exclude></Menu>
 	<Menu>
 		<Name>Utilities</Name>
 		<Directory>tisma-herramientas.directory</Directory>
@@ -21,6 +26,14 @@
 			<Category>Settings</Category>
 			<Category>Development</Category>
 		</Include>
+		<Exclude><Category>X-TISMA-Avanzado</Category></Exclude>
+	</Menu>
+	<!-- Lo que no se usa a diario (consola, particiones, cifrado, monitores…): «Opciones avanzadas», la última
+	     (Kickoff aplana las subcarpetas: por eso es una categoría propia y no Herramientas > Avanzado) -->
+	<Menu>
+		<Name>TismaAvanzado</Name>
+		<Directory>tisma-avanzado.directory</Directory>
+		<Include><Category>X-TISMA-Avanzado</Category></Include>
 	</Menu>
 	<Menu><Name>Science</Name><Deleted/></Menu>
 	<Menu><Name>Graphics</Name><Deleted/></Menu>

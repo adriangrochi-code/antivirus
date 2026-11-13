@@ -1,0 +1,4 @@
+# TISMA: pantalla de carga propia al entrar (look-and-feel org.centinela.desktop, contents/splash)
+[KSplash]
+Engine=KSplashQML
+Theme=org.centinela.desktop
