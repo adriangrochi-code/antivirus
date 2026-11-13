@@ -1,0 +1,31 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+"http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
+<!-- TISMA: menú de inicio con pocas categorías claras (antes eran 12, con «Desarrollo», «Ayuda» o «Waydroid»).
+     Ciencia va dentro de Educación; Gráficos, dentro de Multimedia; Sistema, Utilidades y Desarrollo, en
+     «Herramientas». Lo que se quita del menú sigue apareciendo al buscar. -->
+<Menu>
+	<Name>Applications</Name>
+	<Menu>
+		<Name>Education</Name>
+		<Include><Category>Science</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Multimedia</Name>
+		<Include><Category>Graphics</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Utilities</Name>
+		<Directory>tisma-herramientas.directory</Directory>
+		<Include>
+			<Category>System</Category>
+			<Category>Settings</Category>
+			<Category>Development</Category>
+		</Include>
+	</Menu>
+	<Menu><Name>Science</Name><Deleted/></Menu>
+	<Menu><Name>Graphics</Name><Deleted/></Menu>
+	<Menu><Name>System</Name><Deleted/></Menu>
+	<Menu><Name>Development</Name><Deleted/></Menu>
+	<Menu><Name>Help</Name><Deleted/></Menu>
+	<Menu><Name>Waydroid</Name><Deleted/></Menu>
+</Menu>

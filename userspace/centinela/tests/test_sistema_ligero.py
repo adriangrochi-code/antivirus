@@ -334,3 +334,34 @@ def test_dependencias_de_hope_solo_con_hope_y_de_debian():
     assert "hope-paquetes.list" in rama              # dentro de la rama «Hope va en la imagen»
     base = (ROOT.parent / "iso/packages.list").read_text(encoding="utf-8")
     assert "python3-cvc5" not in base and "python3-statsmodels" not in base   # la ISO pública no los carga
+
+
+def test_menu_limpio(tmp_path):
+    """Pocas categorías y sin lanzadores técnicos o repetidos (Chromium suelto, Discover, cpupower-gui…)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lanzadores", ROOT.parent / "iso/lanzadores.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    apps = tmp_path / "usr/share/applications"
+    apps.mkdir(parents=True)
+    (apps / "chromium.desktop").write_text("[Desktop Entry]\nName=Chromium\nNoDisplay=false\n\n[Desktop Action x]\nName=y\n")
+    (apps / "com.github.jeromerobert.pdfarranger.desktop").write_text(
+        "[Desktop Entry]\nName=PDF Arranger\nName[es]=Ventana nueva\n\n[Desktop Action new]\nName[es]=Ventana nueva\n")
+    assert m.aplicar(str(tmp_path)) == ["chromium.desktop", "com.github.jeromerobert.pdfarranger.desktop"]
+    local = tmp_path / "usr/local/share/applications"
+    c = (local / "chromium.desktop").read_text()
+    assert c.count("NoDisplay=true") == 1 and "NoDisplay=false" not in c
+    p = (local / "com.github.jeromerobert.pdfarranger.desktop").read_text()
+    assert "Name[es]=Organizar PDF" in p and "[Desktop Action new]\nName[es]=Ventana nueva" in p
+    menu = (ROOT / "etc/xdg/menus/applications-merged/tisma.menu").read_text()
+    for borrada in ("Science", "Graphics", "System", "Development", "Help", "Waydroid"):
+        assert f"<Name>{borrada}</Name><Deleted/>" in menu
+    assert (ROOT / "usr/share/desktop-directories/tisma-herramientas.directory").read_text().count("Name=Herramientas")
+    assert "lanzadores.py" in (ROOT.parent / "iso/build-iso.sh").read_text()
+
+
+def test_bandeja_y_ajustes_una_vez():
+    js = (ROOT / "usr/share/tisma/escritorio/bandeja.js").read_text()
+    assert "hiddenItems" in js and "shownItems" not in js and "extraItems" not in js   # lo que la vaciaba
+    s = (ROOT / "usr/lib/tisma/ajustes-escritorio").read_text()
+    assert "bandeja-1" in s and (ROOT / "etc/xdg/autostart/tisma-ajustes-escritorio.desktop").exists()

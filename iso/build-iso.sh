@@ -399,6 +399,8 @@ if [[ -f "$CHROOT/usr/share/applications/org.kde.dolphin.desktop" ]]; then
     sed -E -e '/^\[Desktop Action/,$b' -e 's/^Name(\[[^]]*\])?=.*/Name\1=Archivos/' \
         "$CHROOT/usr/share/applications/org.kde.dolphin.desktop" > "$CHROOT/usr/local/share/applications/org.kde.dolphin.desktop"
 fi
+# Menú limpio: sin lanzadores técnicos o repetidos y con nombres claros (iso/lanzadores.py)
+python3 "$HERE/lanzadores.py" "$CHROOT" >/dev/null
 # Sin carpeta «Plantillas» en la carpeta personal: las plantillas de «Crear nuevo» viven en /usr/share/templates.
 if [[ -f "$CHROOT/etc/xdg/user-dirs.defaults" ]]; then
     sed -i 's/^TEMPLATES=/#TEMPLATES=/' "$CHROOT/etc/xdg/user-dirs.defaults"
