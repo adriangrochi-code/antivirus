@@ -16,8 +16,8 @@ import time
 
 DIR = os.environ.get("ESCUDO_ALERTAS_DIR", "/run/escudo")
 PATH = DIR + "/alertas.jsonl"
-ICON = {"critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
-TITLE = {"teclado_falso": "USB falso bloqueado", "primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
+ICON = {"info": "security-high", "critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
+TITLE = {"kernel_listo": "Actualización instalada", "teclado_falso": "USB falso bloqueado", "primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}
@@ -82,13 +82,43 @@ def _con_boton(a: dict, base: list[str], titulo: str, body: str, run=subprocess.
          ok_txt if hecho else mal_txt], check=False)
 
 
+# Textos para cualquier persona: sin rutas, nombres de procesos ni órdenes. El detalle técnico queda en el registro
+# de Escudo y en TISMA Seguridad.
+SIMPLE = {
+    "navegador_secretos": "{programa} intentó leer las sesiones o contraseñas guardadas del navegador. Si no lo "
+                          "abriste tú, revisa el equipo en TISMA Seguridad.",
+    "secretos": "{programa} intentó leer tus claves privadas. Si no lo abriste tú, revisa el equipo en "
+                "TISMA Seguridad.",
+    "persistencia": "{programa} intentó quedar configurado para abrirse solo al encender el equipo.",
+    "exec_tmp": "Se abrió {programa} desde una carpeta de descargas o temporal.",
+    "ptrace": "{programa} intentó meterse en otro programa abierto.",
+    "modulos": "Se cargó una pieza nueva en el núcleo del sistema.",
+    "ldpreload": "Un programa intentó cambiar cómo se abren todos los demás.",
+}
+INTERPRETES = re.compile(r"^(python|perl|ruby|node|bash|sh|dash|java)[\d.]*$")
+
+
+def programa(exe) -> str:
+    """Nombre corto para la persona: «Un programa» si es un intérprete (no dice nada útil) o no se sabe."""
+    nombre = os.path.basename(exe) if isinstance(exe, str) else ""
+    return f"«{nombre}»" if nombre and not INTERPRETES.match(nombre) else "Un programa"
+
+
+def cuerpo(a: dict) -> str:
+    plantilla = SIMPLE.get(a.get("kind"))
+    if plantilla:
+        texto = plantilla.format(programa=programa(a.get("exe")))
+        return texto[0].upper() + texto[1:]
+    return f"{a.get('detail', '')}\n{a.get('action', '')}".strip()
+
+
 def notify(line: str, run=subprocess.run) -> threading.Thread | None:
     try:
         a = json.loads(line)
     except ValueError:
         return None
     urgency = "critical" if a.get("severity") in ("critical", "high") else "normal"
-    body = f"{a.get('detail', '')}\n{a.get('action', '')}"[:400]
+    body = cuerpo(a)[:400]
     titulo = TITLE.get(a.get("kind"), "Escudo")
     base = ["notify-send", "-a", "Escudo", "-u", urgency, "-i", ICON.get(a.get("severity"), "security-medium")]
     if a.get("boton") in ACCIONES:

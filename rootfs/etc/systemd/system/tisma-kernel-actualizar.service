@@ -1,0 +1,18 @@
+# Kernel TISMA: busca el último parche de seguridad de su rama y, si hay, lo compila e instala solo, con la
+# prioridad mínima y solo con el equipo enchufado y libre. Se usa al reiniciar.
+[Unit]
+Description=TISMA - actualizar el kernel solo (parches de seguridad)
+Wants=network-online.target
+After=network-online.target
+ConditionKernelVersion=~centinela
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStartPre=/usr/bin/centinela esperar-libre --seguridad
+ExecStart=/usr/lib/tisma/kernel-actualizar
+TimeoutStartSec=infinity
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=idle
+PrivateTmp=yes

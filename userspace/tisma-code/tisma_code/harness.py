@@ -65,10 +65,30 @@ def _as_call(obj, n: int) -> dict | None:
     return {"id": f"txt{n}", "type": "function", "function": {"name": name, "arguments": args}}
 
 
+_LINEA_JSON = re.compile(r"^\s*(\{.*\})\s*$", re.M)
+
+
+def _es_llamada(blob: str, known: set[str]) -> bool:
+    try:
+        c = _as_call(repair_json(blob), 0)
+    except ValueError:
+        return False
+    return bool(c) and c["function"]["name"] in known
+
+
+def strip_text_tool_calls(content: str, known: set[str]) -> str:
+    """Quita del texto visible las llamadas escritas a mano (etiquetas, bloques ```json o líneas sueltas
+    {"name": …}): son instrucciones para el programa, no una respuesta para la persona."""
+    t = _TOOL_TAG.sub("", content)
+    t = _FENCE.sub(lambda m: "" if _es_llamada(m.group(1), known) else m.group(0), t)
+    t = _LINEA_JSON.sub(lambda m: "" if _es_llamada(m.group(1), known) else m.group(0), t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
 def extract_text_tool_calls(content: str, known: set[str]) -> list[dict]:
-    """Llamadas escritas como texto (<tool_call>…</tool_call> o bloques ```json)."""
+    """Llamadas escritas como texto (<tool_call>…</tool_call>, bloques ```json o una línea {"name": …})."""
     calls = []
-    for blob in _TOOL_TAG.findall(content) or _FENCE.findall(content):
+    for blob in _TOOL_TAG.findall(content) or _FENCE.findall(content) or _LINEA_JSON.findall(content):
         try:
             c = _as_call(repair_json(blob), len(calls))
         except ValueError:

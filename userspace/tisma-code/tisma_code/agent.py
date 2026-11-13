@@ -236,6 +236,7 @@ class Session:
                       "repaired_calls": 0, "fuzzy_edits": 0, "compactions": 0,
                       "verified_tasks": 0, "review_rounds": 0, "escalations": 0}
         self._loops = harness.LoopDetector()
+        self._repetidas = 0
         self._pending: dict[str, tuple[threading.Event, dict]] = {}
         self._busy = threading.Lock()
         self._cancel = threading.Event()
@@ -608,7 +609,7 @@ class Session:
                 calls = harness.extract_text_tool_calls(content, self.tool_names)
                 if calls:
                     self.stats["repaired_calls"] += len(calls)
-                    content = harness._TOOL_TAG.sub("", content).strip()
+                    content = harness.strip_text_tool_calls(content, self.tool_names)
                 elif self.es_hope():
                     # Hope escribe ⟦nombre: entrada⟧ de forma nativa (las de su catálogo van a la herramienta «hope»)
                     calls = harness.extract_bracket_tool_calls(content, self.schemas, hope_catalog=self.hope is not None)
@@ -622,10 +623,28 @@ class Session:
                 self.emit("assistant", text=content)
             if not calls:
                 return content
+            antes = self._repetidas
             for call in calls:
                 self.messages.append(self._run_call(call))
+            # Un modelo pequeño ignora el aviso de «llamada repetida» y sigue igual hasta el límite de pasos (visto
+            # en la A275 con una pregunta simple): a la segunda repetición se le pide la respuesta SIN herramientas
+            if self._repetidas >= 2 and self._repetidas > antes:
+                return self._responder_ya()
         self.emit("info", message=f"Se alcanzó el límite de {MAX_STEPS} pasos")
-        return ""
+        return self._responder_ya()
+
+    def _responder_ya(self) -> str:
+        """Respuesta final sin herramientas con lo que ya se sabe (corta un bucle)."""
+        self.messages.append({"role": "user", "content": "Ya tienes la información necesaria. Responde ahora a mi "
+                              "pregunta con lo que sabes, en español y sin usar herramientas."})
+        self.emit("thinking", model=self.current.name)
+        msg = self._call_llm(self.messages, [])
+        content = harness.strip_text_tool_calls(msg.get("content") or "", self.tool_names)
+        self.messages.append({"role": "assistant", "content": content})
+        self._repetidas = 0
+        if content:
+            self.emit("assistant", text=content)
+        return content
 
     EXPLORAR_TOOLS = ("list_dir", "read_file", "search", "mapa_repo", "simbolo", "docs_buscar", "docs_leer")
     EXPLORAR_PROMPT = ("Eres un explorador de código de solo lectura. Responde a la pregunta investigando el proyecto "
@@ -739,6 +758,7 @@ class Session:
         if k and k not in self.kits:
             self.kits.add(k)                       # la llamó sin tenerla a la vista: se ejecuta y queda activa
         if self._loops.check(name, args):
+            self._repetidas += 1
             return reply("Aviso: es la tercera vez seguida que haces exactamente esta llamada. "
                          "Cambia de enfoque: lee otro archivo, revisa el error o pregunta al usuario.", False, args)
         if name in exactas.NOMBRES:

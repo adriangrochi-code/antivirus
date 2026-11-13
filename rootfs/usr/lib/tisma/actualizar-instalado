@@ -1,0 +1,7 @@
+#!/usr/bin/python3 -I
+# Actualiza el TISMA instalado con el sistema del USB (solo en la sesión del USB). Lo lanza la ventana
+# «Actualizar TISMA» con pkexec; la contraseña del disco llega por la entrada estándar.
+import sys
+sys.path.insert(0, "/usr/lib/centinela/python")
+from tisma_actualizar.motor import main
+sys.exit(main())

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Después de actualizar desde el USB: instala los programas que tenías (Tienda, usos elegidos) y la versión nueva
+# no trae. Solo con internet; si algo no está disponible, sigue con el resto. Al terminar se borra la lista.
+set -u
+L=/var/lib/tisma/reinstalar.list
+[ -f "$L" ] || exit 0
+if [ -f /var/lib/tisma/arquitecturas ]; then
+    while read -r a; do [ -n "$a" ] && dpkg --add-architecture "$a"; done < /var/lib/tisma/arquitecturas
+fi
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q || exit 1                        # sin internet: se reintenta en el próximo arranque
+paquetes="$(grep -v '^#' "$L" | tr '\n' ' ')"
+if [ -n "$paquetes" ] && ! apt-get install -y -q --no-install-recommends $paquetes; then
+    for p in $paquetes; do apt-get install -y -q --no-install-recommends "$p" || true; done
+fi
+rm -f "$L" /var/lib/tisma/arquitecturas

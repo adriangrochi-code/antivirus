@@ -1,0 +1,17 @@
+#!/bin/sh
+# Actualización AUTOMÁTICA del kernel TISMA (el que se compila aparte): sin preguntar ni pedir nada. Lo lanza
+# tisma-kernel-actualizar.timer y espera a que el equipo esté enchufado y sin uso (centinela esperar-libre).
+# Al terminar solo se avisa «reinicia cuando quieras». El kernel firmado de Debian ya se actualiza solo con las
+# actualizaciones automáticas de seguridad: aquí no hay nada que hacer.
+set -eu
+case "$(uname -r)" in *centinela*) ;; *) exit 0 ;; esac
+running="$(uname -r | cut -d- -f1)"
+branch="$(echo "$running" | cut -d. -f1-2)"
+latest="$(/usr/lib/centinela/kernel/latest-lts.sh "$branch" 2>/dev/null || true)"
+[ -n "$latest" ] && [ "$latest" != "$running" ] || exit 0
+# Ya instalado y esperando al reinicio: no se compila otra vez
+if ls /boot/vmlinuz-"$latest"-centinela* >/dev/null 2>&1; then exit 0; fi
+mkdir -p /run/escudo
+if /usr/bin/centinela build-kernel --install >/var/log/tisma-kernel-actualizar.log 2>&1; then
+    printf '{"kind":"kernel_listo","severity":"info","detail":"Se instaló una actualización de seguridad.","action":"Reinicia el equipo cuando quieras para terminar."}\n' >> /run/escudo/alertas.jsonl
+fi

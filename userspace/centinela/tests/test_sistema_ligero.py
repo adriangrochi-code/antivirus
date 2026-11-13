@@ -109,7 +109,8 @@ def test_installer_pages_like_windows():
     assert all(set(o) == {"try_remove"} for o in ops) and "live-boot" in ops[0]["try_remove"]
     # El icono y el arranque automático usan el lanzador que limpia un intento fallido anterior
     assert "Exec=/usr/lib/tisma/instalar-tisma" in (ROOT / "usr/share/tisma/live/instalar-tisma.desktop").read_text()
-    assert "exec /usr/lib/tisma/instalar-tisma" in (ROOT / "usr/lib/tisma/instalador-auto").read_text()
+    auto = (ROOT / "usr/lib/tisma/instalador-auto").read_text()
+    assert "exec /usr/lib/tisma/instalar-tisma" in auto and "exec /usr/bin/tisma-actualizar-usb" in auto
 
 
 def test_dns_blocks_malware_with_live_resolvers():

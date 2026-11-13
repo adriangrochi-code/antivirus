@@ -1,0 +1,6 @@
+#!/usr/bin/python3 -I
+# Ventana «Actualizar TISMA» (sesión del USB): actualiza el sistema instalado conservando todo
+import sys
+sys.path.insert(0, "/usr/lib/centinela/python")
+from tisma_actualizar.ventana import main
+sys.exit(main())

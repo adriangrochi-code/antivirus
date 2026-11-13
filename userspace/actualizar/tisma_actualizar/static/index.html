@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actualizar TISMA</title>
+<style>
+:root { --bg:#f6f5f9; --panel:#fff; --borde:#e2dfea; --txt:#1e1c24; --suave:#5d5a68; --acento:#8b3fe0; --error:#c0392b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#18171c; --panel:#232229; --borde:#34323c; --txt:#ececf1; --suave:#a3a1ad; --error:#f87171; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font:18px/1.55 Inter, system-ui, sans-serif; }
+main { max-width:620px; margin:0 auto; padding:40px 24px; text-align:center; }
+img { width:64px; } h1 { font-size:28px; margin:14px 0 6px; } p { color:var(--suave); margin:0 0 20px; }
+input { width:100%; font:inherit; padding:13px 16px; border-radius:12px; border:1px solid var(--borde);
+        background:var(--panel); color:var(--txt); margin-bottom:14px; }
+button.btn { width:100%; background:var(--acento); color:#fff; border:0; border-radius:12px; padding:15px; font:inherit;
+             font-weight:600; cursor:pointer; }
+button.btn:disabled { opacity:.5; }
+button.sec { background:transparent; color:var(--txt); border:1px solid var(--borde); margin-top:22px; }
+button.link { background:none; border:0; color:var(--suave); font:inherit; font-size:16px; cursor:pointer; margin-top:18px;
+              text-decoration:underline; }
+.barra { height:12px; background:var(--borde); border-radius:8px; overflow:hidden; margin:24px 0 10px; }
+.barra div { height:100%; width:0; background:var(--acento); transition:width .4s; }
+.error { color:var(--error); font-weight:600; min-height:1.5em; }
+.oculto { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/static/logo.svg" alt="">
+  <section id="inicio">
+    <h1>Este equipo ya tiene TISMA</h1>
+    <p>Puedes actualizarlo a esta versión. Tus archivos, programas, wifi y ajustes se conservan.</p>
+    <input id="clave" type="password" placeholder="Contraseña del disco" aria-label="Contraseña del disco" autofocus>
+    <div class="error" id="error"></div>
+    <button class="btn" id="actualizar">Actualizar</button>
+    <button class="btn sec" id="instalar">Formatear e instalar de cero</button>
+    <p style="font-size:15px;margin-top:8px">Borra todo lo del equipo y deja TISMA como nuevo.</p>
+    <button class="link oculto" id="volver">Volver a la versión anterior</button>
+  </section>
+  <section id="progreso" class="oculto">
+    <h1 id="titulo">Actualizando…</h1>
+    <p>No apagues el equipo. Tarda unos minutos.</p>
+    <div class="barra"><div id="pct"></div></div>
+    <p id="texto"></p>
+  </section>
+  <section id="fin" class="oculto">
+    <h1 id="fin-titulo">¡Listo!</h1>
+    <p id="fin-texto">Quita el USB y reinicia el equipo.</p>
+    <button class="btn" id="reiniciar">Reiniciar ahora</button>
+  </section>
+</main>
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s);
+const api = async (ruta, cuerpo) => {
+  const r = await fetch(ruta, {method: cuerpo ? "POST" : "GET", headers: {"X-Token": TOKEN, "Content-Type": "application/json"},
+                               body: cuerpo ? JSON.stringify(cuerpo) : undefined});
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || "error"); return d;
+};
+let disco = null, orden = "actualizar";
+const ver = id => ["inicio", "progreso", "fin"].forEach(s => $("#" + s).classList.toggle("oculto", s !== id));
+
+async function hacer(o) {
+  orden = o; $("#error").textContent = "";
+  if (disco.cifrado && !$("#clave").value) { $("#error").textContent = "Escribe la contraseña del disco."; return; }
+  try { await api("/api/hacer", {orden: o, raiz: disco.raiz, clave: $("#clave").value}); }
+  catch (e) { $("#error").textContent = e.message; return; }
+  $("#clave").value = "";
+  $("#titulo").textContent = o === "volver" ? "Volviendo a la versión anterior…" : "Actualizando…";
+  ver("progreso"); seguir();
+}
+
+function seguir() {
+  const t = setInterval(async () => {
+    const d = await api("/api/estado");
+    $("#pct").style.width = (d.pct || 0) + "%"; $("#texto").textContent = d.texto || "";
+    if (d.listo) { clearInterval(t); $("#fin-texto").textContent = d.listo; ver("fin"); }
+    else if (!d.corriendo && d.error) { clearInterval(t); ver("inicio"); $("#error").textContent = d.error; }
+  }, 1000);
+}
+
+$("#actualizar").onclick = () => hacer("actualizar");
+$("#volver").onclick = () => { if (confirm("¿Volver a la versión que tenías antes de actualizar?")) hacer("volver"); };
+$("#instalar").onclick = async () => {
+  if (!confirm("Formatear BORRA todo lo que hay en el equipo (archivos, programas y ajustes). ¿Seguir?")) return;
+  await api("/api/instalar", {});
+};
+$("#clave").onkeydown = e => { if (e.key === "Enter") hacer("actualizar"); };
+$("#reiniciar").onclick = () => api("/api/reiniciar", {});
+
+(async () => {
+  const d = await api("/api/discos");
+  if (!d.discos.length) { await api("/api/instalar", {}); return; }
+  disco = d.discos[0];
+  if (!disco.cifrado) $("#clave").classList.add("oculto");
+  $("#volver").classList.remove("oculto");
+})();
+</script>
+</body>
+</html>

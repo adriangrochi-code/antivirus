@@ -140,6 +140,15 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .pbar i { display: block; height: 100%; width: 0; background: var(--accent); }
 @media (max-width: 600px) { .local { display: none; } .col, .composer { padding-left: 12px; padding-right: 12px; }
   .empty h1 { font-size: 22px; } .chip { padding-left: 8px; padding-right: 8px; } }
+.ajbtn { background: transparent; border: 1px solid var(--line, #3a3a44); color: inherit; border-radius: 8px;
+  padding: 4px 10px; margin-left: 8px; font: inherit; cursor: pointer; }
+.ajpanel { position: fixed; top: 56px; right: 14px; width: min(420px, calc(100vw - 28px)); max-height: calc(100vh - 80px);
+  overflow: auto; background: var(--panel, #202027); border: 1px solid var(--line, #3a3a44); border-radius: 14px;
+  padding: 14px 16px; z-index: 50; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.ajpanel h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin: 16px 0 8px; }
+.ajhead { display: flex; justify-content: space-between; align-items: center; font-size: 17px; }
+.ajrow { margin-bottom: 10px; font-size: 14px; } .ajrow small { opacity: .7; display: block; }
+.ajsw { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 6px 0; }
 </style>
 </head>
 <body>
@@ -150,7 +159,19 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
     <div class="sp"></div>
     <div class="engine"><i class="dot" id="dot"></i><span id="engine">buscando motor…</span></div>
     <span class="local" title="Nada sale de tu equipo">100 % local</span>
+    <button class="ajbtn" id="bajando" hidden title="Descargas en curso">⬇ <span></span></button>
+    <button class="ajbtn" id="ajbtn" title="Ajustes" aria-label="Ajustes">⚙</button>
   </header>
+  <div id="ajustes" class="ajpanel" hidden role="dialog" aria-label="Ajustes">
+    <div class="ajhead"><b>Ajustes</b><button class="ajbtn" id="ajcerrar" aria-label="Cerrar">✕</button></div>
+    <h3>Descargas</h3><div id="aj-desc"></div>
+    <h3>Motor de IA</h3><div id="aj-motor"></div>
+    <label class="ajsw"><input type="checkbox" id="aj-auto"> Arrancar el motor solo al abrir TISMA Code</label>
+    <h3>Componentes</h3><div id="aj-comp"></div>
+    <h3>Privacidad</h3>
+    <label class="ajsw"><input type="checkbox" id="aj-trazas"> Guardar en este equipo el registro de las tareas
+      (para mejorar Hope; nunca se envía)</label>
+  </div>
 
   <main id="chat"><div class="empty" id="empty">
     <img src="/static/logo.svg" alt="">
@@ -491,6 +512,42 @@ $("#qBtn").onclick = async () => {
     });
   } catch (e) { $("#results").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 };
+// ---------------------------------------------------------------- Ajustes
+const gbs = n => (n / 1e9).toFixed(n > 1e10 ? 0 : 1) + " GB";
+const ESTADOS = {descargando: "Descargando", verificando: "Comprobando el archivo", completo: "Descargado", error: "Falló"};
+function pintarDescargas(ds) {
+  const activas = ds.filter(d => d.status === "descargando" || d.status === "verificando");
+  const total = activas.reduce((a, d) => a + (d.total || 0), 0), hecho = activas.reduce((a, d) => a + (d.done || 0), 0);
+  $("#bajando").hidden = !activas.length;
+  $("#bajando span").textContent = total ? Math.floor(100 * hecho / total) + " %" : "…";
+  $("#aj-desc").innerHTML = ds.length ? ds.map(d => `<div class="ajrow">${esc(d.key.split("/").pop())}
+      <small>${ESTADOS[d.status] || esc(d.status)}${d.total ? ` · ${gbs(d.done)} de ${gbs(d.total)}` : ""}${d.error ? " · " + esc(d.error) : ""}</small>
+      <div class="pbar"><i style="width:${d.total ? (100 * d.done / d.total).toFixed(1) : (d.status === "completo" ? 100 : 0)}%"></i></div></div>`).join("")
+    : `<div class="ajrow"><small>No hay descargas. Elige un modelo abajo, en el selector de modelo.</small></div>`;
+}
+async function abrirAjustes() {
+  const a = await api("/api/ajustes");
+  pintarDescargas(a.descargas);
+  const mo = a.motor || {};
+  $("#aj-motor").innerHTML = `<div class="ajrow">${esc(mo.nombre || "Apagado")}<small>${esc([mo.modelo, mo.detalle].filter(Boolean).join(" · ") || "Sin modelo en marcha")}</small></div>`;
+  $("#aj-comp").innerHTML = Object.entries(a.componentes).map(([k, c]) => `<div class="ajrow">${esc(c.nombre)}
+      <small>${esc(c.desc)}</small>${c.estado === "instalado" ? "<small>✓ Instalado</small>" : c.estado === "instalando"
+      ? "<small>Instalando…</small>" : `<button class="ajbtn" data-comp="${esc(k)}" style="margin:6px 0 0">Instalar</button>`}</div>`).join("");
+  $("#aj-comp").querySelectorAll("[data-comp]").forEach(b => b.onclick = async () => {
+    b.disabled = true; b.textContent = "Instalando…";
+    try { await api("/api/componentes/instalar", {nombre: b.dataset.comp}); } catch (e) { b.textContent = e.message; }
+  });
+  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor;
+  $("#ajustes").hidden = false;
+}
+$("#ajbtn").onclick = () => $("#ajustes").hidden ? abrirAjustes() : ($("#ajustes").hidden = true);
+$("#bajando").onclick = abrirAjustes;
+$("#ajcerrar").onclick = () => $("#ajustes").hidden = true;
+$("#aj-trazas").onchange = e => api("/api/ajustes", {trazas_hope: e.target.checked});
+$("#aj-auto").onchange = e => api("/api/ajustes", {auto_motor: e.target.checked});
+// El indicador de descargas de arriba se mantiene al día aunque el panel esté cerrado
+setInterval(async () => { try { pintarDescargas((await api("/api/descargas")).descargas); } catch (e) {} }, 3000);
+
 function updateDownload(ev) {
   const bar = document.getElementById("pb-" + btoa(ev.key).replace(/=/g, ""));
   if (bar && ev.total) bar.firstChild.style.width = (100 * ev.done / ev.total).toFixed(1) + "%";

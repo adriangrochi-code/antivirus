@@ -202,3 +202,9 @@ def test_ningun_mensaje_pide_la_terminal():
             if re.search(r"[\"'«].{0,80}\bsudo [a-z]", linea) and not linea.lstrip().startswith("#"):
                 malos.append(f"{f.name}:{n}")
     assert not malos, malos
+
+
+def test_ajustes_solo_claves_permitidas():
+    """«Ajustes» solo cambia los interruptores previstos, y solo con valores sí/no."""
+    src = (Path(__file__).resolve().parents[1] / "tisma_code/server.py").read_text()
+    assert 'for k in ("trazas_hope", "auto_motor"):' in src and "isinstance(b.get(k), bool)" in src

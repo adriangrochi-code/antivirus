@@ -171,3 +171,26 @@ def test_modo_ia_can_be_disabled(monkeypatch):
     monkeypatch.setattr(agent, "_MODO_IA", None)
     monkeypatch.setenv("TISMA_MODO_IA", "0")
     assert agent.modo_ia() is False
+
+
+def test_bucle_de_modelo_pequeno_se_corta(project, tmp_path_factory):
+    """Visto en la A275 (qwen 1.5B): pide leer main.py una y otra vez escribiendo la llamada como texto. A la
+    segunda repetición se le pide responder sin herramientas y el JSON nunca llega a la pantalla."""
+    texto = '```json\n{"name": "read_file", "arguments": {"path": "calc.py"}}\n```\n{"name": "read_file", "arguments": {"path": "calc.py"}}'
+    script = [{"content": texto}] * 8 + [{"content": "calc.py define suma(a, b)."}]
+    llm = FakeLLM(script)
+    s = agent.Session(str(project), "http://x/v1", "m", llm=llm, kb_dir=tmp_path_factory.mktemp("kb"))
+    s.send("¿Qué hace calc.py?")
+    events = []
+    while not s.events.empty():
+        events.append(s.events.get())
+    textos = [e["text"] for e in events if e["type"] == "assistant"]
+    assert all('"name"' not in t for t in textos)
+    assert s.stats["steps"] <= 6                                   # antes: hasta 50 pasos
+    assert any("sin usar herramientas" in (m.get("content") or "") for m in llm.seen)
+
+
+def test_quitar_llamadas_del_texto_visible():
+    t = 'Voy a mirar.\n```json\n{"name": "read_file", "arguments": {"path": "a"}}\n```\n{"name":"read_file","arguments":{}}\nUn dato: {"x": 1}'
+    limpio = harness.strip_text_tool_calls(t, {"read_file"})
+    assert limpio == 'Voy a mirar.\n\nUn dato: {"x": 1}' or ('read_file' not in limpio and '{"x": 1}' in limpio)

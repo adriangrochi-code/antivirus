@@ -72,3 +72,22 @@ def test_aviso_del_kernel_no_salta_con_el_kernel_de_debian(tmp_path):
 def test_32_bits_sin_ordenes_si_falla():
     texto = (ROOT / "rootfs/usr/bin/tisma-perfil").read_text()
     assert "sudo update-grub" not in texto
+
+
+def test_textos_simples_sin_rutas():
+    n = cargar()
+    a = {"kind": "navegador_secretos", "severity": "high", "exe": "/usr/bin/python3.13",
+         "detail": "/usr/bin/python3.13 accedió a datos del navegador (/home/x/.config/chromium/Default/Cookies)"}
+    t = n.cuerpo(a)
+    assert t.startswith("Un programa") and "/" not in t and "python" not in t and "alerta" not in t
+    assert "«ladron»" in n.cuerpo({**a, "exe": "/tmp/ladron"})
+    # Sin plantilla: el texto de la alerta tal cual
+    assert n.cuerpo({"kind": "kernel_listo", "detail": "Se instaló", "action": "Reinicia"}) == "Se instaló\nReinicia"
+
+
+def test_kernel_se_actualiza_solo():
+    s = (ROOT / "rootfs/usr/lib/tisma/kernel-actualizar").read_text()
+    assert "build-kernel --install" in s and "boton" not in s and "sudo" not in s
+    u = (ROOT / "rootfs/etc/systemd/system/tisma-kernel-actualizar.service").read_text()
+    assert "esperar-libre" in u
+    assert "tisma-kernel-actualizar.timer" in (ROOT / "iso/build-iso.sh").read_text()

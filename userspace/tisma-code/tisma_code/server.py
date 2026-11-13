@@ -65,6 +65,14 @@ class App:
             out[k] = {"nombre": nombre, "desc": desc, "estado": estado}
         return out
 
+    def ajustes(self) -> dict:
+        """Lo que muestra «Ajustes»: descargas con su progreso, el motor, los componentes y la privacidad."""
+        with self.downloads._lock:
+            descargas = [dict(d) for d in self.downloads.state.values()]
+        return {"descargas": descargas, "motor": self.motor_brief(), "componentes": self.componentes(),
+                "trazas_hope": self.config.get("trazas_hope") is True,
+                "auto_motor": self.config.get("auto_motor", True) is not False}
+
     def instalar_componente(self, k: str) -> dict:
         if k not in self.COMPONENTES:
             return {"ok": False, "error": "componente desconocido"}
@@ -97,7 +105,10 @@ class App:
         return {"nombre": "externo", "modelo": self.config.get("model", ""), "detalle": ep, "medido": False}
 
     def auto_motor(self) -> None:
-        """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado."""
+        """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado (salvo que se
+        haya apagado en Ajustes)."""
+        if self.config.get("auto_motor") is False:
+            return
         try:
             self._auto_motor()
         except Exception as e:  # noqa: BLE001 — un modelo raro nunca debe dejar la app sin arrancar
@@ -328,6 +339,11 @@ class Handler(BaseHTTPRequestHandler):
                                         "strata": models.strata_status(APP.hw), "motor": APP.motor_brief()})
             if url.path == "/api/componentes":
                 return self._send(200, APP.componentes())
+            if url.path == "/api/ajustes":
+                return self._send(200, APP.ajustes())
+            if url.path == "/api/descargas":
+                with APP.downloads._lock:
+                    return self._send(200, {"descargas": [dict(d) for d in APP.downloads.state.values()]})
             if url.path == "/api/motor":
                 from . import motor
                 return self._send(200, {"actual": APP.motor_brief(),
@@ -363,6 +379,13 @@ class Handler(BaseHTTPRequestHandler):
                 APP.config["recent"] = [ws] + [r for r in APP.config["recent"] if r != ws][:7]
                 APP.save_config()
                 return self._send(200, {"workspace": str(s.ws.root)})
+            if url.path == "/api/ajustes":
+                # Solo estos ajustes, y solo con su tipo: la página no puede tocar el resto de la configuración
+                for k in ("trazas_hope", "auto_motor"):
+                    if isinstance(b.get(k), bool):
+                        APP.config[k] = b[k]
+                APP.save_config()
+                return self._send(200, APP.ajustes())
             if url.path == "/api/model":
                 APP.config.update({k: b[k] for k in ("endpoint", "model") if b.get(k)})
                 APP.save_config()

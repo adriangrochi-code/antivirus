@@ -240,6 +240,7 @@ rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendi
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/seguridad/tisma_seguridad_panel" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/guia/tisma_guia" "$LIB/python/"
 rsync -a --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
+rsync -a --delete --exclude __pycache__ "$REPO/userspace/actualizar/tisma_actualizar" "$LIB/python/"
 # Kit de endurecimiento para Windows XP–8.1 (escudo windows --kit lo copia a C:\TISMA-Kit)
 python3 "$REPO/windows/construir-kit.py" "$CHROOT/usr/share/tisma/windows-kit" >/dev/null
 # Antes que cualquier apt de la build: su gancho (80-tisma-instantanea) llama a tisma-copias
@@ -320,7 +321,7 @@ chmod 700 "$CHROOT/var/lib/escudo"
 
 # DNS del sistema: dnscrypt-proxy local (cifrado + bloqueo de rastreadores)
 install -m 644 "$CHROOT/etc/resolv.conf.tisma" "$CHROOT/etc/resolv.conf.final"
-in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-estado.timer auditd 2>/dev/null || true
+in_chroot systemctl enable dnscrypt-proxy tisma-bloqueo.timer tisma-kernel-actualizar.timer tisma-reinstalar-programas.service auditd 2>/dev/null || true
 # Lista de servidores DNS firmada DENTRO de la imagen: sin ella, dnscrypt-proxy necesita descargarla al arrancar y,
 # sin red todavía (wifi sin conectar), se cerraba y dejaba el equipo sin DNS (preview 5). Va con su firma
 # (minisign_key de dnscrypt-proxy.toml): si alguien la manipulara, dnscrypt-proxy la rechaza.

@@ -1,0 +1,16 @@
+# Tras actualizar TISMA desde el USB: vuelve a instalar tus programas (en segundo plano, con internet)
+[Unit]
+Description=TISMA - reinstalar tus programas después de actualizar
+ConditionPathExists=/var/lib/tisma/reinstalar.list
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/lib/tisma/reinstalar-programas
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
