@@ -13,6 +13,12 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 8 (más simple)**: tema TISMA Cristal (claro y oscuro) con fondos nuevos; **Guía TISMA**
+  con 6 temas grandes al inicio y el resto en «Ver todos los temas»; **TISMA Seguridad** con botones (sin
+  terminal); barra de tareas con pocos iconos (Archivos, Navegador, Tienda); menú con favoritos de nombre claro;
+  el explorador se llama «Archivos» y ya no muestra las particiones internas del sistema; sin carpeta
+  «Plantillas»; usos «Primaria» y «Liceo» en el instalador; aviso con botón «Era mío» si un USB se hace pasar por
+  teclado; programas .exe revisados por Escudo antes de abrirse.
 - **Novedades de la preview 7 (lo encontrado en la ThinkPad A275)**: el sistema instalado ya no arranca con el
   kernel de rescate que Secure Boot rechaza («firma shim incorrecta»): se quita en equipos reales y el menú se
   rehace cada vez que cambia un kernel. El icono de Wi-Fi, volumen y batería vuelve a la barra desde el primer
