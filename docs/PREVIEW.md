@@ -13,9 +13,15 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 10 (uso diario más limpio)**: con TISMA instalado, el USB muestra el menú con
+  «Actualizar o reinstalar TISMA» arriba y 10 s de cuenta atrás (en la preview 9 el aviso era una línea chica y en
+  la A275 pasó desapercibido). Menú de inicio con pocas categorías y lo técnico en **Opciones avanzadas**; nombres
+  que dicen qué hace cada programa (Fotos, Vídeos, Música, Lupa…); bandeja con red, volumen y batería y el resto
+  detrás de la flecha; los enlaces se abren en TISMA Navegador (aislado); pantalla de carga con el logo al entrar;
+  TISMA Code se ajusta solo para ir más rápido; lección «Actualizar TISMA» en la Guía.
 - **Novedades de la preview 9 (actualizar sin perder nada)**: si el equipo ya tiene TISMA, al arrancar el USB
-  sale «Pulsa Esc para arrancar desde el USB» (antes arrancaba el disco sin avisar y no había forma de llegar a
-  actualizar). Desde el USB, la ventana **Actualizar TISMA** actualiza el sistema conservando archivos, cuentas,
+  se ve el menú con «Actualizar o reinstalar TISMA» arriba y 10 s de cuenta atrás (antes arrancaba el disco sin
+  avisar). En una ThinkPad, para arrancar desde el USB con un sistema ya instalado, pulsa F12 al encender. Desde el USB, la ventana **Actualizar TISMA** actualiza el sistema conservando archivos, cuentas,
   wifi, ajustes y programas (los que la versión nueva no trae se reinstalan solos con internet); guarda la versión
   anterior para **volver a ella** con un botón, y también ofrece **Formatear e instalar de cero**. Si algo falla
   a mitad, el equipo queda como estaba. Probado de punta a punta en una máquina virtual con disco cifrado.

@@ -137,6 +137,18 @@ LECCIONES = [
                "Ctrl + C / Ctrl + V: copiar y pegar · Ctrl + Z: deshacer.",
                "Ctrl + Shift + Esc: ver qué programas usan el equipo."],
      "palabras": "atajos teclado teclas rapido"},
+    {"id": "actualizar", "cat": "ayuda", "titulo": "Actualizar TISMA a una versión nueva", "imagen": None,
+     "probar": None,
+     "resumen": "Con el USB de la versión nueva. Tus archivos, programas, wifi y ajustes se conservan.",
+     "pasos": ["Copia a otro lado lo más importante, por si acaso.",
+               "Conecta el USB de TISMA y enciende el equipo.",
+               "Si arranca tu TISMA de siempre, reinicia y, al ver el logo del fabricante, pulsa la tecla del "
+               "menú de arranque (F12 en la mayoría de los equipos) y elige el USB.",
+               "En el menú del USB elige «Actualizar o reinstalar TISMA».",
+               "En «Este equipo ya tiene TISMA», escribe la contraseña del disco y pulsa «Actualizar».",
+               "Al terminar, quita el USB y pulsa «Reiniciar ahora». Si algo no te gusta, vuelve a arrancar el "
+               "USB y elige «Volver a la versión anterior»."],
+     "palabras": "actualizar actualización version nueva usb reinstalar formatear volver anterior"},
     {"id": "problemas", "cat": "ayuda", "titulo": "Si algo no anda", "imagen": None, "probar": "seguridad",
      "resumen": "Los pasos que arreglan casi todo.",
      "pasos": ["Cierra el programa y vuelve a abrirlo.",

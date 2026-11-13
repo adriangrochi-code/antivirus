@@ -132,7 +132,10 @@ def test_piezas_del_sistema():
 def test_usb_deja_elegir_con_tisma_instalado():
     """Antes, con TISMA instalado, el USB arrancaba el sistema del disco sin avisar: no se podía actualizar."""
     b = (ROOT / "iso/build-iso.sh").read_text()
-    assert "sleep --interruptible" in b and "Pulsa Esc para arrancar desde el USB" in b
+    # El menú se ve (no una línea chica que pasaba desapercibida) y «Actualizar» va primero
+    bloque = b[b.index("--file /tisma-instalado"):]
+    assert "set timeout_style=menu" in bloque and "set timeout=10" in bloque and "set default=disco" in bloque
+    assert bloque.index("Actualizar o reinstalar TISMA") < bloque.index("Arrancar el TISMA instalado")
     tema = (ROOT / "rootfs/boot/grub/themes/centinela/theme.txt").read_text().splitlines()
     assert not any(l.startswith("terminal-box") for l in tema)        # sin recuadro negro de consola
     assert "vt.global_cursor_default=0" in (ROOT / "rootfs/etc/default/grub.d/50-centinela.cfg").read_text()

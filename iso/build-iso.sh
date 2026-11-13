@@ -513,24 +513,22 @@ set theme=/boot/grub/themes/centinela/theme.txt
 set timeout_style=hidden
 set timeout=3
 set default=instalar
-# Con TISMA ya instalado: como los DVD de instalación, unos segundos para elegir arrancar desde el USB (instalar,
-# actualizar o formatear); si no se toca nada, arranca el sistema instalado (el USB olvidado puesto). Antes
-# arrancaba el instalado SIN avisar y no había forma visible de llegar a actualizar (visto en la A275).
-# GRUB solo deja interrumpir la espera con Esc. Sin tildes: con Secure Boot la fuente de GRUB no las tiene.
+# Con TISMA ya instalado: el menú se VE (logo, opciones grandes y cuenta atrás de 10 s), con «Actualizar o
+# reinstalar» arriba; si no se toca nada, arranca el sistema instalado (el USB olvidado puesto). Antes era una
+# línea de texto chica durante 6 s («Pulsa Esc…») que en la A275 pasó desapercibida y arrancó el sistema viejo.
+# Sin tildes: con Secure Boot la fuente de GRUB no las tiene.
 if search --no-floppy --set=instalado --file /tisma-instalado; then
-    menuentry "Arrancar TISMA OS (instalado en este equipo)" --id disco {
+    set timeout_style=menu
+    set timeout=10
+    set default=disco
+    menuentry "Actualizar o reinstalar TISMA (desde este USB)" --id actualizar {
+        linux /live/vmlinuz $LIVE $SEC
+        initrd /live/initrd.img
+    }
+    menuentry "Arrancar el TISMA instalado en este equipo" --id disco {
         set root=\$instalado
         configfile /grub/grub.cfg
     }
-    echo ""
-    echo "    Pulsa Esc para arrancar desde el USB (instalar o actualizar TISMA)..."
-    if sleep --interruptible 6; then
-        set default=disco
-        set timeout=0
-    else
-        set default=instalar
-        set timeout=0
-    fi
 fi
 menuentry "Instalar TISMA OS" --id instalar {
     linux /live/vmlinuz $LIVE $SEC
