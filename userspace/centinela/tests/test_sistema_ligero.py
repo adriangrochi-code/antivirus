@@ -332,6 +332,8 @@ def test_dependencias_de_hope_solo_con_hope_y_de_debian():
     build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
     rama = build[build.index("fetch-hope.sh"):build.index("rm -rf \"$LIB/python/vendor\"")]
     assert "hope-paquetes.list" in rama              # dentro de la rama «Hope va en la imagen»
+    # En la ISO normal se descargan al instalar (lista «esenciales»); dentro de la imagen solo en la completa
+    assert 'perfiles/esenciales.list' in rama and 'TISMA_ISO_COMPLETA:-0}" == 1 ]]; then\n        instalar_paquetes "${_hope_paq[@]}"' in rama
     base = (ROOT.parent / "iso/packages.list").read_text(encoding="utf-8")
     assert "python3-cvc5" not in base and "python3-statsmodels" not in base   # la ISO pública no los carga
 

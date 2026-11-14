@@ -174,7 +174,9 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
   firmware de NVIDIA se instala al detectar la GPU (`tisma-drivers`). La máquina virtual de análisis de Escudo
   solo va en la ISO completa: en la normal, lo descargado se analiza en su sandbox.
 - **Hope va incluido** (sus herramientas de cálculo exacto, crítico y consejo; no la red neuronal), desde una
-  versión fija y comprobada de su repositorio público.
+  versión fija y comprobada de su repositorio público. Sus complementos (sympy, scipy, matplotlib, z3…) se
+  descargan al instalar en el disco, como LibreOffice; en la sesión del USB algunas herramientas de Hope
+  responden con menos funciones.
 - **Componentes compilados**: una ISO construida con `TISMA_SIN_COMPILAR=1` no trae hardened_malloc,
   planificadores sched_ext ni el motor ML de Escudo. llama.cpp sí (build oficial con Vulkan y todas las CPU).
 - Sin probar todavía en hardware real: la compatibilidad gráfica (cambio a amdgpu en GCN 1/2), la compresión

@@ -253,9 +253,17 @@ if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
     log "Imagen mínima: sin Hope ni componentes pesados"
 elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
     rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
-    # Lo que importan sus herramientas (iso/hope-paquetes.list): solo si Hope va en la imagen
+    # Lo que importan sus herramientas (iso/hope-paquetes.list: sympy, scipy, matplotlib, statsmodels, z3, cvc5…,
+    # cientos de MB) NO va en la ISO: se suma a «esenciales» y se descarga al instalar en el disco junto con
+    # LibreOffice (o en el primer arranque con red, tisma-completar). El código de Hope (~1,6 MB) sí va: sus
+    # herramientas responden aunque falte una dependencia. En la ISO completa (para instalar sin red), dentro.
     mapfile -t _hope_paq < <(grep -v '^\s*#' "$HERE/hope-paquetes.list" | tr -s ' \t' '\n' | grep -v '^$')
-    instalar_paquetes "${_hope_paq[@]}"
+    if [[ "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
+        instalar_paquetes "${_hope_paq[@]}"
+    else
+        { echo "# Herramientas de Hope en TISMA Code (iso/hope-paquetes.list): se descargan al instalar"
+          echo "${_hope_paq[*]}"; } >> "$CHROOT/usr/share/tisma/perfiles/esenciales.list"
+    fi
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
     # Nunca una copia vieja de una build anterior: solo el commit fijado y comprobado

@@ -1,4 +1,5 @@
-# Dependencias de las herramientas de Hope (solo se instalan si Hope va en la imagen: build-iso.sh).
+# Dependencias de las herramientas de Hope. No van en la ISO normal: build-iso.sh las suma a «esenciales» y se
+# descargan al instalar TISMA en el disco (en la ISO completa, sin red, sí van dentro).
 # Todas de los repositorios firmados de Debian y con licencia compatible con publicar Hope como open source.
 # Orden acordado con Hope (resultado + certificado o segunda verificación en cada herramienta):
 # base que ya usaba Hope: unidades, gráficos, álgebra simbólica y numérico
