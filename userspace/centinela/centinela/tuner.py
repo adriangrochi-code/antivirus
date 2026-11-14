@@ -187,7 +187,10 @@ def _reclaim(plan: Plan, hw: dict) -> None:
         not g.get("integrated") for g in hw.get("gpus", []))
     if ram <= 16384 or shared:
         min_age_s = 60 if ram <= 8192 else 120
-        plan.damon = {"enabled": "Y", "min_age": str(min_age_s * 1_000_000), "quota_ms": "10",
+        # Muestreo cada 20 ms y agregación cada 2 s (por defecto 5 ms / 100 ms): para encontrar páginas que llevan
+        # 1-2 MINUTOS sin usarse sobra, y kdamond gasta ~4 veces menos CPU en reposo (en la VM era ~1 % constante)
+        plan.damon = {"sample_interval": "20000", "aggr_interval": "2000000",
+                      "enabled": "Y", "min_age": str(min_age_s * 1_000_000), "quota_ms": "10",
                       "quota_sz": str(64 << 20), "quota_reset_interval_ms": "1000"}
         plan.cmdline += [f"damon_reclaim.{k}={v}" for k, v in plan.damon.items()]
         plan.why(f"DAMON_RECLAIM: páginas sin uso desde hace {min_age_s} s pasan a memoria comprimida, como mucho "
