@@ -53,6 +53,8 @@ def _permitir(a: dict) -> list[str] | None:
 # Botones de las notificaciones: SOLO estas acciones, con su orden armada aquí (nunca texto de la alerta).
 # pkexec pide la contraseña de administrador con la ventana del sistema: nada de terminal.
 ACCIONES = {
+    # Sin administrador ni datos de la alerta: solo abre TISMA Seguridad (sección «Programas revisados»)
+    "ver_informe": ("Ver informe", lambda a: ["/usr/bin/tisma-seguridad-panel"], None, None),
     "permitir": ("Permitir", _permitir, "Listo: ya puedes abrirlo con normalidad.",
                  "No se pudo permitir (hacen falta permisos de administrador)."),
     "permitir_teclado": ("Era mío", lambda a: ["pkexec", "/usr/bin/escudo", "teclado", "permitir", a["exe"]]
@@ -78,6 +80,8 @@ def _con_boton(a: dict, base: list[str], titulo: str, body: str, run=subprocess.
     if (r.stdout or "").strip() != a["boton"]:
         return                                         # cerrada o ignorada: no se hace nada
     hecho = run(argv, check=False).returncode == 0
+    if ok_txt is None:
+        return                                         # abrir una ventana: no hace falta otro aviso
     run(["notify-send", "-a", "Escudo", "-i", "security-high" if hecho else "dialog-warning", titulo,
          ok_txt if hecho else mal_txt], check=False)
 

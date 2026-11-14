@@ -28,7 +28,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import detonar, fan
+from . import detonar, fan, informe
 from .behavior import Alert, emit
 
 log = logging.getLogger("escudo.primera_ejecucion")
@@ -277,14 +277,20 @@ class Gate:
                 inf.veredicto = "sospechoso"
                 inf.motivos = [f"detectado: {d.name}" for d in estaticas][:3] + inf.motivos
         detonar.guardar_veredicto(inf, path)
+        try:
+            informe.guardar(inf.to_dict(), path, uid)        # para «Programas revisados» en TISMA Seguridad
+        except OSError as e:
+            log.warning("no se pudo guardar el informe: %s", e)
         self.allow = detonar.cargar_permitidos()
         name = os.path.basename(path)
+        # En el aviso, frases simples (el detalle técnico queda en el informe de TISMA Seguridad)
+        simples = [p for g in informe.explicar(inf.to_dict())["grupos"] for p in g["puntos"]]
         if inf.veredicto == "limpio":
             self.alert(Alert("primera_ejecucion", "low", f"{name}: sin comportamiento malicioso ({inf.entorno}, "
                              f"{inf.segundos:.0f} s).", None, path, "Ya puedes abrirlo con normalidad."))
         elif inf.veredicto == "sospechoso":
-            self.alert(Alert("primera_ejecucion", "medium", f"{name}: comportamiento sospechoso: " +
-                             "; ".join(inf.motivos[:3]), None, path,
+            self.alert(Alert("primera_ejecucion", "medium", f"{name}: hizo cosas raras. " +
+                             " ".join(simples[:2]), None, path,
                              "No lo abras si no confías en quién te lo dio. Si confías, pulsa «Permitir».",
                              boton="permitir"))
         else:
@@ -295,8 +301,8 @@ class Gate:
                     action = "movido a cuarentena"
                 except OSError:
                     pass
-            self.alert(Alert("primera_ejecucion", "critical", f"{name} es MALICIOSO: " + "; ".join(inf.motivos[:3]),
-                             None, path, action))
+            self.alert(Alert("primera_ejecucion", "critical", f"{name} es peligroso. " + " ".join(simples[:2]),
+                             None, path, action, boton="ver_informe"))
         return inf
 
     def stop(self) -> None:

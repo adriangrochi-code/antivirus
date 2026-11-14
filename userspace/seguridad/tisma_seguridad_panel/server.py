@@ -161,6 +161,15 @@ def usb_bloqueados() -> list[dict]:
     return out
 
 
+def informes() -> list[dict]:
+    """Los programas que Escudo revisó para ESTE usuario (su carpeta privada), explicados en simple."""
+    try:
+        from escudo import informe
+    except ImportError:
+        return []
+    return informe.leer(os.getuid())
+
+
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -228,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, d)
         if u.path == "/api/usb":
             return self._send(200, {"bloqueados": usb_bloqueados()})
+        if u.path == "/api/informes":
+            return self._send(200, {"informes": informes()})
         return self._send(404, {"error": "no encontrado"})
 
     def do_POST(self):  # noqa: N802

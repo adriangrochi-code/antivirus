@@ -30,6 +30,13 @@ button:disabled { opacity:.5; cursor:default; }
 details summary { cursor:pointer; color:var(--suave); }
 pre { white-space:pre-wrap; max-height:340px; overflow:auto; background:var(--bg); padding:10px; border-radius:8px;
       font:12.5px/1.4 "JetBrains Mono", monospace; }
+.inf { background:var(--panel); border:1px solid var(--borde); border-left:4px solid var(--suave); border-radius:12px;
+       padding:12px 16px; margin-bottom:10px; }
+.inf.limpio { border-left-color:var(--ok); } .inf.sospechoso { border-left-color:var(--aviso); }
+.inf.malicioso { border-left-color:var(--error); }
+.inf b { font-size:15px; } .inf .frase { color:var(--suave); margin:4px 0 8px; }
+.inf h4 { margin:8px 0 2px; font-size:13px; color:var(--suave); font-weight:600; }
+.inf ul { margin:0 0 4px; padding-left:20px; } .inf small { color:var(--suave); }
 .usb { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--borde); }
 </style>
 </head>
@@ -39,6 +46,8 @@ pre { white-space:pre-wrap; max-height:340px; overflow:auto; background:var(--bg
   <div id="estado"><div id="res"></div><div id="prog"></div>
     <details><summary>Detalles</summary><pre id="salida"></pre></details></div>
 
+  <h2>Programas revisados por Escudo</h2>
+  <div id="informes"></div>
   <h2>Revisar el equipo</h2>
   <div class="grid" id="g-revisar"></div>
   <h2>Memorias y USB</h2>
@@ -98,6 +107,20 @@ async function seguir() {
   await paso(); sondeo = setInterval(paso, 1500);
 }
 
+async function verInformes() {
+  try {
+    const d = await api("/api/informes");
+    $("#informes").innerHTML = d.informes.length ? d.informes.map(i =>
+      `<div class="inf ${esc(i.veredicto)}"><b>${esc(i.titulo)}</b>
+        <small> · ${new Date(i.fecha * 1000).toLocaleString("es")}</small>
+        <div class="frase">${esc(i.frase)}</div>` +
+      i.grupos.map(g => `<h4>${esc(g.titulo)}</h4><ul>${g.puntos.map(p => `<li>${esc(p)}</li>`).join("")}</ul>`).join("") +
+      (i.tecnico.length ? `<details><summary>Detalles técnicos</summary><pre>${esc(i.tecnico.join("\n"))}</pre></details>` : "") +
+      `</div>`).join("")
+      : `<div class="card"><span>Todavía no se revisó ningún programa. Cuando abras algo descargado por primera vez, Escudo lo prueba aislado y aquí verás qué hizo.</span></div>`;
+  } catch (e) {}
+}
+
 async function usbs() {
   try {
     const d = await api("/api/usb");
@@ -108,7 +131,7 @@ async function usbs() {
   } catch (e) {}
 }
 
-(async () => { tareas = await api("/api/tareas"); pintar(); usbs(); seguir(); })();
+(async () => { tareas = await api("/api/tareas"); pintar(); usbs(); verInformes(); seguir(); })();
 </script>
 </body>
 </html>

@@ -91,3 +91,15 @@ def test_kernel_se_actualiza_solo():
     u = (ROOT / "rootfs/etc/systemd/system/tisma-kernel-actualizar.service").read_text()
     assert "esperar-libre" in u
     assert "tisma-kernel-actualizar.timer" in (ROOT / "iso/build-iso.sh").read_text()
+
+
+def test_boton_ver_informe_sin_administrador():
+    n = cargar()
+    etiqueta, orden, ok, mal = n.ACCIONES["ver_informe"]
+    assert orden({}) == ["/usr/bin/tisma-seguridad-panel"] and ok is None
+    llamadas = []
+    def run(argv, **k):
+        llamadas.append(argv)
+        return R("ver_informe")
+    n._con_boton({"boton": "ver_informe"}, ["notify-send"], "t", "b", run=run)
+    assert llamadas[-1] == ["/usr/bin/tisma-seguridad-panel"]           # sin un segundo aviso después

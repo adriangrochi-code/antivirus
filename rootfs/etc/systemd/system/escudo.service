@@ -29,7 +29,7 @@ RuntimeDirectoryPreserve=yes
 ProtectSystem=strict
 # /var/lib/escudo-detonar: donde se copia cada muestra para analizarla. Faltaba: con ProtectSystem=strict el
 # directorio era de solo lectura y la puerta de primera ejecución se APAGABA al arrancar (EROFS)
-ReadWritePaths=/var/lib/escudo -/var/lib/escudo-detonar /home /tmp /var/tmp
+ReadWritePaths=/var/lib/escudo -/var/lib/escudo-detonar -/var/lib/escudo-informes /home /tmp /var/tmp
 PrivateTmp=no
 NoNewPrivileges=yes
 ProtectKernelTunables=yes
