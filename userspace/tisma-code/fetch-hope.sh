@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Copia de Hope (repositorio privado) todo lo que NO es la red neuronal: herramientas,
-# crítico, consejo, memoria, guardián… hacia vendor/. No se versiona aquí porque el
-# repositorio de Hope es privado.
+# Copia de Hope todo lo que NO es la red neuronal: herramientas, crítico, consejo, memoria,
+# guardián… hacia vendor/. No se versiona aquí: se descarga el commit fijado de su repositorio.
 #
-# Uso: fetch-hope.sh [ruta-local-o-URL-git]   (por defecto: el repo privado en GitHub)
+# Uso: fetch-hope.sh [ruta-local-o-URL-git]   (por defecto: su repositorio en GitHub)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="${1:-https://github.com/adriangrochi-code/hope-0.1}"

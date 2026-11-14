@@ -162,8 +162,8 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
   licencias sí), sin fuentes chinas/japonesas/coreanas, sin 32 bits hasta instalar el perfil de juegos, y el
   firmware de NVIDIA se instala al detectar la GPU (`tisma-drivers`). La máquina virtual de análisis de Escudo
   solo va en la ISO completa: en la normal, lo descargado se analiza en su sandbox.
-- **La ISO publicada en GitHub no incluye Hope** (repositorio privado): TISMA Code funciona sin sus
-  herramientas de cálculo exacto.
+- **Hope va incluido** (sus herramientas de cálculo exacto, crítico y consejo; no la red neuronal), desde una
+  versión fija y comprobada de su repositorio público.
 - **Componentes compilados**: una ISO construida con `TISMA_SIN_COMPILAR=1` no trae hardened_malloc,
   planificadores sched_ext ni el motor ML de Escudo. llama.cpp sí (build oficial con Vulkan y todas las CPU).
 - Sin probar todavía en hardware real: la compatibilidad gráfica (cambio a amdgpu en GCN 1/2), la compresión

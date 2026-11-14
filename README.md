@@ -104,8 +104,8 @@ Interfaz tipo chat: eliges **carpeta/repo** y **modelo** y conversas.
 - **Documentos locales**: `~/TISMA/Documentos` (tu biblioteca: md, txt, pdf, código) y `<proyecto>/.tisma`
   (descubrimientos y mejoras que guarda el agente). Búsqueda instantánea con FTS5.
 - **Hope**: 53 herramientas exactas de ingeniería y ciencia, crítico de cálculos, consejo de 4 agentes con
-  verificador, base de conocimiento con lecciones. Hope es privado: `userspace/tisma-code/fetch-hope.sh`
-  copia en la build solo la parte que no es la red neuronal; no se versiona aquí.
+  verificador, base de conocimiento con lecciones. Hope es público: `userspace/tisma-code/fetch-hope.sh`
+  copia en la build (commit fijado) solo la parte que no es la red neuronal; no se versiona aquí.
 - Las trayectorias **verificadas** se guardan como episodios para afinar (LoRA) el modelo local.
 - **REA** (Reverse Engineer Anything) y **Craft Anything** como servidores MCP en bubblewrap: entender
   cualquier programa, web o archivo con evidencia citable. Craft Anything añade memoria de investigación

@@ -1,7 +1,8 @@
 # TISMA OS: construye la ISO en GitHub y la publica como release (para descargarla desde GitHub).
 # Se lanza a mano (Actions → «ISO» → Run workflow, cuando este archivo esté en main) o con un commit cuyo
 # mensaje lleve «[iso]» (en cualquier rama). Tarda ~1,5–3 h.
-# - Sin Hope: su repositorio es privado y este es público; una release la vería cualquiera.
+# - Con Hope (sus herramientas, sin la red neuronal): su repositorio ya es público. Se descarga el commit FIJADO en
+#   userspace/tisma-code/fetch-hope.sh y se comprueba; si la descarga falla, la build sigue sin Hope.
 # - Secure Boot: con los secretos TISMA_SB_KEY y TISMA_SB_CERT (iso/crear-clave-secureboot.sh) el kernel TISMA
 #   sale firmado; sin ellos arranca el kernel firmado de Debian (Secure Boot funciona igual).
 # - GitHub admite archivos de hasta 2 GiB por release: si la ISO pasa de eso se publica en partes.
@@ -84,9 +85,8 @@ jobs:
         env:
           SIN_COMPILAR: ${{ (github.event_name == 'push' || inputs.compilar) && '0' || '1' }}
         run: |
-          # HOPE_SRC apunta a una ruta inexistente: la build sigue sin Hope (privado) a propósito
           sudo env BUILD_DIR="$PWD/build" TISMA_SIN_COMPILAR="$SIN_COMPILAR" TISMA_BORRAR_CHROOT=1 \
-            HOPE_SRC=/nonexistent ISO_NAME="tisma-os-$ETIQUETA-amd64.iso" \
+            ISO_NAME="tisma-os-$ETIQUETA-amd64.iso" \
             TISMA_SB_KEY="${TISMA_SB_KEY:-}" TISMA_SB_CERT="${TISMA_SB_CERT:-}" ./iso/build-iso.sh
           rm -f "$RUNNER_TEMP/sb.key"
       - name: Preparar archivos (partes si pasa de 2 GiB)
@@ -115,7 +115,7 @@ jobs:
           {
             echo "Versión de prueba de TISMA OS construida por GitHub Actions desde ${GITHUB_SHA::7}."
             echo
-            echo "**Antes de usarla, lee las limitaciones.** Esta build no incluye Hope."
+            echo "**Antes de usarla, lee las limitaciones.**"
             echo
             cat docs/PREVIEW.md
           } > notas.md

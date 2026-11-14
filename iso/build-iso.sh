@@ -247,7 +247,7 @@ python3 "$REPO/windows/construir-kit.py" "$CHROOT/usr/share/tisma/windows-kit" >
 rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
 rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
 rsync -a "$REPO/kernel/" "$LIB/kernel/"
-# Herramientas y estrategias de Hope (repo privado): HOPE_SRC = ruta local o URL con acceso
+# Herramientas y estrategias de Hope (repositorio público, commit fijado en fetch-hope.sh): HOPE_SRC = ruta local o URL
 if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
     log "Imagen mínima: sin Hope ni componentes pesados"
 elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
@@ -257,7 +257,7 @@ elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/
     instalar_paquetes "${_hope_paq[@]}"
 else
     log "AVISO: sin acceso a Hope; TISMA Code funcionará sin sus herramientas"
-    # Nunca una copia vieja de una build anterior (Hope es privado: una ISO pública no puede llevarlo)
+    # Nunca una copia vieja de una build anterior: solo el commit fijado y comprobado
     rm -rf "$LIB/python/vendor"
 fi
 # Componentes que no están en Debian: sus scripts van también en la imagen para descargarlos al usarlos
