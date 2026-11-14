@@ -380,3 +380,43 @@ def test_arranque_sin_estorbos():
     assert "systemctl disable lxc-net.service" in b and "systemctl reenable tisma-secureboot.service" in b
     for f in ("print-applet.desktop", "orca-autostart.desktop"):
         assert "Hidden=true" in (ROOT / "etc/xdg/autostart" / f).read_text()
+
+
+def test_memoria_sin_congelarse():
+    t = (ROOT / "usr/lib/tmpfiles.d/tisma-memoria.conf").read_text()
+    assert "w- /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 1000" in t and "w- /sys/kernel/mm/lru_gen/enabled" in t
+
+
+def _precarga_personal():
+    import importlib.machinery
+    import importlib.util
+    l = importlib.machinery.SourceFileLoader("pp", str(ROOT / "usr/lib/tisma/precarga-personal"))
+    s = importlib.util.spec_from_loader("pp", l)
+    m = importlib.util.module_from_spec(s)
+    l.exec_module(m)
+    return m
+
+
+def test_precarga_aprende_de_cada_persona(tmp_path):
+    import sqlite3
+    m = _precarga_personal()
+    db = tmp_path / "database"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE ResourceScoreCache (usedActivity TEXT, initiatingAgent TEXT, targettedResource TEXT, "
+              "scoreType INTEGER, cachedScore FLOAT, firstUpdate INTEGER, lastUpdate INTEGER)")
+    for res, sc in (("applications:net.tisma.Navegador.desktop", 9), ("applications:org.kde.dolphin.desktop", 5),
+                    ("/home/ana/Documentos/tesis.odt", 50), ("applications:net.tisma.Navegador.desktop", 3)):
+        c.execute("INSERT INTO ResourceScoreCache VALUES (':global', 'x', ?, 0, ?, 0, 0)", (res, sc))
+    c.commit()
+    c.close()
+    assert m.mas_usadas(str(db)) == ["net.tisma.Navegador.desktop", "org.kde.dolphin.desktop"]   # sin documentos
+    apps = tmp_path / "apps"
+    apps.mkdir()
+    (apps / "net.tisma.Navegador.desktop").write_text("[Desktop Entry]\nExec=tisma-sandbox ejecutar navegador %U\n")
+    (apps / "x.desktop").write_text("[Desktop Entry]\nExec=env FOO=1 /usr/bin/python3 -m x\n")
+    assert m.programa_de("net.tisma.Navegador.desktop", [str(apps)]) == ["/usr/lib/chromium/chromium"]
+    assert m.programa_de("x.desktop", [str(apps)])[0].startswith("/usr/")
+    assert m.mas_usadas(str(tmp_path / "no-existe")) == []
+    unidad = (ROOT / "usr/lib/systemd/user/tisma-precarga-personal.service").read_text()
+    assert "IOSchedulingClass=idle" in unidad and "Nice=19" in unidad
+    assert "konsole" not in (ROOT / "etc/tisma/precarga.conf").read_text()

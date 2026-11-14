@@ -1,0 +1,8 @@
+[Unit]
+Description=TISMA - precarga de tus apps, un rato después de entrar
+
+[Timer]
+OnStartupSec=90s
+
+[Install]
+WantedBy=timers.target

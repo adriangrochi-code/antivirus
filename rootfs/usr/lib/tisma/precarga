@@ -10,7 +10,7 @@ import re
 import subprocess
 
 LIST = "/etc/tisma/precarga.conf"
-DEFAULT = ["/usr/bin/plasmashell", "/usr/bin/dolphin", "/usr/bin/konsole", "/usr/lib/chromium/chromium",
+DEFAULT = ["/usr/bin/plasmashell", "/usr/bin/dolphin", "/usr/lib/chromium/chromium",
            "/opt/tisma/tisma", "/usr/bin/python3", "/usr/bin/kwin_wayland"]
 
 

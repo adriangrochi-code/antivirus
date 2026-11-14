@@ -382,6 +382,8 @@ for u in bluetooth ModemManager clamav-freshclam; do
 done
 # lxc-net: red virtual de contenedores LXC que nada usa (Waydroid trae la suya); solo quitaba tiempo al arranque
 in_chroot systemctl disable lxc-net.service 2>/dev/null || true
+# Precarga que aprende: las apps que cada persona usa (servicio de sesión, para todos los usuarios)
+in_chroot systemctl --global enable tisma-precarga-personal.timer 2>/dev/null || log "AVISO: sin precarga personal"
 in_chroot systemctl enable cups.socket avahi-daemon.socket 2>/dev/null || true
 in_chroot systemctl disable cups.service avahi-daemon.service 2>/dev/null || true
 if [[ $WAYDROID == 1 ]]; then in_chroot systemctl disable waydroid-container 2>/dev/null || true; fi

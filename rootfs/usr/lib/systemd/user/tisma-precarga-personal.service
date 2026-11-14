@@ -1,0 +1,9 @@
+[Unit]
+Description=TISMA - precargar las apps que más usas (para que abran rápido)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/precarga-personal
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=idle
