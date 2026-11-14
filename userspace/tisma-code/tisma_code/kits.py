@@ -56,6 +56,12 @@ KITS: dict[str, dict] = {
                       "tools": {"craft_buscar", "craft", "craft_guia", "craft_modo", "jarvis"},
                       "claves": r"investiga|recrea|clona|igual que|como la web|referencia|compara|internet|"
                                 r"busca en la web|documentaci[oó]n oficial"},
+    "construir": {"desc": "diseñar o construir algo desde cero (SO, base de datos, juego, navegador, lenguaje, "
+                          "emulador…): piezas en orden y guías paso a paso",
+                  "tools": {"guias_construir"},
+                  "claves": r"desde cero|construi|crea(r)? (mi|tu|un|una) propi|mi propi[oa]|dise[ñn]a|from scratch|"
+                            r"build your own|emulador|sistema operativo|motor de|int[eé]rprete|compilador|"
+                            r"base de datos|navegador|juego|videojuego"},
     "especialistas": {"desc": "modelos pequeños especializados (se cargan al usarlos)",
                       "tools": {"especialista_buscar", "especialista"},
                       "claves": r"sudoku|ajedrez|traduc|ocr|especialista|clasifica|resume este"},
@@ -65,7 +71,7 @@ VENTANA_GRANDE = 65536
 
 CORTO = {"desarrollo": "git, símbolos, linters", "calculo": "cálculo exacto", "ingenieria": "simular y medir",
          "cad": "CAD 3D", "documentos": "tus documentos", "inversa": "ingeniería inversa",
-         "investigacion": "investigar/recrear", "especialistas": "modelos especializados"}
+         "investigacion": "investigar/recrear", "construir": "construir desde cero", "especialistas": "modelos especializados"}
 
 SCHEMA = {"type": "function", "function": {
     "name": "herramientas", "description": "Activa un kit de herramientas que no tienes cargado. Kits: " +

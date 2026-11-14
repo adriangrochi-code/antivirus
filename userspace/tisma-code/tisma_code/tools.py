@@ -238,6 +238,7 @@ from .craft import SCHEMAS as CRAFT_SCHEMAS  # noqa: E402
 from .docs import SCHEMAS as DOC_SCHEMAS  # noqa: E402
 from . import ingenieria  # noqa: E402
 from .contexto import SCHEMAS as CONTEXTO_SCHEMAS  # noqa: E402
+from . import construir  # noqa: E402
 from .jarvis import SCHEMAS as JARVIS_SCHEMAS  # noqa: E402
 from .rea import SCHEMAS as REA_SCHEMAS  # noqa: E402
 from .solidcraft import SCHEMAS as SOLIDCRAFT_SCHEMAS  # noqa: E402
@@ -246,7 +247,7 @@ from . import exactas  # noqa: E402
 
 TOOL_SCHEMAS = (BASE_SCHEMAS + exactas.SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + CONTEXTO_SCHEMAS
                 + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + SOLIDCRAFT_SCHEMAS + ingenieria.SCHEMAS
-                + JARVIS_SCHEMAS)
+                + JARVIS_SCHEMAS + construir.SCHEMAS)
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -276,6 +277,8 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
         return f"Formateado {ws.rel(p)}"
     if name == "git":
         return devtools.git(ws, str(args["subcomando"]), args.get("args") or [])
+    if name == "guias_construir":
+        return construir.buscar(str(args.get("tema") or ""), str(args.get("lenguaje") or ""))
     if name == "write_file":
         return ws.write_file(args["path"], args["content"])
     if name == "edit_file":
