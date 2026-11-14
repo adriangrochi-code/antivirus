@@ -168,6 +168,7 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
     <h3>Descargas</h3><div id="aj-desc"></div>
     <h3>Motor de IA</h3><div id="aj-motor"></div>
     <label class="ajsw"><input type="checkbox" id="aj-auto"> Arrancar el motor solo al abrir TISMA Code</label>
+    <label class="ajsw"><input type="checkbox" id="aj-liberar"> Pausar el motor tras 15 min sin uso (devuelve la memoria al equipo; vuelve solo al escribir)</label>
     <label class="ajsw" style="flex-direction:column;align-items:flex-start">Pensar antes de responder
       <select id="aj-pensar"><option value="auto">Automático (no en modelos chicos: responden mucho antes)</option>
       <option value="si">Siempre (más lento, a veces más acertado)</option><option value="no">Nunca</option></select></label>
@@ -620,7 +621,7 @@ async function abrirAjustes() {
     b.disabled = true; b.textContent = "Instalando…";
     try { await api("/api/componentes/instalar", {nombre: b.dataset.comp}); } catch (e) { b.textContent = e.message; }
   });
-  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-pensar").value = a.pensar || "auto";
+  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-liberar").checked = a.liberar_memoria; $("#aj-pensar").value = a.pensar || "auto";
   $("#ajustes").hidden = false;
 }
 $("#ajbtn").onclick = () => $("#ajustes").hidden ? abrirAjustes() : ($("#ajustes").hidden = true);
@@ -628,6 +629,7 @@ $("#bajando").onclick = abrirAjustes;
 $("#ajcerrar").onclick = () => $("#ajustes").hidden = true;
 $("#aj-trazas").onchange = e => api("/api/ajustes", {trazas_hope: e.target.checked});
 $("#aj-auto").onchange = e => api("/api/ajustes", {auto_motor: e.target.checked});
+$("#aj-liberar").onchange = e => api("/api/ajustes", {liberar_memoria: e.target.checked});
 $("#aj-pensar").onchange = async e => pintarPensar(await api("/api/ajustes", {pensar: e.target.value}));
 // Botón «Pensar» de la caja de mensaje (como el de DeepSeek): enciende o apaga el razonamiento previo
 function pintarPensar(a) {

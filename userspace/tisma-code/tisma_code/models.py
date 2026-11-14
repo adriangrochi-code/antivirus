@@ -468,6 +468,7 @@ class LocalServer:
         self.kv_quant = True
         self.proc = self._spawn(base + KV_QUANT)
         self.model = p.name
+        self.path = str(p)
         threading.Thread(target=self._fallback, args=(self.proc, base), daemon=True).start()
         return f"http://127.0.0.1:{self.port}/v1"
 

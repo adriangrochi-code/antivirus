@@ -95,6 +95,7 @@ class App:
         return {"descargas": descargas, "motor": self.motor_brief(), "componentes": self.componentes(),
                 "trazas_hope": self.config.get("trazas_hope") is True,
                 "auto_motor": self.config.get("auto_motor", True) is not False,
+                "liberar_memoria": self.config.get("liberar_memoria", True) is not False,
                 "pensar": self.config.get("pensar", "auto"),
                 "pensar_efectivo": self.session.pensar_activo() if self.session else None}
 
@@ -176,6 +177,45 @@ class App:
             threading.Thread(target=self.optimizar_cuando_libre, args=(rec["path"],), daemon=True).start()
 
     LIBRE_S = 300
+    REPOSO_S = 15 * 60
+
+    def vigilar_reposo(self, espera=time.sleep, reloj=time.monotonic, una_vez: bool = False) -> None:
+        """Tras 15 min sin usar TISMA Code, el motor se pausa y devuelve su memoria (varios GB con un modelo de
+        7-8B) al resto del equipo. Antes guarda lo ya procesado: al volver a escribir arranca solo y responde casi
+        igual de rápido (restaura el prefijo). La calidad no cambia: es el mismo modelo con la misma configuración."""
+        while True:
+            if not una_vez:
+                espera(60)
+            srv = self.server
+            sesion = self.session
+            ocupado = (sesion is not None and sesion._busy.locked()) or self._optimizing.locked() or \
+                self._reduciendo.locked()
+            if (self.config.get("liberar_memoria", True) is not False and srv.proc and srv.proc.poll() is None
+                    and not ocupado and reloj() - self.ultimo_uso >= self.REPOSO_S):
+                if not srv.prefijo_guardado:
+                    srv.guardar_prefijo()
+                self.dormido = getattr(srv, "path", None)
+                srv.stop()
+                self.push({"type": "info", "message": "Motor en pausa para liberar memoria (15 min sin uso). "
+                           "Vuelve solo cuando escribas."})
+            if una_vez:
+                return
+
+    dormido: str | None = None
+
+    def despertar(self) -> bool:
+        """Si el motor está en pausa por reposo, lo vuelve a arrancar (mismo puerto y clave) antes de responder."""
+        path, self.dormido = self.dormido, None
+        if not path or (self.server.proc and self.server.proc.poll() is None):
+            return False
+        self.push({"type": "info", "message": "Despertando el motor…"})
+        try:
+            self.server.start(path, self.hw)
+        except (OSError, RuntimeError, ValueError) as e:
+            self.push({"type": "error", "message": f"No se pudo volver a arrancar el motor: {e}"})
+            return False
+        self.server.restaurar_prefijo()
+        return True
 
     def optimizar_cuando_libre(self, path: str, espera=time.sleep, reloj=time.monotonic) -> bool:
         """Mide la configuración más rápida SOLA (antes había que encontrar «⚙ optimizar»): cuando TISMA Code lleva
@@ -478,7 +518,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"workspace": str(s.ws.root)})
             if url.path == "/api/ajustes":
                 # Solo estos ajustes, y solo con su tipo: la página no puede tocar el resto de la configuración
-                for k in ("trazas_hope", "auto_motor"):
+                for k in ("trazas_hope", "auto_motor", "liberar_memoria"):
                     if isinstance(b.get(k), bool):
                         APP.config[k] = b[k]
                 if b.get("pensar") in ("auto", "si", "no"):
@@ -498,7 +538,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not APP.session:
                     return self._send(400, {"error": "Elige primero una carpeta de proyecto"})
                 APP.ultimo_uso = time.monotonic()
-                threading.Thread(target=APP.session.send, args=(b["text"],), daemon=True).start()
+                s, texto = APP.session, b["text"]
+
+                def enviar():
+                    APP.despertar()
+                    s.send(texto)
+                threading.Thread(target=enviar, daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/approve":
                 ok = APP.session and APP.session.resolve_approval(b["id"], bool(b["allow"]), bool(b.get("always")))
@@ -590,6 +635,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     APP = App()
     threading.Thread(target=APP.auto_motor, daemon=True).start()
+    threading.Thread(target=APP.vigilar_reposo, daemon=True).start()
     # El agente (con Hope y numpy) tarda en cargar en equipos lentos: la ventana se abre primero y él se carga
     # mientras tanto, listo para cuando se elija la carpeta
     threading.Thread(target=lambda: __import__("tisma_code.agent"), daemon=True).start()

@@ -238,3 +238,32 @@ def test_prefijo_guardado_y_restaurado(tmp_path, monkeypatch):
     assert srv.guardar_prefijo() is True and llamadas == ["save"]
     assert srv.guardar_prefijo() is False                                  # una sola vez por arranque
     assert len(list(tmp_path.glob("*.bin"))) <= 3
+
+
+def test_motor_en_pausa_tras_reposo_y_vuelve_solo():
+    """15 min sin uso: guarda lo procesado, libera la memoria y al escribir vuelve con el mismo modelo."""
+    from tisma_code import server
+    app = server.App.__new__(server.App)
+    app.session, app.ultimo_uso, app.config, app.hw, app.dormido = None, 0.0, {}, {}, None
+    eventos = []
+    app.push = eventos.append
+    vivo = type("P", (), {"poll": lambda self: None})()
+    hechos = []
+
+    class Srv:
+        proc, prefijo_guardado, path = vivo, False, "/m/qwen.gguf"
+        def guardar_prefijo(self): hechos.append("guardar")
+        def stop(self): hechos.append("parar"); Srv.proc = None
+        def start(self, p, hw): hechos.append(("arrancar", p)); Srv.proc = vivo
+        def restaurar_prefijo(self): hechos.append("restaurar")
+    app.server = Srv()
+    app.vigilar_reposo(reloj=lambda: 600.0, una_vez=True)              # 10 min: sigue cargado
+    assert hechos == []
+    app.vigilar_reposo(reloj=lambda: 901.0, una_vez=True)
+    assert hechos == ["guardar", "parar"] and app.dormido == "/m/qwen.gguf"
+    assert app.despertar() and hechos[-2:] == [("arrancar", "/m/qwen.gguf"), "restaurar"]
+    assert app.despertar() is False                                     # ya despierto: nada
+    app.config["liberar_memoria"] = False
+    hechos.clear()
+    app.vigilar_reposo(reloj=lambda: 99999.0, una_vez=True)
+    assert hechos == []                                                 # apagado en Ajustes
