@@ -108,3 +108,16 @@ def test_ssd_wear_nvme_and_sata_alert_once_per_level(tmp_path, monkeypatch):
     used["nvme"] = 96
     mod.semanal(run)
     assert [a[1] for a in alerts if "vida útil" in a[2]] == ["medium", "high"]
+
+
+def test_calor_avisa_una_vez_al_mes(tmp_path, monkeypatch):
+    alerts = []
+    monkeypatch.setattr(mod, "alert", lambda *a, **k: alerts.append(a))
+    f = tmp_path / "calor.json"
+    f.write_text(json.dumps({"2026-11-10": {"ocupado_s": 3600, "frenado_s": 1500, "max_c": 95}}))
+    st = {}
+    assert "25 min" in mod.calor_frenado(st, str(f), ahora=lambda: 2e9)
+    assert alerts[0][0] == "calor" and "ventilador" in alerts[0][3]
+    assert mod.calor_frenado(st, str(f), ahora=lambda: 2e9 + 86400) == ""          # no se repite enseguida
+    f.write_text(json.dumps({"2026-11-10": {"ocupado_s": 36000, "frenado_s": 900}}))
+    assert mod.calor_frenado({}, str(f)) == ""                                      # 2,5 %: picos aislados

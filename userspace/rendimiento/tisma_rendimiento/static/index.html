@@ -62,8 +62,8 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
 
   <section class="card w2">
     <h3>Potencia y overclock <small>los cambios se aplican al momento</small></h3>
-    <div class="seg" id="perfil"><button data-p="silencioso">Silencioso</button><button data-p="equilibrado">Equilibrado</button><button data-p="rendimiento">Rendimiento</button></div>
-    <div class="row" id="turboRow"><div class="k">Turbo del procesador (Core Performance Boost)<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite</div></div><button class="tog" id="turbo"></button></div>
+    <div class="seg" id="perfil"><button data-p="silencioso" title="Más batería y menos ruido: rinde lo justo y vuelve a reposo enseguida">Eco</button><button data-p="equilibrado">Equilibrado</button><button data-p="rendimiento" title="Toda la potencia, también a batería">Turbo</button></div>
+    <div class="row" id="turboRow"><div class="k">Aceleración extra del procesador<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite (en Eco se apaga para ahorrar)</div></div><button class="tog" id="turbo"></button></div>
     <div class="row" id="umbralRow" hidden><div class="k">Cuidar la batería<div class="note" style="margin:0">Carga solo hasta el 80 %: alarga años su vida si el portátil pasa mucho tiempo enchufado</div></div><button class="tog" id="umbral"></button></div>
     <div id="ocBox">
     <div class="row" style="align-items:flex-start;flex-direction:column;gap:6px">
@@ -126,7 +126,7 @@ $("#oc").oninput=()=>{$("#oc").dataset.touched=1;updOc()};
 $("#applyOc").onclick=async()=>{const r=await api("/api/oc",{gpu:+$("#oc").value});toast(r.ok?"Overclock aplicado":"No se aplicó: "+r.salida,!r.ok);delete $("#oc").dataset.touched};
 $("#resetOc").onclick=async()=>{$("#oc").value=0;updOc();const r=await api("/api/oc",{gpu:0});toast(r.ok?"GPU a frecuencia de fábrica":"Error: "+r.salida,!r.ok)};
 $("#umbral").onclick=async()=>{const on=!$("#umbral").classList.contains("on");const r=await api("/api/umbral",{activo:on});if(r.ok)$("#umbral").classList.toggle("on",on);toast(r.ok?r.salida.trim():"Error: "+r.salida,!r.ok)};
-$("#turbo").onclick=async()=>{const on=!$("#turbo").classList.contains("on");const r=await api("/api/oc",{turbo:on});toast(r.ok?(on?"Turbo activado":"Turbo desactivado"):"Error: "+r.salida,!r.ok)};
+$("#turbo").onclick=async()=>{const on=!$("#turbo").classList.contains("on");const r=await api("/api/oc",{turbo:on});toast(r.ok?(on?"Aceleración extra activada":"Aceleración extra desactivada"):"Error: "+r.salida,!r.ok)};
 document.querySelectorAll("#perfil button").forEach(b=>b.onclick=async()=>{const r=await api("/api/perfil",{perfil:b.dataset.p});toast(r.ok?`Perfil ${b.textContent}`:"Error: "+r.salida,!r.ok);tick()});
 let autoSec=45,autoTimer=null;
 document.querySelectorAll("#autoDur button").forEach(b=>b.onclick=()=>{autoSec=+b.dataset.s;document.querySelectorAll("#autoDur button").forEach(x=>x.classList.toggle("on",x===b))});

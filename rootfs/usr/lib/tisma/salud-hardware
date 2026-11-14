@@ -176,6 +176,30 @@ def gpu_errors(since: float, run=sh) -> list[str]:
     return [line for line in out.splitlines() if GPU_ERR.search(line)][:20]
 
 
+CALOR = os.environ.get("TISMA_CALOR", "/var/lib/centinela/calor.json")
+
+
+def calor_frenado(st: dict, archivo: str = CALOR, ahora=time.time) -> str:
+    """Si el procesador se frenó por temperatura a menudo esta semana (lo mide adaptd), aviso simple. Como mucho
+    uno al mes: no se puede arreglar por software."""
+    try:
+        dias = json.load(open(archivo))
+    except (OSError, ValueError):
+        return ""
+    sel = [dias[k] for k in sorted(dias)[-7:] if isinstance(dias[k], dict)]
+    oc = sum(d.get("ocupado_s", 0) for d in sel)
+    fr = sum(d.get("frenado_s", 0) for d in sel)
+    if fr < 600 or not oc or fr / oc < 0.2 or ahora() - st.get("calor_avisado", 0) < 30 * 86400:
+        return ""
+    st["calor_avisado"] = ahora()
+    alert("calor", "medium",
+          f"Esta semana el procesador tuvo que bajar su velocidad para no recalentarse durante {fr // 60} minutos "
+          f"({round(100 * fr / oc)} % del tiempo que estuvo trabajando).",
+          "Suele pasar por polvo en el ventilador o pasta térmica seca. Limpiarlo (o que lo limpie un técnico) "
+          "puede devolverle bastante velocidad. Mientras tanto, úsalo sobre una mesa, no sobre la cama.")
+    return f"calor: {fr // 60} min frenado"
+
+
 def semanal(run=sh) -> list[str]:
     st, msgs = load_state(), []
     errs = btrfs_errors(run)
@@ -185,8 +209,8 @@ def semanal(run=sh) -> list[str]:
         corr = any("corruption" in k or "generation" in k for k in worse)
         alert("disco", "high" if corr else "medium",
               "btrfs detectó errores: " + ", ".join(f"{k.split(':')[1]}={v}" for k, v in worse.items()),
-              "Haz copia externa ya (tisma-copias externo copiar) y ejecuta «sudo /usr/lib/tisma/salud-hardware scrub». "
-              "Errores de checksum sin errores de lectura suelen indicar RAM defectuosa: pasa memtest86+ (menú de arranque).")
+              "Haz ya una copia de tus archivos en un disco externo (TISMA Copias). Si se repite, puede fallar el "
+              "disco o la memoria: elige «Memory test» (prueba de memoria) en el menú de arranque.")
         msgs.append(f"btrfs: {worse}")
     st["btrfs"] = errs
     for dev in smart_failing(run):
@@ -200,7 +224,7 @@ def semanal(run=sh) -> list[str]:
         if level and st.get("desgaste_avisado", {}).get(dev, 0) < level:
             alert("disco", "high" if level == 95 else "medium",
                   f"El SSD {dev} ha consumido el {used} % de su vida útil de escritura.",
-                  "Sigue funcionando, pero conviene tener copia externa al día (tisma-copias externo copiar) y "
+                  "Sigue funcionando, pero conviene tener al día la copia en un disco externo (TISMA Copias) y "
                   "planear cambiarlo" + (" pronto." if level == 95 else "."))
             st.setdefault("desgaste_avisado", {})[dev] = level
             msgs.append(f"desgaste: {dev} {used} %")
@@ -210,14 +234,15 @@ def semanal(run=sh) -> list[str]:
         if n > prev.get(kind, 0):
             mem = kind in ("Memory", "MCE")
             alert("hardware", "high" if mem else "medium", f"Errores de hardware registrados ({kind}): {n}.",
-                  "Pasa memtest86+ desde el menú de arranque y revisa temperaturas; si hay overclock, vuelve a fábrica."
-                  if mem else "Consulta «ras-mc-ctl --errors».")
+                  "Elige «Memory test» (prueba de memoria) en el menú de arranque. Si subiste la velocidad del equipo en TISMA "
+                  "Rendimiento, vuelve a la de fábrica." if mem else "Si se repite, conviene que lo revise un técnico.")
             msgs.append(f"RAS {kind}: {n}")
     st["ras"] = ras
     crashes = pstore_new(st.get("ultima", 0))
     if crashes:
         alert("hardware", "medium", f"El sistema se colgó (registro del kernel guardado: {', '.join(crashes[:3])}).",
-              f"El registro está en {PSTORE}; si se repite, pasa memtest86+ y revisa el overclock.")
+              "Si se repite, elige «Memory test» (prueba de memoria) en el menú de arranque y vuelve a la velocidad de fábrica en "
+              "TISMA Rendimiento.")
         msgs.append(f"pstore: {crashes}")
     gerr = gpu_errors(st.get("ultima", time.time() - 7 * 86400), run)
     if gerr:
@@ -228,7 +253,7 @@ def semanal(run=sh) -> list[str]:
     new_units = sorted(set(bad_units) - set(st.get("unidades", [])))
     if new_units:
         alert("sistema", "medium", "Servicios que fallaron: " + ", ".join(new_units[:6]),
-              "Detalle: journalctl -u <servicio>. Reiniciar: systemctl restart <servicio>.")
+              "Reiniciar el equipo suele arreglarlo. Si vuelve a pasar, actualiza TISMA desde el USB.")
         msgs.append(f"unidades: {new_units}")
     st["unidades"] = bad_units
     altered = altered_files(run)
@@ -236,9 +261,12 @@ def semanal(run=sh) -> list[str]:
     if new_alt:
         alert("sistema", "high", f"{len(altered)} archivo(s) de programas no coinciden con su paquete "
               f"(corrupción del disco o manipulación): {', '.join(new_alt[:4])}",
-              "Repararlos: sudo /usr/lib/tisma/salud-hardware reparar (reinstala desde Debian, con firma).")
+              "Para restaurarlos, actualiza TISMA desde el USB («Actualizar»): no pierdes nada.")
         msgs.append(f"alterados: {new_alt[:10]}")
     st["alterados"] = altered
+    calor = calor_frenado(st)
+    if calor:
+        msgs.append(calor)
     st["ultima"] = time.time()
     save_state(st)
     return msgs
@@ -259,10 +287,10 @@ def scrub(run=sh) -> str:
     csum = num("csum_errors")
     if unc:
         alert("disco", "critical", f"La revisión del disco encontró {unc} bloque(s) dañados que no se pudieron reparar.",
-              "Los archivos afectados están en el registro (journalctl -k | grep BTRFS). Restáuralos desde la copia externa.")
+              "Algunos archivos pueden estar dañados: recupéralos de tu copia en el disco externo (TISMA Copias).")
     elif cor or csum:
         alert("disco", "medium", f"La revisión del disco reparó {cor or csum} bloque(s) automáticamente.",
-              "Si se repite, el disco o la RAM pueden estar fallando: pasa memtest86+ y revisa SMART.")
+              "Si se repite, el disco o la memoria pueden estar fallando: elige «Memory test» en el menú de arranque.")
     return f"scrub: corregidos={cor} sin_reparar={unc} checksum={csum}"
 
 

@@ -151,6 +151,8 @@ class AdaptDaemon:
         from .memoria import Compactor
         from .modo_ia import Sistema
         self.compactor = Compactor()
+        from .calor import Calor
+        self.calor = Calor()
         self.modo_ia = Sistema()
         self._ticks = 0
         self.total_mb = mem_available_mb()
@@ -220,6 +222,10 @@ class AdaptDaemon:
     def tick(self) -> Decision:
         self._maybe_reload()
         self.thermal_guard()
+        try:
+            self.calor.tick()
+        except Exception:  # noqa: BLE001 — medir el calor nunca detiene la adaptación
+            log.exception("Error midiendo la temperatura")
         avail = mem_available_mb()
         self.mem.update(avail)
         self._ticks += 1
@@ -252,4 +258,8 @@ class AdaptDaemon:
                 log.exception("Error en ciclo de adaptación")
             self._stop.wait(self.interval)
         self.modo_ia.reanudar()
+        try:
+            self.calor.guardar()
+        except OSError:
+            pass
         self.enter("normal", ["apagando"])

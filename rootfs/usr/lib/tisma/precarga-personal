@@ -96,7 +96,28 @@ def calentar(path: str) -> int:
         os.close(fd)
 
 
+def a_bateria(base: str = "/sys/class/power_supply") -> bool:
+    """Hay batería y ningún cargador conectado: leer del disco por adelantado gastaría batería."""
+    try:
+        fuentes = os.listdir(base)
+    except OSError:
+        return False
+    hay_bateria, enchufado = False, False
+    for f in fuentes:
+        try:
+            tipo = open(os.path.join(base, f, "type")).read().strip()
+            online = open(os.path.join(base, f, "online")).read().strip() if tipo != "Battery" else ""
+        except OSError:
+            continue
+        hay_bateria |= tipo == "Battery"
+        enchufado |= tipo in ("Mains", "USB") and online == "1"
+    return hay_bateria and not enchufado
+
+
 def main() -> int:
+    if a_bateria():
+        print("A batería: no se precarga")
+        return 0
     if memoria_libre_ratio() < 0.40:
         print("Poca memoria libre: no se precarga")
         return 0

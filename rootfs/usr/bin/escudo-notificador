@@ -17,7 +17,7 @@ import time
 DIR = os.environ.get("ESCUDO_ALERTAS_DIR", "/run/escudo")
 PATH = DIR + "/alertas.jsonl"
 ICON = {"info": "security-high", "critical": "dialog-error", "high": "security-low", "medium": "dialog-warning", "low": "dialog-information"}
-TITLE = {"kernel_listo": "Actualización instalada", "teclado_falso": "USB falso bloqueado", "primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
+TITLE = {"calor": "El equipo se calienta", "disco": "Salud del disco", "hardware": "Salud del equipo", "sistema": "Salud del sistema", "kernel_listo": "Actualización instalada", "teclado_falso": "USB falso bloqueado", "primera_ejecucion": "Revisión de un programa nuevo", "kernel": "Actualización de seguridad del kernel", "ransomware": "Posible ransomware detenido", "secretos": "Acceso a tus claves", "persistencia":
          "Un programa intenta iniciarse solo", "navegador_secretos": "Acceso a datos del navegador",
          "exec_tmp": "Ejecución desde carpeta temporal", "ptrace": "Intento de inyección en otro proceso",
          "modulos": "Módulo del kernel cargado", "ldpreload": "Modificación de ld.so.preload"}

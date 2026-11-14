@@ -117,6 +117,8 @@ def cmd_power(args) -> int:
     plan = _plan_from_state(args)
     act = ap.Actuator(dry_run=args.dry_run)
     ap.apply_power(plan, act)
+    from . import energia                 # turbo a batería sin esperas de disco; eco con la gráfica en ahorro
+    energia.apply("corriente" if energia.on_ac() else "bateria", act, args.perfil)
     for p, v in act.changes:
         print(f"{p} = {v}")
     return 0

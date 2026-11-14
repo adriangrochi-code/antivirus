@@ -21,6 +21,10 @@ from .apply import Actuator, load_state, save_state
 
 BATTERY = {"sata": "med_power_with_dipm", "aspm": "powersave", "runtime_pm": "auto",
            "dirty_writeback": "1500", "stat_interval": "10"}
+# Turbo a batería: se mantienen solo los ahorros que no quitan velocidad (escrituras agrupadas, estadísticas
+# cada 10 s, dispositivos PCI sin usar dormidos). Fuera: el reposo del enlace SATA y el ASPM, que suman espera a
+# cada acceso al disco y a la gráfica.
+TURBO_BATERIA = dict(BATTERY, sata="max_performance", aspm="default")
 AC = {"sata": "max_performance", "aspm": "default", "runtime_pm": "on", "dirty_writeback": "500", "stat_interval": "1"}
 # Clases PCI que nunca se suspenden: red (0x02), controladoras USB (0x0c03)
 PCI_KEEP = ("0x02", "0x0c03")
@@ -38,8 +42,18 @@ def on_ac() -> bool:
     return not any(sysfs.read(f"{b}/status") == "Discharging" for b in batteries) and bool(mains)
 
 
-def apply(mode: str, act: Actuator) -> dict:
-    v = BATTERY if mode == "bateria" else AC
+def perfil() -> str:
+    return (load_state("prefs.json") or {}).get("perfil", "equilibrado")
+
+
+# Gráfica AMD con DPM clásico (como la de la ThinkPad A275): estado según modo y cargador
+DPM = {("silencioso", "bateria"): "battery", ("rendimiento", "bateria"): "performance",
+       ("rendimiento", "corriente"): "performance"}
+
+
+def apply(mode: str, act: Actuator, prof: str | None = None) -> dict:
+    prof = prof or perfil()
+    v = (TURBO_BATERIA if prof == "rendimiento" else BATTERY) if mode == "bateria" else AC
     for h in sysfs.ls("/sys/class/scsi_host/host*"):
         if sysfs.read(f"{h}/link_power_management_policy") is not None:
             act.write(f"{h}/link_power_management_policy", v["sata"])
@@ -51,8 +65,15 @@ def apply(mode: str, act: Actuator) -> dict:
             act.write(f"{d}/power/control", v["runtime_pm"])
     act.sysctl("vm.dirty_writeback_centisecs", v["dirty_writeback"])
     act.sysctl("vm.stat_interval", v["stat_interval"])
+    for c in sysfs.ls("/sys/class/drm/card[0-9]"):
+        if sysfs.read(f"{c}/device/power_dpm_state") is not None:
+            act.write(f"{c}/device/power_dpm_state", DPM.get((prof, mode), "balanced"))
+    # Algunos firmwares cambian solos el perfil de plataforma o apagan el turbo al desenchufar: se repone el
+    # elegido (eco: sin turbo, que es lo que más gasta para lo poco que acelera)
+    if sysfs.read("/sys/devices/system/cpu/cpufreq/boost") is not None:
+        act.write("/sys/devices/system/cpu/cpufreq/boost", "0" if prof == "silencioso" else "1")
     apply_thresholds(act)
-    return {"modo": mode, "cambios": len(act.changes)}
+    return {"modo": mode, "perfil": prof, "cambios": len(act.changes)}
 
 
 def apply_thresholds(act: Actuator) -> None:

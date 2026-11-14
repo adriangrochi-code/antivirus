@@ -250,7 +250,10 @@ def _storage(plan: Plan, hw: dict, bench: dict) -> None:
 
 
 # ---------------------------------------------------------------- CPU y potencia
-EPP = {"silencioso": "power", "equilibrado": "balance_performance", "rendimiento": "performance"}
+# Eco con «balance_power» y no «power»: con «power» algunos procesadores quedan clavados en la frecuencia mínima
+# (todo se arrastra y las tareas duran más, que también gasta). Con el turbo apagado en eco, terminar rápido y
+# volver a reposo da más trabajo por cada vatio.
+EPP = {"silencioso": "balance_power", "equilibrado": "balance_performance", "rendimiento": "performance"}
 PLATFORM = {"silencioso": ["quiet", "low-power"], "equilibrado": ["balanced"],
             "rendimiento": ["performance", "balanced-performance"]}
 
@@ -260,7 +263,8 @@ def _cpu_power(plan: Plan, hw: dict) -> None:
     prof = plan.power_profile
     gov = c.get("governors") or []
     if c.get("epp_choices"):
-        plan.cpu = {"governor": "powersave" if "powersave" in gov else None, "epp": EPP[prof]}
+        epp = EPP[prof] if EPP[prof] in c["epp_choices"] else "power" if prof == "silencioso" else EPP[prof]
+        plan.cpu = {"governor": "powersave" if "powersave" in gov else None, "epp": epp}
         if prof == "rendimiento" and "performance" in gov and not pw.get("battery"):
             plan.cpu = {"governor": "performance", "epp": "performance"}
     else:
