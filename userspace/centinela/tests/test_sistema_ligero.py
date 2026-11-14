@@ -445,3 +445,13 @@ def test_opensnitch_solo_al_abrirlo(tmp_path):
 def test_fwupd_no_queda_en_memoria():
     d = (ROOT / "etc/systemd/system/fwupd-refresh.service.d/60-tisma-cerrar-fwupd.conf").read_text()
     assert "ExecStopPost=-+/usr/bin/systemctl --no-block stop fwupd.service" in d
+
+
+def test_iso_sin_initramfs_repetidos():
+    """Los initramfs de /boot (~150 MB ya comprimidos) iban dos veces en la ISO: solo quedan los de /live."""
+    build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+    sq = build[build.index('mksquashfs "$CHROOT"'):].split("\n")[1]
+    assert "-wildcards" in sq and "-e 'boot/initrd.img-*'" in sq
+    assert build.index('mksquashfs "$CHROOT"') < build.index('cp "$CHROOT/boot/initrd.img-$KVER"')
+    sp = (ROOT / "etc/calamares/modules/shellprocess-tisma.conf").read_text()
+    assert sp.index("update-initramfs -c -k $v") < sp.index("tisma-secureboot quitar-minimal")

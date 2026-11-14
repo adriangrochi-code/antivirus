@@ -483,8 +483,10 @@ rm -rf "$ISODIR" && mkdir -p "$ISODIR/live" "$ISODIR/boot/grub"
 # TISMA_COMPRESION=zstd: más rápida en la sesión live, ISO más grande.
 if [[ "${TISMA_COMPRESION:-xz}" == zstd ]]; then COMP=(-comp zstd -Xcompression-level 19)
 else COMP=(-comp xz -Xbcj x86 -Xdict-size 100%); fi
+# Sin los initramfs de /boot (~150 MB, ya comprimidos: no se achican): van en /live para arrancar el USB y en el
+# equipo los crea el instalador (módulo initramfs y shellprocess-tisma) y el actualizador (update-initramfs -c)
 mksquashfs "$CHROOT" "$ISODIR/live/filesystem.squashfs" "${COMP[@]}" \
-    -b 1M -noappend -e boot/efi -e .base-ok -e .packages-ok -quiet
+    -b 1M -noappend -wildcards -e boot/efi -e .base-ok -e .packages-ok -e 'boot/initrd.img-*' -quiet
 # Sesión live e instalador con el kernel FIRMADO de Debian: arranca con Secure Boot en cualquier PC y trae todos
 # los drivers. El kernel TISMA, como entrada aparte (con Secure Boot, solo si está firmado y su clave registrada).
 KVER="$(find "$CHROOT/boot" -maxdepth 1 -name 'vmlinuz-*' ! -name '*centinela*' -printf '%f\n' | sort -V | tail -n1 | sed 's/^vmlinuz-//')"

@@ -3,6 +3,15 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 13
+
+- **Preferencias**: una ventana simple para lo de todos los días (aspecto, tamaño del texto, fondo, energía,
+  pantalla y teclado); lo demás en «Opciones avanzadas».
+- **Menos memoria y CPU**: el motor de IA se pausa tras 15 min sin uso y vuelve solo al escribir; OpenSnitch se
+  enciende solo al abrirlo; fwupd se cierra tras buscar firmware; el vigilante de memoria del kernel gasta menos.
+- **ISO más liviana** (vuelve a ser un solo archivo): los complementos de Hope se descargan al instalar y los
+  arranques de /boot ya no van repetidos.
+
 ## Novedades de la preview 12
 
 - **Batería**: modos Eco · Equilibrado · Turbo. Eco rinde más por vatio; Turbo a batería ya no pierde velocidad
