@@ -438,3 +438,8 @@ def test_opensnitch_solo_al_abrirlo(tmp_path):
     assert "systemctl disable opensnitch.service" in (ROOT.parent / "iso/build-iso.sh").read_text()
     w = (ROOT / "usr/bin/tisma-opensnitch").read_text()
     assert "pkexec /usr/bin/systemctl start opensnitch.service" in w and "exec opensnitch-ui" in w
+
+
+def test_fwupd_no_queda_en_memoria():
+    d = (ROOT / "etc/systemd/system/fwupd-refresh.service.d/60-tisma-cerrar-fwupd.conf").read_text()
+    assert "ExecStopPost=-+/usr/bin/systemctl --no-block stop fwupd.service" in d
