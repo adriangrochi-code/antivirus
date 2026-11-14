@@ -140,3 +140,11 @@ herramientas de ingeniería con sus plantillas, la Bienvenida en un navegador re
 Pendiente de probar: el perfil `generic` del kernel (tarda horas en compilar), el kernel a medida en hardware
 real, Waydroid/Proton/Strata en hardware real, la compatibilidad gráfica con GPU AMD GCN 1/2 y los límites de
 potencia en equipos con RAPL.
+
+## Licencia
+
+TISMA OS es software libre bajo la **GNU General Public License v3.0** (archivo [`LICENSE`](LICENSE)): puedes
+usarlo, estudiarlo, modificarlo y compartirlo; si distribuyes una versión modificada, tiene que ser también GPL-3.0
+y con su código fuente. Las partes de terceros conservan su licencia: la guía de REA (MIT,
+`userspace/tisma-code/tisma_code/rea_guia/LICENSE-REA`) y el catálogo de build-your-own-x (CC0). Los paquetes de
+Debian que forman el sistema tienen cada uno la suya (`/usr/share/doc/<paquete>/copyright`).
