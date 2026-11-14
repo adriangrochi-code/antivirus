@@ -3,6 +3,17 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 12
+
+- **Batería**: modos Eco · Equilibrado · Turbo. Eco rinde más por vatio; Turbo a batería ya no pierde velocidad
+  por los ahorros del disco y la gráfica.
+- **Aviso de calor**: si el procesador se frena seguido por temperatura (ventilador sucio), te avisa en simple.
+- **TISMA Code**: «Sin apuro» (tareas largas con modelos más grandes que la memoria, trabaja enchufado y avisa
+  al terminar), kit «construir» (360 guías para crear lo que sea desde cero), botón «Pensar», «✂ Reducir»
+  modelos y primera respuesta casi inmediata.
+- **Hope incluido** y TISMA bajo licencia **GPL-3.0**.
+- Apps de TISMA que abren antes y navegador más liviano en equipos con poca memoria.
+
 ## Qué trae
 
 - **Escritorio**: KDE Plasma 6 con el aspecto TISMA (claro u oscuro, color de acento, iconos Papirus, Inter),
