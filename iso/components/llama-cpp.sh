@@ -26,7 +26,7 @@ if [[ "${LLAMA_COMPILAR:-0}" != 1 ]]; then
     mkdir -p "$CHROOT/opt/llama.cpp/bin" "$CHROOT/usr/local/bin"
     cp -a "$WORK/llama-$TAG/." "$CHROOT/opt/llama.cpp/bin/"
     chmod -R u=rwX,go=rX "$CHROOT/opt/llama.cpp"
-    for b in llama-server llama-cli llama-bench llama-quantize; do
+    for b in llama-server llama-cli llama-bench llama-quantize llama-imatrix llama-perplexity; do
         if [[ -x "$CHROOT/opt/llama.cpp/bin/$b" ]]; then ln -sf "/opt/llama.cpp/bin/$b" "$CHROOT/usr/local/bin/$b"; fi
     done
     install -D -m 644 "$WORK/llama-$TAG/LICENSE" "$CHROOT/usr/share/doc/llama.cpp/LICENSE"
@@ -47,7 +47,7 @@ run cmake -S /usr/src/llama.cpp -B /usr/src/llama.cpp/build -G Ninja -DCMAKE_BUI
     -DGGML_VULKAN=ON -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON
 run cmake --build /usr/src/llama.cpp/build -j"$(nproc)"
 run cmake --install /usr/src/llama.cpp/build
-for b in llama-server llama-cli llama-bench llama-quantize; do
+for b in llama-server llama-cli llama-bench llama-quantize llama-imatrix llama-perplexity; do
     if [[ -x "$CHROOT/opt/llama.cpp/bin/$b" ]]; then ln -sf "/opt/llama.cpp/bin/$b" "$CHROOT/usr/local/bin/$b"; fi
 done
 echo "/opt/llama.cpp/lib" > "$CHROOT/etc/ld.so.conf.d/llama-cpp.conf"

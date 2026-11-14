@@ -181,6 +181,27 @@ class App:
                 self.optimize(path)
                 return True
 
+    _reduciendo = threading.Lock()
+
+    def reducir(self, path: str, nivel: str, capas: bool = False) -> None:
+        """«✂ Reducir» en segundo plano, contando cada paso en el chat (puede tardar bastante en CPU)."""
+        from . import reducir
+        if not self._reduciendo.acquire(blocking=False):
+            self.push({"type": "error", "message": "Ya se está reduciendo un modelo"})
+            return
+        try:
+            self.push({"type": "info", "message": f"Reduciendo {Path(path).name}. Tarda un rato; puedes "
+                       "seguir usando el equipo. El original no se toca."})
+            r = reducir.reducir(path, nivel, capas, avisar=lambda m: self.push({"type": "info", "message": "· " + m}))
+            capas = (f", sin {len(r['capas_quitadas'])} de {r['capas']} capas" if r["capas_quitadas"] else "")
+            self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {r['antes'] / 1e9:.2f} GB → "
+                       f"{r['despues'] / 1e9:.2f} GB{capas}. Conserva un {r['calidad']:.0f} % de la calidad medida. "
+                       "Elígelo en el selector de modelo."})
+        except Exception as e:  # noqa: BLE001 — se informa en el chat; el original queda intacto
+            self.push({"type": "error", "message": f"No se pudo reducir: {e}"})
+        finally:
+            self._reduciendo.release()
+
     _optimizing = threading.Lock()
 
     def optimize(self, path: str) -> None:
@@ -377,6 +398,14 @@ class Handler(BaseHTTPRequestHandler):
                                         "strata": models.strata_status(APP.hw), "motor": APP.motor_brief()})
             if url.path == "/api/componentes":
                 return self._send(200, APP.componentes())
+            if url.path == "/api/models/niveles":
+                from . import reducir as red
+                from .motor import gguf_info
+                p = Path(q.get("path", "")).resolve()
+                if models.MODELS_DIR.resolve() not in p.parents or not p.is_file():
+                    return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
+                origen = red.precision(p, gguf_info(str(p)).get("tipo_archivo"))
+                return self._send(200, {"origen": origen, "niveles": red.niveles_posibles(origen)})
             if url.path == "/api/ajustes":
                 return self._send(200, APP.ajustes())
             if url.path == "/api/descargas":
@@ -466,6 +495,14 @@ class Handler(BaseHTTPRequestHandler):
                 if models.MODELS_DIR.resolve() not in Path(path).parents:
                     return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
                 threading.Thread(target=APP.optimize, args=(path,), daemon=True).start()
+                return self._send(200, {"ok": True})
+            if url.path == "/api/models/reducir":
+                path = str(Path(b["path"]).resolve())
+                if models.MODELS_DIR.resolve() not in Path(path).parents:
+                    return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
+                from . import reducir as red
+                nivel = b.get("nivel") if b.get("nivel") in ("auto", *red.NIVELES) else "auto"
+                threading.Thread(target=APP.reducir, args=(path, nivel, b.get("capas") is True), daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/models/serve":
                 ep = APP.server.start(b["path"], APP.hw)

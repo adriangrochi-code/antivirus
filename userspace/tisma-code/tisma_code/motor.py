@@ -143,7 +143,8 @@ def _gguf_info(p: Path) -> dict:
             "key_len": _num(g("attention.key_length", 0) or (_num(g("embedding_length", 0) or 0) // heads if heads else 0)),
             "value_len": _num(g("attention.value_length", 0) or 0),
             "tokenizador": kv.get("tokenizer.ggml.model", ""), "vocabulario": kv.get("tokenizer.ggml.tokens", 0),
-            "bytes_expertos": expert, "bytes_resto": other, "nombre": kv.get("general.name", p.stem)}
+            "bytes_expertos": expert, "bytes_resto": other, "nombre": kv.get("general.name", p.stem),
+            "tipo_archivo": kv.get("general.file_type") if isinstance(kv.get("general.file_type"), int) else None}
 
 
 def total_size(path: str | Path) -> int:

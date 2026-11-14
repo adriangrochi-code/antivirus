@@ -391,7 +391,7 @@ async function openModels() {
     (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
      `<div class="it" style="cursor:default;color:var(--faint)">${m.strata && !m.strata.ok ? esc(m.strata.motivo) : "Motor apagado: abre Strata o usa un modelo descargado"}</div>`) +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
-      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small></div>`).join("") : "") +
+      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small><small class="hilos" data-reducir="${esc(x.path)}" title="Crear una versión más chica y rápida quitando lo que menos aporta (el original no se toca)">✂ reducir</small></div>`).join("") : "") +
     (Object.keys(comps).length ? `<hr><div class="tt">Componentes</div>` + Object.entries(comps).map(([k, c]) =>
       `<div class="it" ${c.estado === "no" || c.estado === "error" ? `data-comp="${esc(k)}"` : 'style="cursor:default"'}>` +
       `${c.estado === "instalado" ? "✓" : c.estado === "instalando" ? "⏳" : "＋"} ${esc(c.nombre)}<small>${
@@ -424,6 +424,25 @@ async function openModels() {
   $("#modelPop").querySelectorAll("[data-hilos]").forEach(el => el.onclick = async ev => {
     ev.stopPropagation(); closePops();
     try { await api("/api/motor/optimizar", {path: el.dataset.hilos}); } catch (e) { put(esc(e.message), "err"); }
+  });
+  $("#modelPop").querySelectorAll("[data-reducir]").forEach(el => el.onclick = async ev => {
+    ev.stopPropagation(); closePops();
+    let info = {niveles: []};
+    try { info = await api("/api/models/niveles?path=" + encodeURIComponent(el.dataset.reducir)); }
+    catch (e) { put(esc(e.message), "err"); return; }
+    const NOMBRE = {normal: ["Normal", "la calidad casi no cambia"], liviano: ["Liviano", "más chico y rápido, pierde un poco"],
+                    muy_liviano: ["Muy liviano", "para equipos muy lentos: pierde bastante calidad"]};
+    const d = put(`<b>Reducir este modelo</b> (se crea uno nuevo; el original no se toca)<br>` +
+      `<button class="chip" data-r="auto">Automático</button> un escalón más liviano que ahora<br>` +
+      info.niveles.map(n => `<button class="chip" data-r="${n}">${NOMBRE[n][0]}</button> ${NOMBRE[n][1]}<br>`).join("") +
+      `<label style="display:inline-flex;gap:6px;margin:6px 0"><input type="checkbox" class="capas"> Quitar también capas que casi no aportan (más rápido; tarda más en prepararse)</label><br>` +
+      `<button class="chip" data-r="">Cancelar</button>`, "note");
+    d.querySelectorAll("[data-r]").forEach(b => b.onclick = async () => {
+      d.querySelectorAll("button, input").forEach(x => x.disabled = true);
+      if (!b.dataset.r) return;
+      try { await api("/api/models/reducir", {path: el.dataset.reducir, nivel: b.dataset.r, capas: d.querySelector(".capas").checked}); }
+      catch (e) { put(esc(e.message), "err"); }
+    });
   });
   $("#dirPop").classList.remove("on");
   $("#modelPop").classList.add("on");
