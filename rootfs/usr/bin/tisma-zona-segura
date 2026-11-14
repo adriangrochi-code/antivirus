@@ -1,0 +1,6 @@
+#!/usr/bin/python3 -I
+# Abre un archivo en la zona segura desechable (sin internet ni acceso a tus archivos; al cerrar se borra todo)
+import sys
+sys.path.insert(0, "/usr/lib/centinela/python")
+from tisma_sandbox.zona_segura import main
+sys.exit(main())

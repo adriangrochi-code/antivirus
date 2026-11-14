@@ -38,12 +38,12 @@ def start_dbus_proxy(p: prof.Profile, tmp: str) -> tuple[subprocess.Popen | None
     return None, None
 
 
-def run(p: prof.Profile, argv: list[str]) -> int:
+def run(p: prof.Profile, argv: list[str], app_home: Path | None = None) -> int:
     bwrap = shutil.which("bwrap")
     if not bwrap:
         print("error: bubblewrap no está instalado; no se ejecuta sin aislamiento", file=sys.stderr)
         return 1
-    app_home = prof.DATA_DIR / p.nombre
+    app_home = app_home or prof.DATA_DIR / p.nombre       # la zona segura usa una carpeta temporal propia
     app_home.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.TemporaryDirectory(prefix=f"tisma-sb-{p.nombre}-") as tmp:
         proxy, sock = start_dbus_proxy(p, tmp)

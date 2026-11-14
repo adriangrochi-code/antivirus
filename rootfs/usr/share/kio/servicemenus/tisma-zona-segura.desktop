@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+# Clic derecho en un archivo > «Abrir en zona segura»: sin internet ni acceso a tus archivos; al cerrar se borra
+MimeType=application/pdf;application/epub+zip;image/*;video/*;audio/*;text/plain;text/markdown;text/csv;text/html;application/msword;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.oasis.opendocument.text;application/rtf;application/vnd.ms-excel;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.oasis.opendocument.spreadsheet;application/vnd.ms-powerpoint;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.oasis.opendocument.presentation;
+Actions=zonaSegura
+X-KDE-Priority=TopLevel
+
+[Desktop Action zonaSegura]
+Name=Abrir en zona segura
+Icon=security-high
+Exec=/usr/bin/tisma-zona-segura %f
