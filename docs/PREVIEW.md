@@ -13,6 +13,11 @@ ni para equipos con datos importantes sin copia.**
   protocolos raros, clasificadores de tráfico de routers ni sistemas de archivos de clúster (de ahí salen muchas
   escaladas de privilegios, como las 948 que encontró OpenAI); bloqueados también como módulos en el kernel de
   Debian. La ISO lleva todas las correcciones de seguridad de Debian publicadas al construirla.
+- **Novedades de la preview 11**: arreglo importante del actualizador: en un equipo real quita el kernel TISMA
+  «minimal» (solo para máquinas virtuales) como hace el instalador, y si el arranque quedara con él, deshace la
+  actualización (en la A275, tras actualizar con la preview 10, se reiniciaba en bucle). **Zona segura**: clic
+  derecho > «Abrir en zona segura» abre un archivo dudoso sin internet ni acceso a tus archivos y lo borra al
+  cerrar. **Programas revisados por Escudo** en TISMA Seguridad: qué hizo cada programa, en simple.
 - **Novedades de la preview 10 (uso diario más limpio)**: con TISMA instalado, el USB muestra el menú con
   «Actualizar o reinstalar TISMA» arriba y 10 s de cuenta atrás (en la preview 9 el aviso era una línea chica y en
   la A275 pasó desapercibido). Menú de inicio con pocas categorías y lo técnico en **Opciones avanzadas**; nombres

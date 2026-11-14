@@ -175,3 +175,18 @@ def test_nunca_borra_lo_montado(tmp_path, monkeypatch):
     os.unlink(os.path.join(sistema, "importante"))
     a.limpiar_trabajo()
     assert not os.path.exists(a.w)
+
+
+def test_arranque_nunca_con_el_kernel_minimal(tmp_path):
+    """En la A275, tras actualizar, GRUB arrancaba el kernel TISMA «minimal» (solo para máquinas virtuales) y
+    el equipo se reiniciaba en bucle: el actualizador lo quita como el instalador y comprueba el menú."""
+    cfg = tmp_path / "grub.cfg"
+    cfg.write_text("menuentry 'TISMA' {\n\tlinux\t/vmlinuz-7.3.4-centinela-minimal root=UUID=x\n}\n"
+                   "menuentry 'b' {\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64\n}\n")
+    assert motor.primer_kernel(str(cfg)) == "vmlinuz-7.3.4-centinela-minimal"
+    assert motor.primer_kernel(str(tmp_path / "no")) is None
+    fuente = (ROOT / "userspace/actualizar/tisma_actualizar/motor.py").read_text()
+    assert fuente.index('paso_secureboot(raiz, "quitar-minimal"') < fuente.index('paso_secureboot(raiz, "elegir"')
+    assert '"-minimal" in primero and not es_maquina_virtual()' in fuente
+    # Lo mismo que hace el instalador
+    assert "tisma-secureboot quitar-minimal" in (ROOT / "rootfs/etc/calamares/modules/shellprocess-tisma.conf").read_text()

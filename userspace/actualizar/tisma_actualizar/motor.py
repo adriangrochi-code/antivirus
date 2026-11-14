@@ -188,6 +188,23 @@ def montados_bajo(base: str, mounts: str | None = None) -> list[str]:
     return sorted(set(salida), key=lambda p: -p.count("/"))
 
 
+def primer_kernel(grub_cfg: str) -> str | None:
+    """Kernel de la entrada por defecto del menú de GRUB (la primera línea «linux …»)."""
+    try:
+        for linea in open(grub_cfg, encoding="utf-8", errors="replace"):
+            partes = linea.split()
+            if len(partes) >= 2 and partes[0] == "linux":
+                return os.path.basename(partes[1])
+    except OSError:
+        pass
+    return None
+
+
+def es_maquina_virtual() -> bool:
+    r = subprocess.run(["systemd-detect-virt", "--vm"], capture_output=True, text=True)
+    return r.returncode == 0 and r.stdout.strip() not in ("", "none")
+
+
 def puntos_fstab(fstab: str) -> list[tuple[str, str]]:
     """(punto de montaje o archivo de swap, tipo) de cada línea de /etc/fstab."""
     salida = []
@@ -459,6 +476,15 @@ class Actualizacion:
         if quitar:
             self.avisar("arranque", "Quitando lo que solo sirve en el USB…", 80)
             self.run(["dpkg", "--purge", "--force-depends", *quitar], raiz=raiz, env=entorno)
+        # Como el instalador (shellprocess-tisma): en un equipo real se quita el kernel TISMA «minimal», que es solo
+        # para máquinas virtuales. Faltaba aquí: tras actualizar, GRUB arrancaba ese kernel (7.3 > 7.2 de Debian),
+        # sin drivers, y la A275 quedaba reiniciándose en bucle.
+        self.paso_secureboot(raiz, "quitar-minimal", entorno)
+        modulos = set(os.listdir(os.path.join(raiz, "lib/modules")))
+        for nombre in os.listdir(boot):                      # lo que el desinstalar dejó en /boot
+            m = re.match(r"(vmlinuz|initrd\.img|System\.map|config)-(.+)$", nombre)
+            if m and m.group(2) not in modulos:
+                os.unlink(os.path.join(boot, nombre))
         self.avisar("arranque", "Preparando idiomas…", 84)
         subprocess.run(["chroot", raiz, "locale-gen"], capture_output=True, env=entorno)
         self.avisar("arranque", "Preparando el arranque…", 88)
@@ -471,8 +497,17 @@ class Actualizacion:
                 contenido = self.run(["lsinitramfs", f"/boot/initrd.img-{version}"], raiz=raiz, env=entorno)
                 if "cryptroot/crypttab" not in contenido:
                     raise RuntimeError(f"initramfs {version} sin desbloqueo del disco")
-        subprocess.run(["chroot", raiz, "/usr/bin/tisma-secureboot", "elegir"], capture_output=True, env=entorno)
+        self.paso_secureboot(raiz, "elegir", entorno)
         self.run(["update-grub"], raiz=raiz, env=entorno)
+        # Red de seguridad: en un equipo real, el arranque por defecto NUNCA puede ser el kernel minimal
+        primero = primer_kernel(os.path.join(boot, "grub/grub.cfg"))
+        if primero and "-minimal" in primero and not es_maquina_virtual():
+            raise RuntimeError(f"el arranque quedaría con {primero}, que no sirve en este equipo")
+
+    def paso_secureboot(self, raiz: str, orden: str, entorno: dict) -> None:
+        r = subprocess.run(["chroot", raiz, "/usr/bin/tisma-secureboot", orden], capture_output=True, text=True,
+                           env=entorno)
+        sys.stderr.write(f"tisma-secureboot {orden}: {r.returncode} {(r.stdout + r.stderr).strip()[-300:]}\n")
 
     def limpiar_anteriores(self, conservar: int = 1):
         """Solo se guarda la última versión anterior (cada una ocupa varios GB)."""
