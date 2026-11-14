@@ -140,7 +140,11 @@ async function pollAuto(){try{const r=await api("/api/autotune");renderAuto(r);i
 $("#auto").onclick=async()=>{try{await api("/api/autotune",{segundos:autoSec});toast("Optimización iniciada (te pedirá la contraseña)");autoTimer=setInterval(pollAuto,2000);pollAuto()}catch(e){toast(e.message,true)}};
 pollAuto();
 $("#boot").onclick=async()=>{$("#bootOut").textContent="Analizando…";const r=await api("/api/arranque");if(r.error){$("#bootOut").textContent=r.error;return}
- const e=r.etapas;$("#bootOut").innerHTML=`<div class="bars">${Object.entries(e).map(([k,v])=>`<div class="b"><span>${esc(k)}</span><div class="t"><i style="width:${Math.min(100,v*8)}%"></i></div><span class="n">${v.toFixed(1)} s</span></div>`).join("")}</div>`+(r.recomendaciones.length?`<ul class="rec">${r.recomendaciones.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:"<div class='note'>Sin retrasos importantes.</div>")};
+ const e=r.etapas,n=r.nombres||{},enc=["firmware","loader","kernel","initrd","userspace"].reduce((a,k)=>a+(e[k]||0),0);
+ const resumen=`<div class="sub" style="margin-bottom:8px">Encender: <b>${enc.toFixed(0)} s</b>`+(e.sesion?` · Entrar al escritorio: <b>${e.sesion.toFixed(0)} s</b>`:"")+`</div>`;
+ $("#bootOut").innerHTML=resumen+`<div class="bars">${Object.entries(e).map(([k,v])=>`<div class="b"><span>${esc(n[k]||k)}</span><div class="t"><i style="width:${Math.min(100,v*8)}%"></i></div><span class="n">${v.toFixed(1)} s</span></div>`).join("")}</div>`+(r.recomendaciones.length?`<ul class="rec">${r.recomendaciones.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:"<div class='note'>Sin retrasos importantes.</div>")+
+  `<button class="btn" id="bootCopy" style="margin-top:8px">Copiar para enviar</button>`;
+ $("#bootCopy").onclick=async()=>{try{await navigator.clipboard.writeText(r.texto||"");toast("Copiado: pégalo en un mensaje")}catch(x){toast("No se pudo copiar")}}};
 (async()=>{history.replaceState(null,"","/");try{const d=await api("/api/equipo");
  if(d.bateria){$("#umbralRow").hidden=false;$("#umbral").classList.toggle("on",!!d.umbral_carga)}
  $("#dev").textContent=[d.producto,d.cpu].filter(Boolean).join(" · ");

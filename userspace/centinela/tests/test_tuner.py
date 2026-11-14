@@ -76,6 +76,15 @@ def test_boot_analysis_parsing():
     rec = boot.recommendations(t, b)
     assert any("BIOS" in r for r in rec) and any("ModemManager" in r for r in rec)
     assert not any("nftables" in r for r in rec)          # esencial y rápido: no se toca
+    assert not any("centinela " in r or "sudo" in r for r in rec)   # sin órdenes de terminal
+    assert any("módems" in r for r in rec)                          # nombre que se entiende
+    assert not any("escudo" in r for r in boot.recommendations({}, [(5.0, "escudo.service")]))   # seguridad: no
+    sal = {"-p UserspaceTimestampMonotonic": "UserspaceTimestampMonotonic=1000000\n",
+           "plasma-plasmashell.service -p ActiveEnterTimestampMonotonic": "ActiveEnterTimestampMonotonic=13500000\n"}
+    assert boot.tiempo_sesion(run=lambda *a: sal[" ".join(a)]) == 12.5
+    assert boot.tiempo_sesion(run=lambda *a: "") is None
+    texto = boot.informe_texto({"etapas": {"initrd": 9.0}, "lentos": [(2.0, "x.service")], "sesion": [], "cadena": "c"})
+    assert "Abrir el disco (incluye escribir la contraseña): 9.0 s" in texto and "x.service" in texto
 
 
 A275_HW = {**HW, "product": "LENOVO ThinkPad A275 20KD0013US",
