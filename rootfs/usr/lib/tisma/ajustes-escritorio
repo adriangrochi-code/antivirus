@@ -15,6 +15,6 @@ aplicar() {   # aplicar <marca> <script.js>
 }
 aplicar bandeja-1 /usr/share/tisma/escritorio/bandeja.js
 # Favoritos del menú de cuentas que ya existían (se ven al volver a entrar)
-if [ ! -e "$MARCAS/favoritos-1" ]; then
-    /usr/share/tisma/escritorio/favoritos.py >/dev/null 2>&1 && touch "$MARCAS/favoritos-1"
+if [ ! -e "$MARCAS/favoritos-2" ]; then
+    /usr/share/tisma/escritorio/favoritos.py >/dev/null 2>&1 && touch "$MARCAS/favoritos-2"
 fi

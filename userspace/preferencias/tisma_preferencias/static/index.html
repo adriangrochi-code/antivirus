@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preferencias</title>
+<link rel="icon" href="/static/logo.svg">
+<style>
+:root{--acc:#9145E6;--r:14px}
+html[data-tema=oscuro]{--bg:#131216;--card:#1E1D22;--card2:#28272D;--line:#34333B;--text:#ECECF0;--dim:#A6A5AE;--ok:#4CC38A;--bad:#F2777A}
+html[data-tema=claro]{--bg:#ECEBF1;--card:#FFFFFF;--card2:#F4F3F8;--line:#DEDDE5;--text:#1F1E24;--dim:#55545E;--ok:#147A4B;--bad:#B3261E}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Inter","Noto Sans",sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible{outline:3px solid color-mix(in srgb,var(--acc) 70%,white);outline-offset:2px}
+.wrap{max-width:820px;margin:0 auto;padding:26px 20px 40px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+header img{width:28px;height:32px}
+h1{font-size:24px;margin:0;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:14px}
+.card h2{font-size:16px;margin:0 0 2px}
+.card p{margin:0 0 12px;color:var(--dim);font-size:13.5px}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{padding:9px 16px;border-radius:999px;background:var(--card2);border:2px solid var(--line);font-weight:500}
+.seg button:hover{border-color:color-mix(in srgb,var(--acc) 50%,var(--line))}
+.seg button.sel{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,var(--card2))}
+.seg button small{display:block;font-weight:400;color:var(--dim);font-size:12px}
+.dots{display:flex;gap:10px;margin-top:12px}
+.dot{width:32px;height:32px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 2px var(--line)}
+.dot.sel{box-shadow:0 0 0 3px var(--text)}
+.fondos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.fondo{border-radius:12px;overflow:hidden;border:2px solid var(--line);aspect-ratio:16/10;padding:0;position:relative;background:var(--card2)}
+.fondo img{width:100%;height:100%;object-fit:cover;display:block}
+.fondo span{position:absolute;left:0;right:0;bottom:0;padding:4px 8px;font-size:12px;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;text-align:left}
+.fondo:hover{border-color:var(--acc)}
+.fondo.propio{display:grid;place-items:center;color:var(--dim);font-size:13px}
+.av{display:flex;flex-wrap:wrap;gap:8px}
+.av button{padding:9px 14px;border-radius:10px;background:var(--card2);border:1px solid var(--line)}
+details summary{cursor:pointer;font-weight:600;font-size:16px;list-style:none}
+details summary::before{content:"▸ ";color:var(--dim)}details[open] summary::before{content:"▾ "}
+.msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);padding:10px 16px;border-radius:12px;max-width:min(560px,90vw);font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.msg.on{opacity:1}.msg.err{border-color:var(--bad)}
+@media (max-width:520px){.wrap{padding:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><img src="/static/logo.svg" alt=""><h1>Preferencias</h1></header>
+
+  <section class="card"><h2>Aspecto</h2><p>Claro u oscuro, y el color de los detalles.</p>
+    <div class="seg" id="tema"><button data-v="claro">Claro</button><button data-v="oscuro">Oscuro</button></div>
+    <div class="dots" id="acentos"></div></section>
+
+  <section class="card"><h2>Tamaño del texto</h2><p>Más grande se lee mejor; entra menos en la pantalla.</p>
+    <div class="seg" id="tamano"><button data-v="normal">Normal</button><button data-v="grande">Grande</button><button data-v="muy_grande">Muy grande</button></div></section>
+
+  <section class="card"><h2>Fondo de pantalla</h2><p>También se usa en la pantalla de bloqueo.</p>
+    <div class="fondos" id="fondos"></div></section>
+
+  <section class="card"><h2>Energía</h2><p id="energiaNota">Cuánta potencia usa el equipo.</p>
+    <div class="seg" id="energia">
+      <button data-v="silencioso">Eco<small>Más batería y menos ruido</small></button>
+      <button data-v="equilibrado">Equilibrado<small>Lo recomendado</small></button>
+      <button data-v="rendimiento">Turbo<small>Toda la potencia</small></button></div></section>
+
+  <section class="card"><h2>Pantalla</h2><p>Apagar y bloquear la pantalla si no usas el equipo durante…</p>
+    <div class="seg" id="pantalla"><button data-v="5">5 min</button><button data-v="10">10 min</button><button data-v="15">15 min</button><button data-v="30">30 min</button><button data-v="0">Nunca</button></div></section>
+
+  <section class="card"><h2>Teclado</h2><p>Si las letras no salen donde deben (la ñ, los acentos), cámbialo aquí.</p>
+    <div class="seg" id="teclado"></div></section>
+
+  <section class="card"><details><summary>Opciones avanzadas</summary>
+    <p style="margin-top:10px">Para quien quiere tocar más cosas.</p>
+    <div class="av">
+      <button data-app="sistema">Configuración del sistema</button>
+      <button data-app="rendimiento">Rendimiento y temperatura</button>
+      <button data-app="seguridad">Seguridad</button></div></details></section>
+</div>
+<div class="msg" id="msg" role="status"></div>
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const api = async (p, b) => {
+  const r = await fetch(p, b === undefined ? {headers: {"X-Token": TOKEN}} :
+    {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"}, body: JSON.stringify(b)});
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+};
+let tMsg;
+function msg(t, err) { const m = $("#msg"); m.textContent = t; m.className = "msg on" + (err ? " err" : "");
+  clearTimeout(tMsg); tMsg = setTimeout(() => m.className = "msg", 4500); }
+function marcar(id, v) { document.querySelectorAll(`#${id} button`).forEach(b => b.classList.toggle("sel", b.dataset.v === String(v))); }
+async function aplicar(ruta, cuerpo, okTxt) {
+  try { const r = await api(ruta, cuerpo);
+    if (r.cancelado) return r;
+    if (r.ok === false) msg("No se pudo cambiar" + (r.salida ? ": " + r.salida : ""), true);
+    else msg(r.nota || okTxt);
+    return r;
+  } catch (e) { msg(e.message, true); }
+}
+let E;
+async function cargar() {
+  E = await api("/api/estado");
+  document.documentElement.dataset.tema = E.tema;
+  document.documentElement.style.setProperty("--acc", E.acentos[E.acento]);
+  marcar("tema", E.tema); marcar("tamano", E.tamano); marcar("energia", E.energia);
+  marcar("pantalla", E.pantalla);
+  $("#acentos").innerHTML = Object.entries(E.acentos).map(([k, c]) =>
+    `<button class="dot${k === E.acento ? " sel" : ""}" data-v="${esc(k)}" title="${esc(k)}" aria-label="Color ${esc(k)}" style="background:${esc(c)}"></button>`).join("");
+  $("#teclado").innerHTML = Object.entries(E.teclados).map(([k, n]) => `<button data-v="${esc(k)}">${esc(n)}</button>`).join("");
+  marcar("teclado", E.teclado);
+  $("#fondos").innerHTML = E.fondos.map(f => `<button class="fondo" data-id="${esc(f.id)}" title="${esc(f.nombre)}"><img loading="lazy" alt="" src="/miniatura?id=${encodeURIComponent(f.id)}"><span>${esc(f.nombre)}</span></button>`).join("")
+    + `<button class="fondo propio" id="propio">＋ Una foto tuya</button>`;
+  if (!E.bateria) $("#energiaNota").textContent = "Cuánta potencia usa el equipo (Eco también lo hace más silencioso).";
+}
+$("#tema").onclick = async e => { const v = e.target.closest("button")?.dataset.v; if (!v) return;
+  const r = await aplicar("/api/tema", {modo: v, acento: E.acento}, "Listo"); if (r?.ok !== false) { E.tema = v; marcar("tema", v); document.documentElement.dataset.tema = v; } };
+$("#acentos").onclick = async e => { const v = e.target.closest("button")?.dataset.v; if (!v) return;
+  const r = await aplicar("/api/tema", {modo: E.tema, acento: v}, "Listo"); if (r?.ok !== false) { E.acento = v;
+    document.querySelectorAll(".dot").forEach(d => d.classList.toggle("sel", d.dataset.v === v));
+    document.documentElement.style.setProperty("--acc", E.acentos[v]); } };
+for (const [id, ruta, conv, txt] of [["tamano", "/api/tamano", String, "Listo"], ["energia", "/api/energia", String, "Modo de energía cambiado"],
+                                      ["pantalla", "/api/pantalla", Number, "Listo"], ["teclado", "/api/teclado", String, "Teclado cambiado"]])
+  $("#" + id).onclick = async e => { const b = e.target.closest("button"); if (!b) return;
+    const r = await aplicar(ruta, {valor: conv(b.dataset.v)}, txt); if (r && r.ok !== false) marcar(id, b.dataset.v); };
+$("#fondos").onclick = async e => { const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "propio") await aplicar("/api/fondo", {propio: true}, "Fondo cambiado");
+  else await aplicar("/api/fondo", {id: b.dataset.id}, "Fondo cambiado"); };
+document.querySelectorAll("[data-app]").forEach(b => b.onclick = () => aplicar("/api/abrir", {app: b.dataset.app}, "Abriendo…"));
+cargar().catch(e => msg(e.message, true));
+</script>
+</body>
+</html>

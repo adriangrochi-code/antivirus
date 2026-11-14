@@ -38,6 +38,7 @@ PROBAR = {
     "seguridad": ["tisma-seguridad-panel"],
     "bienvenida": ["tisma-bienvenida"],
     "copias": ["tisma-copias-panel"],
+    "preferencias": ["tisma-preferencias"],
 }
 
 

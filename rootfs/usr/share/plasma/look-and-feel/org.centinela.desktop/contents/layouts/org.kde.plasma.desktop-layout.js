@@ -16,7 +16,7 @@ start.writeConfig("favorites", [
     "applications:net.tisma.Navegador.desktop",
     "applications:org.kde.dolphin.desktop",
     "applications:tisma-tienda.desktop",
-    "applications:systemsettings.desktop",
+    "applications:net.tisma.Preferencias.desktop",
     "applications:net.tisma.Guia.desktop",
     "applications:net.tisma.Seguridad.desktop"
 ]);

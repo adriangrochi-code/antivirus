@@ -10,6 +10,8 @@ CAMBIOS = {
     "applications:org.kde.discover.desktop": "applications:tisma-tienda.desktop",
     "applications:chromium.desktop": "applications:net.tisma.Navegador.desktop",
     "preferred://browser": "applications:net.tisma.Navegador.desktop",
+    # Las preferencias simples en el menú; la Configuración del sistema queda en «Opciones avanzadas»
+    "applications:systemsettings.desktop": "applications:net.tisma.Preferencias.desktop",
 }
 AGREGAR = ["applications:net.tisma.Guia.desktop", "applications:net.tisma.Seguridad.desktop"]
 AGENTE = "org.kde.plasma.favorites.applications"

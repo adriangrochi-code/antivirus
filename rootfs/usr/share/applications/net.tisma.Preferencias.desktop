@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Preferencias
+GenericName=Ajustes del equipo
+Comment=Aspecto, tamaño del texto, fondo, energía, pantalla y teclado
+Exec=tisma-preferencias
+StartupWMClass=tisma-preferencias
+Icon=preferences-system
+Categories=Settings;
+Keywords=ajustes;configuración;fondo;tema;oscuro;claro;letra;texto;energía;batería;pantalla;teclado;
