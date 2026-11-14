@@ -420,3 +420,21 @@ def test_precarga_aprende_de_cada_persona(tmp_path):
     unidad = (ROOT / "usr/lib/systemd/user/tisma-precarga-personal.service").read_text()
     assert "IOSchedulingClass=idle" in unidad and "Nice=19" in unidad
     assert "konsole" not in (ROOT / "etc/tisma/precarga.conf").read_text()
+
+
+def test_opensnitch_solo_al_abrirlo(tmp_path):
+    """Sin reglas ni ventana no protegía nada y cada conexión pasaba por él: arranca al abrirlo desde el menú."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lanzadores", ROOT.parent / "iso/lanzadores.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    apps = tmp_path / "usr/share/applications"
+    apps.mkdir(parents=True)
+    (apps / "opensnitch_ui.desktop").write_text("[Desktop Entry]\nExec=/usr/bin/opensnitch-ui\nTryExec=opensnitch-ui\n"
+                                                "Categories=System;\n")
+    m.aplicar(str(tmp_path))
+    d = (tmp_path / "usr/local/share/applications/opensnitch_ui.desktop").read_text()
+    assert "Exec=tisma-opensnitch\n" in d and "TryExec=tisma-opensnitch" in d and "X-TISMA-Avanzado" in d
+    assert "systemctl disable opensnitch.service" in (ROOT.parent / "iso/build-iso.sh").read_text()
+    w = (ROOT / "usr/bin/tisma-opensnitch").read_text()
+    assert "pkexec /usr/bin/systemctl start opensnitch.service" in w and "exec opensnitch-ui" in w

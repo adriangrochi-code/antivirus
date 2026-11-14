@@ -1,0 +1,8 @@
+#!/bin/sh
+# OpenSnitch (vigilar las conexiones de cada programa) solo cuando se abre: no arranca con el equipo porque, sin
+# reglas propias, no protegía nada y hacía pasar cada conexión por él. Encenderlo pide la contraseña de
+# administrador (polkit); queda encendido hasta reiniciar.
+if ! systemctl is-active --quiet opensnitch.service; then
+    pkexec /usr/bin/systemctl start opensnitch.service || exit 1
+fi
+exec opensnitch-ui "$@"

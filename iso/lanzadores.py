@@ -64,6 +64,16 @@ def renombrar(texto: str, nombre: str) -> str:
     return cab + sep + resto
 
 
+# Lanzadores cuya orden cambia: (orden original, orden TISMA)
+EXEC = {"opensnitch_ui.desktop": ("opensnitch-ui", "tisma-opensnitch")}
+
+
+def cambiar_exec(texto: str, viejo: str, nuevo: str) -> str:
+    cab, sep, resto = texto.partition("\n[Desktop Action")
+    cab = re.sub(rf"(?m)^(Exec|TryExec)=(\S*/)?{re.escape(viejo)}\b", rf"\1={nuevo}", cab)
+    return cab + sep + resto
+
+
 def aplicar(raiz: str) -> list[str]:
     origen = Path(raiz, "usr/share/applications")
     destino = Path(raiz, "usr/local/share/applications")
@@ -77,6 +87,8 @@ def aplicar(raiz: str) -> list[str]:
             texto = renombrar(texto, RENOMBRAR[nombre])
         if nombre in AVANZADO:
             texto = avanzado(texto)
+        if nombre in EXEC:
+            texto = cambiar_exec(texto, *EXEC[nombre])
         destino.mkdir(parents=True, exist_ok=True)
         (destino / nombre).write_text(texto)
         hechos.append(nombre)

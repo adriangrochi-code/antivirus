@@ -383,6 +383,10 @@ for u in bluetooth ModemManager clamav-freshclam; do
 done
 # lxc-net: red virtual de contenedores LXC que nada usa (Waydroid trae la suya); solo quitaba tiempo al arranque
 in_chroot systemctl disable lxc-net.service 2>/dev/null || true
+# OpenSnitch: sin reglas, con «permitir» por defecto y sin su ventana (que bloqueaba el DNS, preview 5) no
+# protegía nada, pero cada respuesta DNS y cada conexión nueva pasaban por él (CPU en reposo y ~37 MB). Se
+# enciende al abrirlo desde el menú (tisma-opensnitch, con contraseña de administrador).
+in_chroot systemctl disable opensnitch.service 2>/dev/null || true
 # Precarga que aprende: las apps que cada persona usa (servicio de sesión, para todos los usuarios)
 in_chroot systemctl --global enable tisma-precarga-personal.timer 2>/dev/null || log "AVISO: sin precarga personal"
 in_chroot systemctl enable cups.socket avahi-daemon.socket 2>/dev/null || true
