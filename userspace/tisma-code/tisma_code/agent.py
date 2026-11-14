@@ -184,6 +184,12 @@ def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: li
         raise LLMError(f"Respuesta inesperada del motor: {str(data)[:300]}")
 
 
+def es_modelo_chico(nombre: str) -> bool:
+    """Por el nombre: «qwen3-0.6b», «Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf», «gemma-3-4b»…"""
+    m = re.search(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[bB](?![a-zA-Z])", nombre)
+    return bool(m) and float(m.group(1)) <= 4.0
+
+
 class Session:
     def __init__(self, workspace: str, endpoint: str, model: str, llm=chat_completion,
                  context_tokens: int = 32768, models: list[review.ModelSpec] | None = None,
@@ -291,6 +297,15 @@ class Session:
         if not name:
             return self._plain_chat
         return lambda messages, temperature=0.2: self.especialistas.chat(name, messages)
+
+    pensar: bool | None = None          # None = automático (Ajustes de TISMA Code)
+
+    def pensar_activo(self) -> bool:
+        """¿Dejar que el modelo «piense» antes de responder? Automático: no en modelos chicos (hasta ~4B), que en
+        equipos modestos tardan muchísimo en razonar por escrito; sí en los grandes."""
+        if self.pensar is not None:
+            return self.pensar
+        return not es_modelo_chico(self.current.model or "")
 
     def _plain_chat(self, messages: list, temperature: float = 0.2, rapido: bool = False) -> str:
         # rapido: tareas internas (resúmenes) sin «pensamiento»: misma calidad de resumen, muchos menos tokens
@@ -537,6 +552,11 @@ class Session:
             # Mismo id en toda la sesión: Hope reutiliza su caché de conversación (además del prefijo idéntico)
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
                                   extra={"user": self.sesion_id})
+        elif self._llm_extra and not self.pensar_activo():
+            # Sin «pensamiento»: en equipos lentos los modelos chicos escribían cientos de palabras de razonamiento
+            # antes de contestar (respuestas de 3 a 5 veces más lentas en preguntas simples)
+            msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
+                                  extra={"chat_template_kwargs": {"enable_thinking": False}})
         else:
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas)
         dt = time.monotonic() - t0

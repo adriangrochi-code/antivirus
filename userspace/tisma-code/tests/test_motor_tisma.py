@@ -219,3 +219,22 @@ def test_enchufado(tmp_path):
     assert server.enchufado(str(tmp_path)) is False
     (tmp_path / "AC" / "online").write_text("1\n")
     assert server.enchufado(str(tmp_path)) is True
+
+
+def test_prefijo_guardado_y_restaurado(tmp_path, monkeypatch):
+    """Primera respuesta casi inmediata: lo procesado de las instrucciones se guarda una vez y se recupera al
+    arrancar el motor (en la A275 releerlas tardaba decenas de segundos cada vez que se abría TISMA Code)."""
+    from tisma_code import models
+    monkeypatch.setattr(models, "SLOTS_DIR", tmp_path)
+    srv = models.LocalServer()
+    srv.model, srv.ctx, srv.kv_quant = "qwen3 0.6b/../x.gguf", 8192, True
+    assert srv.archivo_prefijo() == "qwen3_0.6b_.._x.gguf-c8192-q8.bin".replace("/", "_")
+    llamadas = []
+    monkeypatch.setattr(srv, "_slot", lambda a: llamadas.append(a) or True)
+    assert srv.restaurar_prefijo() is False and llamadas == []           # nada guardado todavía
+    srv.proc = type("P", (), {"poll": lambda self: None})()
+    for i in range(4):
+        (tmp_path / f"viejo{i}.bin").write_bytes(b"x")
+    assert srv.guardar_prefijo() is True and llamadas == ["save"]
+    assert srv.guardar_prefijo() is False                                  # una sola vez por arranque
+    assert len(list(tmp_path.glob("*.bin"))) <= 3

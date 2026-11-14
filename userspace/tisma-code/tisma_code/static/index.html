@@ -91,6 +91,7 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .chip { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: transparent;
   padding: 4px 10px; border-radius: 9px; font-size: 13px; color: var(--dim); max-width: 280px; }
 .chip:hover { background: var(--ctl); color: var(--text); }
+.chip.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip svg { width: 14px; height: 14px; flex: none; }
 .tools .sp { flex: 1; }
@@ -167,6 +168,9 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
     <h3>Descargas</h3><div id="aj-desc"></div>
     <h3>Motor de IA</h3><div id="aj-motor"></div>
     <label class="ajsw"><input type="checkbox" id="aj-auto"> Arrancar el motor solo al abrir TISMA Code</label>
+    <label class="ajsw" style="flex-direction:column;align-items:flex-start">Pensar antes de responder
+      <select id="aj-pensar"><option value="auto">Automático (no en modelos chicos: responden mucho antes)</option>
+      <option value="si">Siempre (más lento, a veces más acertado)</option><option value="no">Nunca</option></select></label>
     <h3>Componentes</h3><div id="aj-comp"></div>
     <h3>Privacidad</h3>
     <label class="ajsw"><input type="checkbox" id="aj-trazas"> Guardar en este equipo el registro de las tareas
@@ -188,6 +192,7 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
       <div class="tools">
         <button class="chip" id="dirChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg><span id="dirLabel">Elegir carpeta</span></button>
         <button class="chip" id="modelChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 3 8l9 5 9-5-9-5zM3 16l9 5 9-5"/></svg><span id="modelLabel">Modelo</span></button>
+        <button class="chip" id="pensarChip" title="Pensar antes de responder: más lento, a veces más acertado (clic para encender o apagar)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span>Pensar</span></button>
         <button class="chip" id="docChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg><span>Documentos</span></button>
         <div class="sp"></div>
         <button class="send" id="send" title="Enviar (Enter)"></button>
@@ -455,6 +460,7 @@ async function setModel(endpoint, model) {
 $("#modelChip").onclick = () => $("#modelPop").classList.contains("on") ? closePops() : openModels();
 
 function showChips() {
+  if (typeof pintarPensar === "function") api("/api/ajustes").then(pintarPensar).catch(() => {});
   const w = state.workspace;
   $("#dirLabel").textContent = w ? w.split("/").pop() + (state.git ? ` ⎇ ${state.git}` : "") : "Elegir carpeta";
   $("#modelLabel").textContent = state.config.model || "Modelo";
@@ -556,7 +562,7 @@ async function abrirAjustes() {
     b.disabled = true; b.textContent = "Instalando…";
     try { await api("/api/componentes/instalar", {nombre: b.dataset.comp}); } catch (e) { b.textContent = e.message; }
   });
-  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor;
+  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-pensar").value = a.pensar || "auto";
   $("#ajustes").hidden = false;
 }
 $("#ajbtn").onclick = () => $("#ajustes").hidden ? abrirAjustes() : ($("#ajustes").hidden = true);
@@ -564,6 +570,19 @@ $("#bajando").onclick = abrirAjustes;
 $("#ajcerrar").onclick = () => $("#ajustes").hidden = true;
 $("#aj-trazas").onchange = e => api("/api/ajustes", {trazas_hope: e.target.checked});
 $("#aj-auto").onchange = e => api("/api/ajustes", {auto_motor: e.target.checked});
+$("#aj-pensar").onchange = async e => pintarPensar(await api("/api/ajustes", {pensar: e.target.value}));
+// Botón «Pensar» de la caja de mensaje (como el de DeepSeek): enciende o apaga el razonamiento previo
+function pintarPensar(a) {
+  const on = a.pensar === "si" || (a.pensar === "auto" && a.pensar_efectivo === true);
+  $("#pensarChip").classList.toggle("on", on);
+  $("#pensarChip").title = (on ? "Pensando antes de responder (más lento)" : "Responde directo (más rápido)") +
+    (a.pensar === "auto" ? " · automático según el modelo" : "") + ". Clic para cambiar.";
+}
+$("#pensarChip").onclick = async () => {
+  const on = $("#pensarChip").classList.contains("on");
+  pintarPensar(await api("/api/ajustes", {pensar: on ? "no" : "si"}));
+};
+api("/api/ajustes").then(pintarPensar).catch(() => {});
 // El indicador de descargas de arriba se mantiene al día aunque el panel esté cerrado
 setInterval(async () => { try { pintarDescargas((await api("/api/descargas")).descargas); } catch (e) {} }, 3000);
 

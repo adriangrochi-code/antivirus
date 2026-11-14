@@ -9,6 +9,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,9 @@ from pathlib import Path
 HF = "https://huggingface.co"
 MODELS_DIR = Path(os.environ.get("TISMA_MODELS_DIR",
                                  Path.home() / ".local/share/tisma-code/models"))
+# Instrucciones ya procesadas por el motor (llama-server --slot-save-path): dentro de la caché del motor, la
+# única carpeta en la que su jaula puede escribir
+SLOTS_DIR = MODELS_DIR.parent / "cache-motor" / "prefijos"
 _ID = re.compile(r"^[\w.-]+/[\w.-]+$")
 _FILE = re.compile(r"^[\w./ -]+\.gguf$")
 _SPLIT = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$")
@@ -422,6 +426,7 @@ class LocalServer:
         self.model: str | None = None
         self.ctx = 0
         self.config: dict = {}
+        self.prefijo_guardado = False
 
     def start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None,
               extra: list[str] | None = None) -> str:
@@ -454,8 +459,10 @@ class LocalServer:
                 self.port = sk.getsockname()[1]
         th = threads or threads_for(str(p))
         thr = ["-t", str(th[0]), "-tb", str(th[1])] if th else []
+        SLOTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.prefijo_guardado = False
         base = [exe, "-m", str(p), "--host", "127.0.0.1", "--port", str(self.port),
-                "--api-key", self.api_key, "-c", str(ctx), "--jinja",
+                "--api-key", self.api_key, "-c", str(ctx), "--jinja", "--slot-save-path", str(SLOTS_DIR),
                 # reutiliza trozos de la caché KV aunque el prefijo cambie (p. ej. tras un reinicio de contexto)
                 "--cache-reuse", "256", *thr, *(extra or [])]
         self.kv_quant = True
@@ -463,6 +470,47 @@ class LocalServer:
         self.model = p.name
         threading.Thread(target=self._fallback, args=(self.proc, base), daemon=True).start()
         return f"http://127.0.0.1:{self.port}/v1"
+
+    # ---- primera respuesta casi inmediata: las instrucciones ya procesadas, guardadas en disco
+    def archivo_prefijo(self) -> str:
+        nombre = re.sub(r"[^A-Za-z0-9._-]", "_", self.model or "modelo")[:100]
+        return f"{nombre}-c{self.ctx}-{'q8' if getattr(self, 'kv_quant', False) else 'f16'}.bin"
+
+    def _slot(self, accion: str) -> bool:
+        cuerpo = json.dumps({"filename": self.archivo_prefijo()}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/slots/0?action={accion}", data=cuerpo,
+                                     headers={"Authorization": f"Bearer {self.api_key}",
+                                              "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:   # noqa: S310 (127.0.0.1, motor propio)
+                return r.status == 200
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
+
+    def restaurar_prefijo(self, esperar_s: float = 180) -> bool:
+        """Al arrancar: si hay instrucciones ya procesadas para este modelo y configuración, se cargan (la
+        primera respuesta no espera a releerlas). llama.cpp reutiliza el prefijo común con el pedido nuevo."""
+        if not (SLOTS_DIR / self.archivo_prefijo()).is_file():
+            return False
+        fin = time.monotonic() + esperar_s
+        while time.monotonic() < fin and self.proc and self.proc.poll() is None:
+            if port_listening(self.port):
+                break
+            time.sleep(1)
+        ok = self._slot("restore")
+        self.prefijo_guardado = ok                # ya estaba guardado: no se vuelve a escribir
+        return ok
+
+    def guardar_prefijo(self, max_archivos: int = 3) -> bool:
+        """Tras la primera respuesta de este arranque (una vez): guarda lo procesado para la próxima vez."""
+        if self.prefijo_guardado or not self.proc or self.proc.poll() is not None:
+            return False
+        self.prefijo_guardado = True
+        ok = self._slot("save")
+        viejos = sorted(SLOTS_DIR.glob("*.bin"), key=lambda f: f.stat().st_mtime)[:-max_archivos]
+        for f in viejos:                          # pueden pesar cientos de MB: solo los más recientes
+            f.unlink(missing_ok=True)
+        return ok
 
     @staticmethod
     def _spawn(argv: list[str]) -> subprocess.Popen:

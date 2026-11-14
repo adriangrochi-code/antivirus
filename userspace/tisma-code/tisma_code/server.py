@@ -90,7 +90,12 @@ class App:
             descargas = [dict(d) for d in self.downloads.state.values()]
         return {"descargas": descargas, "motor": self.motor_brief(), "componentes": self.componentes(),
                 "trazas_hope": self.config.get("trazas_hope") is True,
-                "auto_motor": self.config.get("auto_motor", True) is not False}
+                "auto_motor": self.config.get("auto_motor", True) is not False,
+                "pensar": self.config.get("pensar", "auto"),
+                "pensar_efectivo": self.session.pensar_activo() if self.session else None}
+
+    def pensar(self) -> bool | None:
+        return {"si": True, "no": False}.get(self.config.get("pensar", "auto"))
 
     def instalar_componente(self, k: str) -> dict:
         if k not in self.COMPONENTES:
@@ -155,6 +160,7 @@ class App:
             return
         self.config.update({"endpoint": ep, "model": Path(rec["path"]).name})
         self.save_config()
+        threading.Thread(target=self.server.restaurar_prefijo, daemon=True).start()
         if eng.get("instalar"):
             self.push({"type": "info", "message": eng["motivo"]})
         c = self.server.config or {}
@@ -265,9 +271,13 @@ class App:
     def pump(self, s: Session) -> None:
         while self.session is s:
             try:
-                self.push(s.events.get(timeout=1))
+                ev = s.events.get(timeout=1)
             except Exception:  # noqa: BLE001 (queue.Empty)
                 continue
+            self.push(ev)
+            # Al terminar la primera tarea de este arranque del motor (ya sin generar): guardar lo procesado
+            if ev.get("type") in ("task_done", "idle") and self.server.proc and not self.server.prefijo_guardado:
+                threading.Thread(target=self.server.guardar_prefijo, daemon=True).start()
 
     def events_since(self, seq: int, wait: float = 25) -> list[dict]:
         end = time.monotonic() + wait
@@ -439,6 +449,7 @@ class Handler(BaseHTTPRequestHandler):
                 if APP.config.get("trazas_hope") is True:      # opt-in: archivo local, nunca se envía
                     from .trazas import Trazas
                     s.trazas = Trazas(s.ws.root)
+                s.pensar = APP.pensar()
                 APP.session = s
                 if old:
                     old.close()                  # sin esto quedaban vivos llama-server y servidores MCP
@@ -451,6 +462,10 @@ class Handler(BaseHTTPRequestHandler):
                 for k in ("trazas_hope", "auto_motor"):
                     if isinstance(b.get(k), bool):
                         APP.config[k] = b[k]
+                if b.get("pensar") in ("auto", "si", "no"):
+                    APP.config["pensar"] = b["pensar"]
+                    if APP.session:
+                        APP.session.pensar = APP.pensar()
                 APP.save_config()
                 return self._send(200, APP.ajustes())
             if url.path == "/api/model":
