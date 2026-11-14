@@ -418,6 +418,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"origen": origen, "niveles": red.niveles_posibles(origen)})
             if url.path == "/api/ajustes":
                 return self._send(200, APP.ajustes())
+            if url.path == "/api/sin-apuro":
+                from . import sin_apuro as sa
+                modelos = []
+                for m in models.local_models():
+                    try:
+                        e = sa.estimar(m["path"], APP.hw)
+                    except (OSError, ValueError):
+                        continue
+                    modelos.append({"path": m["path"], "nombre": Path(m["path"]).name, "tamano": e["tamano"],
+                                    "cabe": e["cabe"], "texto": sa.texto_estimacion(e)})
+                return self._send(200, {"tareas": sa.listar(), "modelos": modelos})
+            if url.path == "/api/sin-apuro/resultado":
+                from . import sin_apuro as sa
+                return self._send(200, {"texto": sa.resultado(q.get("id", ""))})
             if url.path == "/api/descargas":
                 with APP.downloads._lock:
                     return self._send(200, {"descargas": [dict(d) for d in APP.downloads.state.values()]})
@@ -519,6 +533,23 @@ class Handler(BaseHTTPRequestHandler):
                 nivel = b.get("nivel") if b.get("nivel") in ("auto", *red.NIVELES) else "auto"
                 threading.Thread(target=APP.reducir, args=(path, nivel, b.get("capas") is True), daemon=True).start()
                 return self._send(200, {"ok": True})
+            if url.path == "/api/sin-apuro":
+                from . import sin_apuro as sa
+                adjunto, nombre = "", ""
+                if b.get("archivo"):
+                    if not APP.session:
+                        return self._send(400, {"error": "Para adjuntar un archivo, abre primero su carpeta"})
+                    f = (APP.session.ws.root / str(b["archivo"])).resolve()
+                    if APP.session.ws.root.resolve() not in f.parents or not f.is_file():
+                        return self._send(400, {"error": "El archivo tiene que estar dentro de la carpeta del proyecto"})
+                    adjunto, nombre = f.read_text(errors="replace")[:sa.MAX_ADJUNTO], f.name
+                t = sa.agregar(str(b.get("pedido") or ""), str(b.get("modelo") or ""), adjunto, nombre)
+                sa.lanzar_trabajador()
+                return self._send(200, {"id": t["id"]})
+            if url.path in ("/api/sin-apuro/cancelar", "/api/sin-apuro/borrar"):
+                from . import sin_apuro as sa
+                f = sa.cancelar if url.path.endswith("cancelar") else sa.borrar
+                return self._send(200, {"ok": f(str(b.get("id") or ""))})
             if url.path == "/api/models/serve":
                 ep = APP.server.start(b["path"], APP.hw)
                 APP.config.update({"endpoint": ep, "model": Path(b["path"]).name})
@@ -554,6 +585,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     APP = App()
     threading.Thread(target=APP.auto_motor, daemon=True).start()
+    from . import sin_apuro
+    if sin_apuro.siguiente():              # quedaron tareas (p. ej. se apagó el equipo): se retoman
+        sin_apuro.lanzar_trabajador()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.boot}"
     print(f"TISMA Code en el puerto {httpd.server_port}", flush=True)     # la URL no va al registro

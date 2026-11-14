@@ -2,10 +2,14 @@
 # tisma-code                     abre TISMA Code
 # tisma-code motor               qué motor y configuración usaría este equipo con cada modelo descargado
 # tisma-code motor --optimizar M mide las configuraciones del modelo M y guarda la más rápida
+# tisma-code sin-apuro           hace las tareas «sin apuro» pendientes (lo lanza la app)
 import sys
 sys.path.insert(0, "/usr/lib/centinela/python")
 if sys.argv[1:2] == ["motor"]:
     from tisma_code.motor import cli
     sys.exit(cli(sys.argv[2:]))
+if sys.argv[1:2] == ["sin-apuro"]:              # trabajador del «Modo sin apuro» (lo lanza la app)
+    from tisma_code.sin_apuro import main as sin_apuro
+    sys.exit(sin_apuro())
 from tisma_code.server import main
 sys.exit(main())

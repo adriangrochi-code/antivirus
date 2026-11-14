@@ -193,6 +193,7 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
         <button class="chip" id="dirChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg><span id="dirLabel">Elegir carpeta</span></button>
         <button class="chip" id="modelChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 3 8l9 5 9-5-9-5zM3 16l9 5 9-5"/></svg><span id="modelLabel">Modelo</span></button>
         <button class="chip" id="pensarChip" title="Pensar antes de responder: más lento, a veces más acertado (clic para encender o apagar)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span>Pensar</span></button>
+        <button class="chip" id="sinApuroChip" title="Tareas largas con un modelo más inteligente: trabaja enchufado y en segundo plano, y te avisa al terminar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span>Sin apuro</span></button>
         <button class="chip" id="docChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg><span>Documentos</span></button>
         <div class="sp"></div>
         <button class="send" id="send" title="Enviar (Enter)"></button>
@@ -203,6 +204,16 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 </div>
 
 <div class="modal" id="reader"><div class="dlg"><div class="row" style="margin-top:0"><h2 id="rTitle" style="flex:1;word-break:break-all"></h2><button class="btn" id="rClose">Cerrar</button></div><pre id="rText" style="margin:0;max-height:70vh"></pre></div></div>
+<div class="modal" id="saModal"><div class="dlg">
+  <div class="row" style="margin-top:0"><h2 style="flex:1">Sin apuro</h2><button class="btn" id="saCerrar">Cerrar</button></div>
+  <div class="note">Para tareas largas que pueden esperar (resumir un texto grande, revisar un trabajo). Puedes usar un modelo más inteligente aunque no entre en la memoria: lee del disco lo que falta. Es lento: trabaja solo con el cargador conectado, sin molestar a lo que estés usando, y te avisa al terminar aunque cierres TISMA Code.</div>
+  <textarea id="saPedido" rows="4" placeholder="¿Qué quieres que haga? Ej.: Resume este informe en una página y marca los errores." style="width:100%;margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--ctl);color:inherit;font:inherit;resize:vertical"></textarea>
+  <div class="row"><input id="saArchivo" placeholder="Archivo de texto de la carpeta del proyecto (opcional), p. ej. informe.md"></div>
+  <div class="row"><select id="saModelo" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--ctl);color:inherit"></select><button class="btn p" id="saAgregar">Poner en la cola</button></div>
+  <div class="note" id="saEst"></div>
+  <h2 style="margin-top:14px">Tareas</h2>
+  <div id="saLista"></div>
+</div></div>
 <div class="modal" id="modal"><div class="dlg">
   <h2>Añadir modelo</h2>
   <div class="note" id="hwLine"></div>
@@ -537,6 +548,53 @@ $("#qBtn").onclick = async () => {
     });
   } catch (e) { $("#results").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 };
+// ---------------------------------------------------------------- Sin apuro
+const SA_ESTADO = {en_cola: "En la cola", trabajando: "Trabajando", pausada: "En pausa", lista: "Lista",
+                   error: "Falló", cancelada: "Cancelada"};
+let saModelos = [], saTimer = null;
+async function pintarSinApuro() {
+  const d = await api("/api/sin-apuro");
+  if (!saModelos.length || saModelos.length !== d.modelos.length) {
+    saModelos = d.modelos;
+    $("#saModelo").innerHTML = d.modelos.length ? d.modelos.map((m, i) =>
+      `<option value="${i}">${esc(m.nombre)} · ${gbs(m.tamano)}</option>`).join("")
+      : `<option value="">Primero descarga un modelo (selector de modelo → ＋ Añadir)</option>`;
+    $("#saModelo").onchange();
+  }
+  $("#saLista").innerHTML = d.tareas.length ? d.tareas.map(t => `<div class="ajrow">${esc(t.pedido.slice(0, 90))}${t.pedido.length > 90 ? "…" : ""}
+      <small>${SA_ESTADO[t.estado] || esc(t.estado)}${t.palabras ? ` · ${t.palabras} palabras` : ""} · ${esc(t.modelo.split("/").pop())}${t.detalle ? " · " + esc(t.detalle) : ""}</small>
+      <div class="row" style="margin-top:6px">${t.palabras || t.estado === "lista" ? `<button class="btn" data-ver="${esc(t.id)}">Ver</button>` : ""}
+      ${["en_cola", "trabajando", "pausada"].includes(t.estado) ? `<button class="btn" data-cancelar="${esc(t.id)}">Cancelar</button>`
+        : `<button class="btn" data-borrar="${esc(t.id)}">Borrar</button>`}</div></div>`).join("")
+    : `<div class="note">Todavía no hay tareas.</div>`;
+  $("#saLista").querySelectorAll("[data-ver]").forEach(b => b.onclick = async () => {
+    const r = await api("/api/sin-apuro/resultado?id=" + b.dataset.ver);
+    $("#rTitle").textContent = "Resultado"; $("#rText").textContent = r.texto || "Todavía no escribió nada.";
+    $("#reader").classList.add("on");
+  });
+  $("#saLista").querySelectorAll("[data-cancelar]").forEach(b => b.onclick = async () => {
+    await api("/api/sin-apuro/cancelar", {id: b.dataset.cancelar}); pintarSinApuro(); });
+  $("#saLista").querySelectorAll("[data-borrar]").forEach(b => b.onclick = async () => {
+    await api("/api/sin-apuro/borrar", {id: b.dataset.borrar}); pintarSinApuro(); });
+}
+$("#saModelo").onchange = () => { const m = saModelos[$("#saModelo").value]; $("#saEst").textContent = m ? m.texto : ""; };
+$("#sinApuroChip").onclick = async () => {
+  $("#saModal").classList.add("on");
+  try { await pintarSinApuro(); } catch (e) { $("#saEst").textContent = e.message; }
+  clearInterval(saTimer); saTimer = setInterval(() => $("#saModal").classList.contains("on") ? pintarSinApuro().catch(() => {}) : clearInterval(saTimer), 10000);
+};
+$("#saCerrar").onclick = () => $("#saModal").classList.remove("on");
+$("#saAgregar").onclick = async () => {
+  const m = saModelos[$("#saModelo").value];
+  if (!m) return;
+  try {
+    await api("/api/sin-apuro", {pedido: $("#saPedido").value, modelo: m.path, archivo: $("#saArchivo").value.trim()});
+    $("#saPedido").value = ""; $("#saArchivo").value = "";
+    $("#saEst").textContent = "En la cola. Te avisamos cuando esté lista.";
+    pintarSinApuro();
+  } catch (e) { $("#saEst").textContent = e.message; }
+};
+
 // ---------------------------------------------------------------- Ajustes
 const gbs = n => (n / 1e9).toFixed(n > 1e10 ? 0 : 1) + " GB";
 const ESTADOS = {descargando: "Descargando", verificando: "Comprobando el archivo", completo: "Descargado", error: "Falló"};
