@@ -21,8 +21,17 @@ def argumentos(exe: str, url: str, clase: str, perfil: str, tamano: str | None, 
     # agrupada con el navegador (visto en QEMU); por X11 se asocia a su lanzador (StartupWMClass)
     x11 = ["--ozone-platform=x11"] if entorno.get("DISPLAY") and shutil.which("Xwayland") else []
     tam = [f"--window-size={tamano}"] if tamano else ["--start-maximized"]
-    return [exe, *x11, f"--app={url}", f"--user-data-dir={perfil}", f"--class={clase}", "--no-first-run",
-            "--no-default-browser-check", "--password-store=basic", "--disable-features=Translate", *tam]
+    return [exe, *x11, f"--app={url}", f"--user-data-dir={perfil}", f"--class={clase}", *LIVIANA, *tam]
+
+
+# Una ventana de app solo muestra una página local: sin el trabajo de fondo de un navegador completo (buscar
+# actualizaciones de componentes, sincronizar, extensiones, apps por defecto, informes de fallos, avisos de
+# fiabilidad). Abre antes, gasta menos memoria y no se conecta a nada al arrancar. La protección contra sitios
+# peligrosos NO se apaga (un enlace podría abrirse dentro de la ventana).
+LIVIANA = ["--no-first-run", "--no-default-browser-check", "--password-store=basic",
+           "--disable-background-networking", "--disable-component-update", "--disable-sync",
+           "--disable-extensions", "--disable-default-apps", "--disable-breakpad", "--disable-domain-reliability",
+           "--no-pings", "--disable-features=Translate,MediaRouter,OptimizationHints,InterestFeedContentSuggestions"]
 
 
 def abrir_ventana(url: str, clase: str, tamano: str | None = None, al_cerrar: Callable[[], None] | None = None,

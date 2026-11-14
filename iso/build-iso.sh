@@ -333,7 +333,7 @@ done
 in_chroot chown -R _dnscrypt-proxy: /var/cache/dnscrypt-proxy 2>/dev/null || true
 in_chroot systemctl enable systemd-oomd tisma-copias-instantanea.timer tisma-copias-externo.timer 2>/dev/null || true
 in_chroot systemctl enable chrony usbguard tisma-bloqueo-sesion tisma-wifi-banda tisma-scx 2>/dev/null || true
-in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer 2>/dev/null || true
+in_chroot systemctl enable rasdaemon tisma-salud.timer tisma-scrub.timer tisma-zram-recomprimir.timer tisma-navegador-memoria.service 2>/dev/null || true
 # Lo que no va en la ISO (LibreOffice…): el instalador lo descarga; si no había red, al primer arranque con red
 in_chroot systemctl enable tisma-completar.service 2>/dev/null || true
 in_chroot systemctl enable tisma-compartir.path tisma-compartir.service 2>/dev/null || true

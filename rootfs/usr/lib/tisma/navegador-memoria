@@ -1,0 +1,16 @@
+#!/bin/sh
+# Ahorro de memoria del navegador según la RAM del equipo (se elige en cada arranque: el disco puede pasar de
+# un equipo a otro). Con 8 GB o menos, nivel máximo: las pestañas que no usas se duermen antes y vuelven al
+# tocarlas. Con más, el nivel equilibrado de tisma.json (este archivo no se escribe).
+set -eu
+DIR=/etc/chromium/policies/managed
+F="$DIR/60-tisma-memoria.json"
+kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+if [ "$kb" -le 8300000 ]; then
+    tmp="$F.tmp"
+    printf '{\n  "MemorySaverModeSavings": 2\n}\n' > "$tmp"
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$F"
+else
+    rm -f "$F"
+fi

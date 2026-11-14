@@ -14,9 +14,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from typing import TYPE_CHECKING
+
 from . import models
-from .agent import Session
 from .base import ToolError
+
+if TYPE_CHECKING:
+    from .agent import Session
 
 STATIC = Path(__file__).parent / "static"
 STATIC_FILES = {"/static/logo.svg": ("logo.svg", "image/svg+xml")}
@@ -457,6 +461,7 @@ class Handler(BaseHTTPRequestHandler):
                     old.cancel()
                 APP.config.update({k: b[k] for k in ("endpoint", "model") if k in b})
                 ws = b["workspace"]
+                from .agent import Session
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
                             llm=APP.llm(), context_tokens=APP.context(int(b.get("context", 32768))))
                 s.ws.allow_network = bool(b.get("network", False))
@@ -585,6 +590,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     APP = App()
     threading.Thread(target=APP.auto_motor, daemon=True).start()
+    # El agente (con Hope y numpy) tarda en cargar en equipos lentos: la ventana se abre primero y él se carga
+    # mientras tanto, listo para cuando se elija la carpeta
+    threading.Thread(target=lambda: __import__("tisma_code.agent"), daemon=True).start()
     from . import sin_apuro
     if sin_apuro.siguiente():              # quedaron tareas (p. ej. se apagó el equipo): se retoman
         sin_apuro.lanzar_trabajador()

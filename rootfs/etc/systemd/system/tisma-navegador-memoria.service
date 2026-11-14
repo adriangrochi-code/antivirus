@@ -1,0 +1,21 @@
+[Unit]
+Description=TISMA - ahorro de memoria del navegador según la RAM del equipo
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/navegador-memoria
+ProtectSystem=strict
+ReadWritePaths=/etc/chromium/policies/managed
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_OVERRIDE
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=tisma-fase2.target
