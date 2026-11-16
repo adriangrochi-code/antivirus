@@ -1,0 +1,15 @@
+[package]
+name = "tisma-ranuras"
+version = "0.1.0"
+edition = "2021"
+description = "Ranuras intercambiables del kernel TISMA: cambia piezas del kernel en marcha, con verificación y vuelta atrás"
+license = "GPL-3.0-or-later"
+
+# Sin dependencias externas: solo la biblioteca estándar de Rust (menos superficie de cadena de suministro).
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

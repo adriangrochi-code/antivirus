@@ -11,6 +11,7 @@ cp "$(command -v busybox)" "$WORK/root/bin/busybox"
 # Planificador sched_ext opcional (SCX_BIN=ruta/a/scx_lavd): se copia con sus bibliotecas
 if [[ -x "${SCX_BIN:-}" ]]; then
     cp "$SCX_BIN" "$WORK/root/bin/scx"
+    mkdir -p "$WORK/root/usr/bin" && cp "$SCX_BIN" "$WORK/root/usr/bin/$(basename "$SCX_BIN")"
     # libbpf lee la config del kernel desde /boot (como en Debian)
     cfg="$(dirname "$KERNEL")/../../../.config"
     [[ -f "$cfg" ]] && mkdir -p "$WORK/root/boot" && cp "$cfg" "$WORK/root/boot/config-$(file -bL "$KERNEL" | grep -oP 'version \K[^ ]+')"
@@ -18,6 +19,8 @@ if [[ -x "${SCX_BIN:-}" ]]; then
         mkdir -p "$WORK/root$(dirname "$lib")"; cp -L "$lib" "$WORK/root$lib"
     done
 fi
+# Ranuras intercambiables opcionales (RANURAS_BIN=ruta/a/tisma-ranuras, binario estático)
+[[ -x "${RANURAS_BIN:-}" ]] && cp "$RANURAS_BIN" "$WORK/root/bin/tisma-ranuras"
 # Prueba real del binder (Waydroid): binderfs + transacción entre procesos
 gcc -O2 -static -o "$WORK/root/bin/binder-test" "$(dirname "${BASH_SOURCE[0]}")/binder-test.c"
 cat > "$WORK/root/init" <<'INIT'
@@ -55,6 +58,20 @@ if [ -x /bin/scx ]; then
     echo "scx_al_salir=$(cat /sys/kernel/sched_ext/state)"
     grep -iE "error|fail" /scx.log | head -n 4; sed -n "/BEGIN PROG LOAD LOG/,/END PROG LOAD LOG/p" /scx.log | tail -n 12
 fi
+if [ -x /bin/tisma-ranuras ]; then
+    grep -q " /sys/fs/bpf " /proc/mounts || mount -t bpf bpf /sys/fs/bpf
+    mkdir -p /run
+    echo "--- ranuras"; tisma-ranuras listar | cut -f1-3
+    tisma-ranuras cambiar red bbr && echo "ranura_red=$(cat /proc/sys/net/ipv4/tcp_congestion_control)"
+    if [ -x /usr/bin/scx_lavd ]; then
+        TISMA_RANURAS_ESPERA=120 tisma-ranuras cambiar planificador scx_lavd; echo "ranura_scx=$(cat /sys/kernel/sched_ext/state)"
+        grep -iE "error|fail" /run/tisma-ranuras/scx_lavd.log | head -n 3
+    fi
+    printf 'red=reno\nreposo=inventado\n' > /plan; tisma-ranuras aplicar /plan
+    echo "ranura_todo_o_nada=$(cat /proc/sys/net/ipv4/tcp_congestion_control)"
+    tisma-ranuras revertir
+    echo "ranura_revertida=$(cat /proc/sys/net/ipv4/tcp_congestion_control) $(cat /sys/kernel/sched_ext/state)"
+fi
 echo "vulns=$(grep -l Vulnerable /sys/devices/system/cpu/vulnerabilities/* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
 echo "== FIN =="
 poweroff -f
@@ -64,7 +81,7 @@ chmod +x "$WORK/root/init"
 CMD="console=ttyS0 panic=-1 lsm=landlock,lockdown,yama,integrity,apparmor,bpf lockdown=integrity module.sig_enforce=1 init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 randomize_kstack_offset=on slab_nomerge vsyscall=none"
 ACCEL=(); [[ -w /dev/kvm ]] && ACCEL=(-enable-kvm -cpu host)
 timeout 300 qemu-system-x86_64 "${ACCEL[@]}" -m 1024 -smp 2 -nographic -no-reboot \
-    -kernel "$KERNEL" -initrd "$WORK/initrd.gz" -append "$CMD" 2>&1 | tee "$WORK/out.txt" | grep -A30 "== TISMA-TEST ==" | sed '/== FIN ==/q'
+    -kernel "$KERNEL" -initrd "$WORK/initrd.gz" -append "$CMD" 2>&1 | tee "$WORK/out.txt" | grep -A80 "== TISMA-TEST ==" | sed '/== FIN ==/q'
 fail=0
 check() { grep -q "$1" "$WORK/out.txt" || { echo "FALLO: $2"; fail=1; }; }
 check "lsm=.*landlock.*lockdown.*yama.*apparmor.*bpf" "pila de LSMs incompleta"
@@ -82,6 +99,15 @@ check "sched_ext=si" "sched_ext ausente"
 if [[ -x "${SCX_BIN:-}" ]]; then
     check "scx_activo=enabled" "el planificador sched_ext no se activó"
     check "scx_al_salir=disabled" "al cerrar el planificador el kernel no volvió al suyo"
+fi
+if [[ -x "${RANURAS_BIN:-}" ]]; then
+    check "ranura_red=bbr" "la ranura red no cambió"
+    check "ranura_todo_o_nada=bbr" "aplicar con un error no deshizo los cambios"
+    check "ranura_revertida=cubic" "revertir no volvió al valor original"
+    if [[ -x "${SCX_BIN:-}" ]]; then
+        check "ranura_scx=enabled" "la ranura planificador no activó $(basename "$SCX_BIN")"
+        check "ranura_revertida=cubic disabled" "revertir no volvió a eevdf"
+    fi
 fi
 [[ $fail == 0 ]] && echo "OK: el kernel arranca con todas las protecciones activas"
 exit $fail

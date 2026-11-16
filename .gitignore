@@ -6,3 +6,4 @@ userspace/centinela/build/
 *.iso
 *.deb
 userspace/tisma-code/vendor/
+kernel/ranuras/target/
