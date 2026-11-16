@@ -1,0 +1,10 @@
+#!/bin/sh
+# TISMA: «Comprobar el USB» (usr/lib/live/boot/0031-tisma-comprobar) necesita sha256sum en el initramfs del USB;
+# live-boot en Debian solo copia md5sum. Solo hace algo si live-boot está (sesión del USB).
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+[ -d /usr/lib/live/boot ] || exit 0
+. /usr/share/initramfs-tools/hook-functions
+copy_exec /usr/bin/sha256sum /bin
+exit 0

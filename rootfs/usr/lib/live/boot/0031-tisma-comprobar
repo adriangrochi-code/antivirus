@@ -1,0 +1,64 @@
+#!/bin/sh
+# TISMA: «Comprobar el USB» (opción del menú de arranque, tisma.comprobar). Reemplaza Verify_checksums de
+# live-boot (0030, se carga antes: esta definición la pisa): aquella escribía en inglés en una consola oculta,
+# reiniciaba sin decir nada si todo estaba bien y terminaba en otro «panic» si no. Un USB mal grabado o un
+# pendrive que falla terminaba en «KERNEL PANIC … exitcode=0x00000007» (squashfs corrupto) sin explicar nada.
+# Sin tildes ni eñes: la consola del arranque no siempre las muestra.
+
+Verify_checksums ()
+{
+	case " ${TISMA_CMDLINE:-$(cat /proc/cmdline)} " in
+		*" tisma.comprobar "*) ;;
+		*) return 0 ;;
+	esac
+	_MEDIO="${1}"
+	if command -v plymouth > /dev/null 2>&1; then plymouth quit > /dev/null 2>&1; fi
+	if [ -z "${TISMA_PRUEBA:-}" ]; then exec < /dev/console > /dev/console 2>&1; printf '\033c'; fi
+	echo
+	echo "   COMPROBAR EL USB DE TISMA"
+	echo "   -------------------------"
+	echo "   Se lee cada archivo del USB y se compara con su huella."
+	echo "   Tarda unos minutos. No quites el USB."
+	echo
+	_MAL=0
+	if ! cd "${_MEDIO}" 2> /dev/null || [ ! -s sha256sum.txt ]; then
+		echo "   Este USB no tiene la lista de huellas (sha256sum.txt): no se puede comprobar."
+		_MAL=-1
+	else
+		_TOTAL=$(grep -c . sha256sum.txt)
+		_N=0
+		while read -r _SUMA _ARCHIVO; do
+			[ -n "${_ARCHIVO}" ] || continue
+			_ARCHIVO="${_ARCHIVO#\*}"
+			_N=$((_N + 1))
+			printf '   [%s/%s] %s ... ' "${_N}" "${_TOTAL}" "${_ARCHIVO#./}"
+			_REAL=$(sha256sum "${_ARCHIVO}" 2> /dev/null | cut -d ' ' -f 1)
+			if [ "${_REAL}" = "${_SUMA}" ]; then
+				echo "bien"
+			else
+				echo "CON ERRORES"
+				_MAL=$((_MAL + 1))
+			fi
+		done < sha256sum.txt
+	fi
+	echo
+	if [ "${_MAL}" -eq 0 ]; then
+		echo "   ========================================================"
+		echo "   EL USB ESTA BIEN. Puedes instalar o probar TISMA."
+		echo "   ========================================================"
+	elif [ "${_MAL}" -gt 0 ]; then
+		echo "   ========================================================"
+		echo "   EL USB TIENE ${_MAL} ARCHIVO(S) CON ERRORES."
+		echo "   Vuelve a grabarlo desde la ISO (comprueba antes su SHA-256)."
+		echo "   Si se repite, usa otro pendrive: este puede estar fallando."
+		echo "   ========================================================"
+	fi
+	echo
+	[ -z "${TISMA_PRUEBA:-}" ] || return "${_MAL}"           # pruebas: sin esperar ni reiniciar
+	echo "   Pulsa Enter para reiniciar."
+	read _NADA
+	cd /
+	umount -f "${_MEDIO}" > /dev/null 2>&1
+	sync
+	reboot -f > /dev/null 2>&1 || echo b > /proc/sysrq-trigger
+}

@@ -455,3 +455,29 @@ def test_iso_sin_initramfs_repetidos():
     assert build.index('mksquashfs "$CHROOT"') < build.index('cp "$CHROOT/boot/initrd.img-$KVER"')
     sp = (ROOT / "etc/calamares/modules/shellprocess-tisma.conf").read_text()
     assert sp.index("update-initramfs -c -k $v") < sp.index("tisma-secureboot quitar-minimal")
+
+
+def test_comprobar_el_usb(tmp_path):
+    """Un USB mal grabado terminaba en «KERNEL PANIC … 0x00000007» sin explicación: opción del menú que lo dice."""
+    import subprocess
+    build = (ROOT.parent / "iso/build-iso.sh").read_text(encoding="utf-8")
+    assert 'menuentry "Comprobar que el USB no tenga errores"' in build and "tisma.comprobar" in build
+    assert build.index("> sha256sum.txt") < build.index('"$HERE/secureboot-iso.sh"')
+    hook = ROOT / "etc/initramfs-tools/hooks/tisma-comprobar"
+    assert hook.stat().st_mode & 0o111 and "copy_exec /usr/bin/sha256sum" in hook.read_text()
+    script = ROOT / "usr/lib/live/boot/0031-tisma-comprobar"
+    m = tmp_path / "m"
+    (m / "live").mkdir(parents=True)
+    (m / "live/filesystem.squashfs").write_bytes(b"sistema")
+    subprocess.run("find . -type f ! -name sha256sum.txt | sort | xargs sha256sum > sha256sum.txt", shell=True,
+                   cwd=m, check=True)
+    def correr(cmdline):
+        env = {"TISMA_PRUEBA": "1", "TISMA_CMDLINE": cmdline, "PATH": "/usr/bin:/bin"}
+        return subprocess.run(["sh", "-c", f". {script}; Verify_checksums {m}"], env=env, capture_output=True,
+                              text=True)
+    r = correr("boot=live tisma.comprobar")
+    assert r.returncode == 0 and "EL USB ESTA BIEN" in r.stdout
+    (m / "live/filesystem.squashfs").write_bytes(b"sistema roto")
+    r = correr("boot=live tisma.comprobar")
+    assert r.returncode == 1 and "CON ERRORES" in r.stdout
+    assert correr("boot=live").stdout == ""                              # arranque normal: no hace nada

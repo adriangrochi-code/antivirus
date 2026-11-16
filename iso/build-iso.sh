@@ -563,6 +563,10 @@ menuentry "Probar TISMA OS desde la memoria RAM (requiere 8 GB)" {
     linux /live/vmlinuz $LIVE $SEC toram tisma.probar
     initrd /live/initrd.img
 }
+menuentry "Comprobar que el USB no tenga errores" {
+    linux /live/vmlinuz $LIVE $SEC tisma.comprobar
+    initrd /live/initrd.img
+}
 menuentry "Modo de soporte: ver los mensajes del arranque (consola en Ctrl+Alt+F9)" {
     linux /live/vmlinuz $DIAG tisma.diagnostico systemd.debug_shell=tty9
     initrd /live/initrd.img
@@ -585,6 +589,9 @@ if [[ "${TISMA_BORRAR_CHROOT:-0}" == 1 ]]; then
         log "Chroot borrado para dejar sitio a la ISO (TISMA_BORRAR_CHROOT=1)"
     fi
 fi
+# Huellas de cada archivo del USB para «Comprobar que el USB no tenga errores» (0031-tisma-comprobar): un USB mal
+# grabado o un pendrive que falla terminaba en «KERNEL PANIC … exitcode=0x00000007» sin explicar nada
+( cd "$ISODIR" && find . -type f ! -name sha256sum.txt -print0 | sort -z | xargs -0 sha256sum > sha256sum.txt )
 log "Generando ISO híbrida BIOS + UEFI con Secure Boot (shim de Microsoft → GRUB y kernel firmados por Debian)"
 "$HERE/secureboot-iso.sh" "$ISODIR" "$SBROOT" "$BUILD_DIR/$ISO_NAME" TISMA_OS
 ( cd "$BUILD_DIR" && sha256sum "$ISO_NAME" > "$ISO_NAME.sha256" )

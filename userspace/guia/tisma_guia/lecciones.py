@@ -176,4 +176,13 @@ LECCIONES = [
                "Sin sonido o sin imagen: en «TISMA Seguridad» → «Buscar e instalar drivers».",
                "También puedes preguntarle al asistente: «no tengo sonido»."],
      "palabras": "problema no anda error lento wifi sonido arreglar ayuda"},
+    {"id": "usb-danado", "cat": "ayuda", "titulo": "El USB de TISMA no arranca (KERNEL PANIC)", "imagen": None,
+     "probar": None,
+     "resumen": "Casi siempre es una copia dañada en el USB o un pendrive que falla. Se comprueba en un minuto.",
+     "pasos": ["Arranca el USB y en el menú elige «Comprobar que el USB no tenga errores».",
+               "Si dice que está bien y aun así falla, avísanos con una foto de la pantalla.",
+               "Si tiene errores: comprueba la ISO descargada con su SHA-256 (está junto a la descarga).",
+               "Vuelve a grabar el USB (Rufus en modo DD o Ventoy).",
+               "Si se repite, usa otro pendrive u otro puerto: algunos pendrives devuelven datos dañados."],
+     "palabras": "usb kernel panic no arranca pantalla qr error grabar pendrive iso dañado corrupto"},
 ]
