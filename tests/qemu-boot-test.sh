@@ -8,6 +8,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf -- "${WORK:?}"' EXIT
 mkdir -p "$WORK/root/bin" "$WORK/root/proc" "$WORK/root/sys" "$WORK/root/dev"
 cp "$(command -v busybox)" "$WORK/root/bin/busybox"
+# Prueba real del binder (Waydroid): binderfs + transacción entre procesos
+gcc -O2 -static -o "$WORK/root/bin/binder-test" "$(dirname "${BASH_SOURCE[0]}")/binder-test.c"
 cat > "$WORK/root/init" <<'INIT'
 #!/bin/busybox sh
 /bin/busybox --install -s /bin
@@ -25,6 +27,11 @@ echo "psi=$([ -e /proc/pressure/memory ] && echo si || echo no)"
 echo "zswap=$(cat /sys/module/zswap/parameters/compressor 2>/dev/null)"
 echo "mglru=$(cat /sys/kernel/mm/lru_gen/enabled 2>/dev/null)"
 echo "binder=$(grep -c binder /proc/filesystems)"
+/bin/binder-test
+echo "rust_binder=$(grep -c ' rust_binder' /proc/kallsyms)"
+echo "preempt=$(dmesg | grep -o 'Dynamic Preempt: [a-z]*' | tail -n1)"
+echo "cpuidle=$(cat /sys/devices/system/cpu/cpuidle/current_governor 2>/dev/null)"
+echo "rcu_offload=$(dmesg | grep -o 'Offload RCU callbacks from CPUs: [^.]*' | cut -d: -f2)"
 echo "sched_ext=$([ -d /sys/kernel/sched_ext ] && echo si || echo no)"
 echo "vulns=$(grep -l Vulnerable /sys/devices/system/cpu/vulnerabilities/* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
 echo "== FIN =="
@@ -45,6 +52,10 @@ check "devmem=ausente" "/dev/mem accesible"
 check "kcore=ausente" "/proc/kcore accesible"
 check "psi=si" "PSI desactivado"
 check "binder=[1-9]" "binderfs (Waydroid) ausente"
+check "binder_prueba=ok" "el binder no completa una transacción"
+check "rust_binder=[1-9]" "el binder no es la versión en Rust"
+check "preempt=Dynamic Preempt: lazy" "preempción no está en modo lazy"
+check "cpuidle=teo" "gobernador de reposo no es teo"
 check "sched_ext=si" "sched_ext ausente"
 [[ $fail == 0 ]] && echo "OK: el kernel arranca con todas las protecciones activas"
 exit $fail

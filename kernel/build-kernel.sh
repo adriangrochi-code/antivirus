@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2094
-# Compila el kernel de Centinela OS a partir de fragmentos de configuración.
+# Compila el kernel de TISMA OS a partir de fragmentos de configuración.
 #
 # Perfiles:
 #   minimal   x86_64_defconfig + kvm_guest: máquinas virtuales, compilación rápida
@@ -8,12 +8,13 @@
 #   tailored  config base + localmodconfig + fragmento de hardware generado por
 #             `centinela plan`: kernel optimizado para UNA máquina concreta
 #
+# Requiere: gcc, rustc + rust-src, bindgen, libclang, pahole (dwarves), libdw-dev
 # Variables: KERNEL_VERSION, KERNEL_PROFILE, BUILD_DIR, BASE_CONFIG,
 #            HW_FRAGMENT (tailored), LSMOD_FILE (tailored), JOBS, LOCALVERSION
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL_VERSION="${KERNEL_VERSION:-6.18.63}"
+KERNEL_VERSION="${KERNEL_VERSION:-7.3.4}"
 KERNEL_PROFILE="${KERNEL_PROFILE:-generic}"
 BUILD_DIR="${BUILD_DIR:-$HERE/../build}"
 JOBS="${JOBS:-$(nproc)}"
@@ -52,6 +53,12 @@ fi
 
 cd "$SRC"
 FRAGMENTS=("$HERE"/fragments/*.config)
+
+# Rust es obligatorio: el binder de Waydroid es la versión en Rust (80-rust.config). Sin rustc, rust-src y bindgen
+# en sus versiones mínimas el kernel saldría sin binder, en silencio.
+[[ -d "$HOME/.cargo/bin" ]] && PATH="$HOME/.cargo/bin:$PATH"
+make -s rustavailable >/dev/null 2>&1 || { make rustavailable || true
+    die "Falta la cadena de Rust (rustup component add rust-src; cargo install --locked bindgen-cli; libclang-dev)"; }
 
 # ---------------------------------------------------------------- config base
 case "$KERNEL_PROFILE" in
