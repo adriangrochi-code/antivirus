@@ -67,3 +67,9 @@ def test_preparar_linea_base_afinada(tmp_path, monkeypatch):
     pasos = banco.preparar("debian", run, marca)
     assert "Quitados (los había instalado el banco): tlp" in pasos[0]
     assert instalados == {"thermald"}                                       # el que ya estaba, se queda
+
+
+def test_memoria_sin_systemd(monkeypatch):
+    monkeypatch.setattr(banco.shutil, "which", lambda x: None)
+    assert banco.t_memoria() == {}
+    assert {"memoria_gb": 4, "carga_gb": 5} in banco.VARIANTES["memoria"]

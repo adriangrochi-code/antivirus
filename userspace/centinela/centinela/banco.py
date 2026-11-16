@@ -9,7 +9,7 @@ base), «debian-tlp» (con TLP y thermald instalados: línea base afinada), «ti
 «tisma-maximo»… La energía sale de la batería (`power_now`, ruidosa: el equipo tiene que estar A BATERÍA); con
 un medidor externo es mejor y se puede anotar aparte.
 
-Tareas: inventario, reposo, ancho_banda, descompresion, compresion_modelo, almacenamiento, arranque,
+Tareas: inventario, reposo, memoria (equipo de 4 GB simulado), ancho_banda, descompresion, compresion_modelo, almacenamiento, arranque,
 escritorio, compilacion, inferencia. (Navegación, multimedia y juegos necesitan un guion con ventanas: van
 aparte.)
 """
@@ -276,11 +276,46 @@ def t_inferencia(modelo: str = "", hilos: int = 0, **_) -> dict:
     return out
 
 
-TAREAS = {"reposo": t_reposo, "ancho_banda": t_ancho_banda, "descompresion": t_descompresion,
+def t_memoria(memoria_gb: float = 4, carga_gb: float = 5, segundos: int = 60, **_) -> dict:
+    """Equipo chico simulado (sección 8): una carga de memoria MAYOR que el límite (MemoryMax) para ver cómo
+    responde el sistema (zram, presión). Mide trabajo hecho, presión de memoria «full» (tiempo con TODO frenado
+    esperando memoria), intercambio usado y si hubo que cerrar procesos (OOM)."""
+    estres = shutil.which("centinela-estres") or "/usr/lib/centinela/centinela-estres"
+    if not shutil.which("systemd-run") or not os.access(estres, os.X_OK):
+        return {}
+    unidad = f"tisma-banco-mem-{os.getpid()}"
+    cg = f"/sys/fs/cgroup/system.slice/{unidad}.service"
+    proc = subprocess.Popen(["systemd-run", "--wait", "--collect", "--quiet", f"--unit={unidad}",
+                             "-p", f"MemoryMax={int(memoria_gb * 1024)}M", "-p", "MemorySwapMax=infinity",
+                             "--", estres, "mem", str(segundos), "2", str(int(carga_gb * 1024))],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    full_max = swap_max = 0.0
+    oom = 0
+    while proc.poll() is None:
+        m = re.search(r"full avg10=([\d.]+)", sysfs.read(f"{cg}/memory.pressure", "") or "")
+        if m:
+            full_max = max(full_max, float(m.group(1)))
+        swap_max = max(swap_max, (sysfs.read_int(f"{cg}/memory.swap.current") or 0) / 2**20)
+        ev = sysfs.read(f"{cg}/memory.events", "") or ""
+        k = re.search(r"oom_kill (\d+)", ev)
+        if k:
+            oom = max(oom, int(k.group(1)))
+        time.sleep(1)
+    out = (proc.stdout.read() if proc.stdout else "") or ""
+    try:
+        res = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        res = {}
+    return {"trabajo": (res.get("iteraciones"), "vueltas"), "presion_full_max": (full_max, "%"),
+            "swap_max": (round(swap_max), "MB"), "oom": (oom, "procesos")}
+
+
+TAREAS = {"reposo": t_reposo, "memoria": t_memoria, "ancho_banda": t_ancho_banda, "descompresion": t_descompresion,
           "compresion_modelo": t_compresion_modelo, "almacenamiento": t_almacenamiento, "arranque": t_arranque,
           "escritorio": t_escritorio, "compilacion": t_compilacion, "inferencia": t_inferencia}
 # Variantes por defecto (sección 8: ancho de banda y descompresión con 1, 2 y 4 hilos)
 VARIANTES = {"ancho_banda": [{"hilos": 1}, {"hilos": 2}, {"hilos": 4}],
+             "memoria": [{"memoria_gb": 4, "carga_gb": 3}, {"memoria_gb": 4, "carga_gb": 5}],
              "descompresion": [{"hilos": h, "algoritmo": a} for a in ("lz4", "zstd") for h in (1, 4)]}
 
 

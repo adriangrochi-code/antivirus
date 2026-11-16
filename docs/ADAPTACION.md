@@ -56,7 +56,7 @@ multimedia y juegos.
 | Qué | En la A275 | Equipos de 4 a 8 GB (Ceibal) |
 |---|---|---|
 | Todo lo del banco | Medido | — |
-| Memoria escasa | — | `systemd-run -p MemoryMax=4G …` o arrancar con `mem=4G` (pendiente: tarea `memoria`) |
+| Memoria escasa | — | Tarea `memoria`: carga de 3 y 5 GB dentro de un límite de 4 GB (systemd-run MemoryMax): trabajo, presión «full», intercambio y cierres por falta de memoria. Para una prueba completa del escritorio, arrancar con `mem=4G` |
 | Ancho de banda de 1 canal | Medido (1/2/4 hilos) | Igual, si también son de 1 canal |
 | RAPL / amd-pstate | Probablemente no hay (Excavator): el inventario lo confirma | Según CPU |
 
