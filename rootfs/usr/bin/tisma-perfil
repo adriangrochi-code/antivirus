@@ -76,7 +76,8 @@ def guardar(estado: dict) -> None:
 
 def componente_instalado(nombre: str) -> bool:
     marca = {"rea": "/usr/lib/node_modules/rea-agents", "craft-anything": "/opt/craft-anything/VERSION",
-             "strata": "/opt/strata/VERSION"}.get(nombre)
+             "strata": "/opt/strata/VERSION",
+             "navegador-privado": "/usr/lib/mullvad-browser/defaults/pref/tisma.js"}.get(nombre)
     return bool(marca) and os.path.exists(marca)
 
 

@@ -275,7 +275,7 @@ fi
 # Componentes que no están en Debian: sus scripts van también en la imagen para descargarlos al usarlos
 # (centinela-apps strata|rea|craft y los «@componente» de los perfiles), con la misma versión y SHA-256 fijados
 install -d -m 755 "$CHROOT/usr/lib/tisma/componentes"
-for c in strata rea craft-anything openjarvis; do install -m 755 "$HERE/components/$c.sh" "$CHROOT/usr/lib/tisma/componentes/"; done
+for c in strata rea craft-anything openjarvis navegador-privado; do install -m 755 "$HERE/components/$c.sh" "$CHROOT/usr/lib/tisma/componentes/"; done
 if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
 # Tisma engine (laminador) y llama.cpp (motor de TISMA Code en equipos sin GPU dedicada: build oficial, ~36 MB)
 "$HERE/components/tisma-engine.sh" "$CHROOT" "${TISMA_ENGINE_VERSION:-}" \

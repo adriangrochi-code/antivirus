@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=mullvad-browser
+Exec=mullvad-browser %u
+# TISMA: se abre desde «Navegador privado» (net.tisma.NavegadorPrivado), una sola entrada en el menú
+NoDisplay=true

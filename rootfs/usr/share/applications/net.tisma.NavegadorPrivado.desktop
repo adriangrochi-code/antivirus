@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Navegador privado
+GenericName=Navegar sin rastreo
+Comment=Navega sin que los sitios te sigan; con «Modo Tor», en anónimo
+Exec=tisma-navegador-privado %u
+Icon=mullvad-browser
+Terminal=false
+Categories=Network;WebBrowser;Security;
+Keywords=privado;privacidad;tor;anonimo;anónimo;mullvad;rastreo;navegador;vpn;onion;
+Actions=Tor;
+
+[Desktop Action Tor]
+Name=Modo Tor (anónimo)
+Exec=tisma-navegador-privado --tor

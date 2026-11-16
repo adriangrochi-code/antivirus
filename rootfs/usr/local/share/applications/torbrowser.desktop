@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=torbrowser
+Exec=torbrowser-launcher %u
+# TISMA: se abre desde «Navegador privado» (net.tisma.NavegadorPrivado), una sola entrada en el menú
+NoDisplay=true

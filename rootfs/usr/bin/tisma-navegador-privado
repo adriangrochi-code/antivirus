@@ -1,0 +1,28 @@
+#!/bin/sh
+# TISMA: «Navegador privado» (app opcional). Modo normal: Mullvad Browser (protección contra rastreo y huella del
+# navegador Tor, sin la red Tor: casi tan rápido como uno normal). «--tor»: el navegador Tor de verdad, en su
+# propia ventana y perfil (alternar Tor dentro de la misma ventana uniría tus dos identidades).
+# Si no está instalado, lo ofrece con una ventana (sin terminal): tisma-perfil instalar privacidad.
+set -u
+TOR=0
+[ "${1:-}" = "--tor" ] && { TOR=1; shift; }
+instalado() { command -v mullvad-browser >/dev/null; }
+if [ "$TOR" = 0 ] && ! instalado; then
+    kdialog --title "Navegador privado" --yesno "El Navegador privado no está instalado.
+
+Navega sin que los sitios te rastreen y, cuando lo necesites, en modo Tor (anónimo).
+Se descargan unos 130 MB de fuentes oficiales comprobadas; el modo Tor baja unos 100 MB más la primera vez que lo uses.
+
+¿Instalarlo ahora?" || exit 0
+    notify-send -a "Navegador privado" -i security-high "Instalando el Navegador privado…" "Te avisamos al terminar." 2>/dev/null
+    if pkexec /usr/bin/tisma-perfil instalar privacidad; then
+        notify-send -a "Navegador privado" -i security-high "Navegador privado instalado" 2>/dev/null
+    else
+        kdialog --title "Navegador privado" --error "No se pudo instalar. Revisa la conexión a internet y vuelve a intentarlo."
+        exit 1
+    fi
+fi
+if [ "$TOR" = 1 ]; then
+    exec torbrowser-launcher "$@"
+fi
+exec mullvad-browser "$@"
