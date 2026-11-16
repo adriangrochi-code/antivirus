@@ -8,6 +8,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf -- "${WORK:?}"' EXIT
 mkdir -p "$WORK/root/bin" "$WORK/root/proc" "$WORK/root/sys" "$WORK/root/dev"
 cp "$(command -v busybox)" "$WORK/root/bin/busybox"
+# Planificador sched_ext opcional (SCX_BIN=ruta/a/scx_lavd): se copia con sus bibliotecas
+if [[ -x "${SCX_BIN:-}" ]]; then
+    cp "$SCX_BIN" "$WORK/root/bin/scx"
+    for lib in $(ldd "$SCX_BIN" | grep -oE '/[^ ]+'); do
+        mkdir -p "$WORK/root$(dirname "$lib")"; cp -L "$lib" "$WORK/root$lib"
+    done
+fi
 # Prueba real del binder (Waydroid): binderfs + transacción entre procesos
 gcc -O2 -static -o "$WORK/root/bin/binder-test" "$(dirname "${BASH_SOURCE[0]}")/binder-test.c"
 cat > "$WORK/root/init" <<'INIT'
@@ -33,6 +40,18 @@ echo "preempt=$(dmesg | grep -o 'Dynamic Preempt: [a-z]*' | tail -n1)"
 echo "cpuidle=$(cat /sys/devices/system/cpu/cpuidle/current_governor 2>/dev/null)"
 echo "rcu_offload=$(dmesg | grep -o 'Offload RCU callbacks from CPUs: [^.]*' | cut -d: -f2)"
 echo "sched_ext=$([ -d /sys/kernel/sched_ext ] && echo si || echo no)"
+if [ -x /bin/scx ]; then
+    mount -t bpf bpf /sys/fs/bpf; mount -t debugfs none /sys/kernel/debug 2>/dev/null
+    /bin/scx > /scx.log 2>&1 &
+    i=0; while [ "$(cat /sys/kernel/sched_ext/state)" != enabled ] && [ $i -lt 120 ]; do sleep 1; i=$((i+1)); done
+    echo "scx_activo=$(cat /sys/kernel/sched_ext/state) ops=$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null)"
+    # Carga: varios procesos a la vez con el planificador de Rust al mando
+    for n in 1 2 3 4; do (j=0; while [ $j -lt 20000 ]; do j=$((j+1)); done) & done; wait %2 %3 %4 %5 2>/dev/null
+    /bin/binder-test >/dev/null 2>&1; echo "scx_binder=$?"
+    kill %1; i=0; while [ "$(cat /sys/kernel/sched_ext/state)" != disabled ] && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+    echo "scx_al_salir=$(cat /sys/kernel/sched_ext/state)"
+    grep -iE "error|fail" /scx.log | head -n 3
+fi
 echo "vulns=$(grep -l Vulnerable /sys/devices/system/cpu/vulnerabilities/* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
 echo "== FIN =="
 poweroff -f
@@ -57,5 +76,9 @@ check "rust_binder=[1-9]" "el binder no es la versión en Rust"
 check "preempt=Dynamic Preempt: lazy" "preempción no está en modo lazy"
 check "cpuidle=teo" "gobernador de reposo no es teo"
 check "sched_ext=si" "sched_ext ausente"
+if [[ -x "${SCX_BIN:-}" ]]; then
+    check "scx_activo=enabled" "el planificador sched_ext no se activó"
+    check "scx_al_salir=disabled" "al cerrar el planificador el kernel no volvió al suyo"
+fi
 [[ $fail == 0 ]] && echo "OK: el kernel arranca con todas las protecciones activas"
 exit $fail
