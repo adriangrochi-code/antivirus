@@ -3,6 +3,16 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 14
+
+- **Arranque a prueba de fallos**: si el equipo no llega a la pantalla de inicio, el menú de arranque aparece solo
+  con «Volver a como estaba antes de la última actualización» (tus archivos no se tocan).
+- **Escudo**: analiza los programas apenas terminan de descargarse (el primer clic ya no espera), avisa de
+  mineros y programas que usan la CPU a escondidas, y su máquina virtual de análisis rápida se descarga sola
+  después de instalar (comprobada con su huella; la ISO no crece).
+- **Protección de memoria por software** (opcional, en TISMA Rendimiento): revisa los modelos de IA en memoria y
+  corrige algunos errores; no sustituye a la memoria con ECC.
+
 ## Novedades de la preview 13
 
 - **Preferencias**: una ventana simple para lo de todos los días (aspecto, tamaño del texto, fondo, energía,
