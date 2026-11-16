@@ -1,0 +1,38 @@
+#!/bin/sh
+# TISMA: arranque a prueba de fallos (/etc/grub.d/06_tisma_fallos). A los 2 minutos, si ya hay pantalla de inicio
+# de sesión o escritorio, el contador de intentos de GRUB vuelve a cero. Si este arranque fue una «vuelta atrás»
+# (initramfs tisma-volver), aparta los kernels de /boot que ya no tienen módulos, regenera el menú y avisa.
+set -u
+ENV=""
+for d in /boot/efi /efi /boot; do
+    if mountpoint -q "$d" 2>/dev/null; then ENV="$d/tisma/grubenv"; break; fi
+done
+listo() {
+    loginctl list-sessions --no-legend 2>/dev/null | grep -q "seat0" && return 0
+    systemctl is-active -q display-manager
+}
+if [ -n "$ENV" ] && listo; then
+    mkdir -p "$(dirname "$ENV")"
+    [ -e "$ENV" ] || grub-editenv "$ENV" create
+    grub-editenv "$ENV" unset tisma_intentos
+fi
+if [ -r /run/tisma-volver-hecho ] && [ ! -e /run/tisma-volver-limpio ]; then
+    read -r NOMBRE ANTES < /run/tisma-volver-hecho
+    APARTE=/boot/tisma-apartados
+    for k in /boot/vmlinuz-*; do
+        [ -e "$k" ] || continue
+        v=${k#/boot/vmlinuz-}
+        if [ ! -d "/lib/modules/$v" ]; then
+            mkdir -p "$APARTE"
+            for f in vmlinuz config System.map initrd.img; do
+                [ -e "/boot/$f-$v" ] && mv "/boot/$f-$v" "$APARTE/"
+            done
+        fi
+    done
+    update-grub >/dev/null 2>&1 || true
+    : > /run/tisma-volver-limpio
+    mkdir -p /run/escudo
+    printf '{"t": %s, "kind": "sistema", "severity": "medium", "detail": "El equipo volvió a como estaba antes de la última actualización (%s). Tus archivos personales no se tocaron.", "action": "El sistema de antes quedó guardado como %s. La actualización se volverá a intentar más adelante."}\n' \
+        "$(date +%s)" "$NOMBRE" "$ANTES" >> /run/escudo/alertas.jsonl
+fi
+exit 0

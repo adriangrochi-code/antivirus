@@ -1,0 +1,9 @@
+[Unit]
+Description=TISMA: confirmar el arranque a los 2 minutos
+
+[Timer]
+OnBootSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

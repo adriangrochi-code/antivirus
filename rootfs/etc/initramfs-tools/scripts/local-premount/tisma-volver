@@ -1,0 +1,33 @@
+#!/bin/sh
+# TISMA: «Volver a como estaba antes de la última actualización» (entrada de GRUB con tisma.volver=<nombre>).
+# Corre con el disco ya descifrado y antes de montar la raíz: copia la instantánea (solo lectura) en un
+# subvolumen nuevo y lo pone en el lugar de @. La raíz de antes queda como @antes-<fecha> (no se borra nada) y
+# /home no se toca. Una sola vez por instantánea (marca en la raíz del btrfs).
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+NOMBRE=""
+for p in $(cat /proc/cmdline); do
+    case "$p" in tisma.volver=*) NOMBRE="${p#tisma.volver=}" ;; esac
+done
+[ -n "$NOMBRE" ] || exit 0
+echo "$NOMBRE" | grep -Eq '^[0-9]{8}-[0-9]{6}-[a-z-]+$' || exit 0
+command -v btrfs >/dev/null 2>&1 || { echo "TISMA: falta btrfs en el initramfs; no se vuelve atrás"; exit 0; }
+TOP=/run/tisma-top
+mkdir -p "$TOP"
+mount -t btrfs -o subvolid=5 "$ROOT" "$TOP" || exit 0
+if [ -d "$TOP/@snapshots/$NOMBRE" ] && [ ! -e "$TOP/.tisma-volver-$NOMBRE" ] && [ ! -e "$TOP/@nuevo" ]; then
+    FECHA=$(date +%Y%m%d-%H%M%S)
+    if btrfs subvolume snapshot "$TOP/@snapshots/$NOMBRE" "$TOP/@nuevo" >/dev/null &&
+       mv "$TOP/@" "$TOP/@antes-$FECHA"; then
+        if mv "$TOP/@nuevo" "$TOP/@"; then
+            : > "$TOP/.tisma-volver-$NOMBRE"
+            echo "$NOMBRE @antes-$FECHA" > /run/tisma-volver-hecho
+            echo "TISMA: el sistema volvió a como estaba antes de la actualización ($NOMBRE)."
+        else
+            mv "$TOP/@antes-$FECHA" "$TOP/@"          # deshacer: nunca dejar el disco sin @
+        fi
+    fi
+fi
+umount "$TOP"
+exit 0

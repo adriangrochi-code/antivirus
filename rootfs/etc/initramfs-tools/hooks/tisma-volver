@@ -1,0 +1,11 @@
+#!/bin/sh
+# TISMA: el initramfs del sistema instalado necesita btrfs para «volver a antes de la actualización».
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+[ -d /usr/lib/live/boot ] && exit 0
+. /usr/share/initramfs-tools/hook-functions
+for b in /usr/bin/btrfs /bin/btrfs /sbin/btrfs /usr/sbin/btrfs; do
+    if [ -x "$b" ]; then copy_exec "$b" /bin; break; fi
+done
+exit 0

@@ -1,0 +1,30 @@
+#!/bin/sh
+# TISMA: entrada «Volver a como estaba antes de la última actualización». Arranca un kernel que exista tanto en
+# /boot como en la instantánea (sus módulos), con tisma.volver=<instantánea>: el initramfs
+# (scripts/local-premount/tisma-volver) cambia la raíz por esa instantánea ANTES de montarla. /home no se toca
+# y la raíz de ahora se guarda como @antes-<fecha>. Así se puede deshacer una actualización que rompe el arranque
+# sin necesitar el escritorio.
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+SNAPDIR=/.snapshots
+[ -d "$SNAPDIR" ] || exit 0
+[ "$(stat -f -c %T / 2>/dev/null)" = btrfs ] || exit 0
+NOMBRE=$(ls -1 "$SNAPDIR" 2>/dev/null | grep -E '^[0-9]{8}-[0-9]{6}-actualizacion$' | sort | tail -1)
+[ -n "$NOMBRE" ] || exit 0
+VERSION=""
+for v in $(ls -1 "$SNAPDIR/$NOMBRE/lib/modules" 2>/dev/null | sort -V -r); do
+    if [ -e "/boot/vmlinuz-$v" ] && [ -e "/boot/initrd.img-$v" ]; then VERSION=$v; break; fi
+done
+[ -n "$VERSION" ] || exit 0
+BOOTDEV=$(${grub_probe} --target=device /boot)
+REL=$(make_system_path_relative_to_its_root /boot)
+FECHA=$(echo "$NOMBRE" | sed -E 's/^([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2}).*/\3\/\2\/\1 \4:\5/')
+if [ -n "${GRUB_DEVICE_UUID}" ]; then RAIZ="UUID=${GRUB_DEVICE_UUID}"; else RAIZ="${GRUB_DEVICE}"; fi
+echo "menuentry 'Volver a como estaba antes de la última actualización ($FECHA)' --class tisma {"
+prepare_grub_to_access_device "$BOOTDEV" | sed 's/^/  /'
+cat <<GRUBEOF
+  echo 'Volviendo a como estaba el $FECHA (tus archivos personales no se tocan)…'
+  linux ${REL}/vmlinuz-${VERSION} root=${RAIZ} ro rootflags=subvol=@ ${GRUB_CMDLINE_LINUX} ${GRUB_CMDLINE_LINUX_DEFAULT} tisma.volver=${NOMBRE}
+  initrd ${REL}/initrd.img-${VERSION}
+}
+GRUBEOF

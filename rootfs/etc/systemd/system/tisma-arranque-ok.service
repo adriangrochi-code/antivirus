@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA: el arranque llegó al inicio de sesión (el menú de arranque vuelve a ocultarse)
+ConditionPathExists=!/run/live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/tisma/arranque-ok
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectHome=yes
