@@ -8,7 +8,7 @@ mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
 mkdir -p /dev/pts /dev/shm && mount -t devpts devpts /dev/pts && mount -t tmpfs -o mode=1777 tmpfs /dev/shm
 mount -t securityfs securityfs /sys/kernel/security 2>/dev/null
-for d in /run /tmp /var/tmp /var/lib /var/log /home /root; do
+for d in /run /tmp /var/tmp /var/lib /var/log /home /root /mnt; do
     mount -t tmpfs -o mode=0755 tmpfs "$d" 2>/dev/null
 done
 chmod 1777 /tmp /var/tmp
@@ -35,8 +35,31 @@ fcntl.ioctl(fd, 0x5207)  # RNDRESEEDCRNG' "$semilla" || seg="" ;;
     fi
     export TISMA_DETONAR_SEG="$seg"
 fi
+# Muestra por DISCO en vez de carpeta compartida: sin servidor 9p ni virtiofsd en el anfitrión. Los discos se
+# reconocen por su número de serie (no por el orden). Entrada «tisma-entrada»: un tar (orden.json + muestra/),
+# solo lectura. Salida «tisma-salida»: «TISMA-TRAZA <bytes>» y la traza, tamaño fijo. Lectura y escritura
+# DIRECTAS (sin caché): en la VM precalentada el kernel pudo leer estos discos antes de la foto.
+disco_serie() { for d in /sys/block/vd*; do [ "$(cat "$d/serial" 2>/dev/null)" = "$1" ] && echo "/dev/${d##*/}"; done; }
+entrada=$(disco_serie tisma-entrada)
+salida=$(disco_serie tisma-salida)
+if [ -n "$entrada" ] && [ -n "$salida" ]; then
+    mkdir -p /mnt/muestra
+    blockdev --flushbufs "$entrada" "$salida" 2>/dev/null
+    if ! dd if="$entrada" iflag=direct bs=1M status=none | tar -x -C /mnt/muestra 2>/dev/null; then
+        echo "init-analisis: no se pudo leer la muestra" >&2
+    fi
+    export TISMA_MUESTRA_LISTA=1
+fi
 if [ -x /usr/lib/tisma/detonar-invitado ]; then
     /usr/lib/tisma/detonar-invitado
+    if [ -n "$entrada" ] && [ -n "$salida" ]; then
+        t=/mnt/muestra/traza.txt
+        max=$(( $(blockdev --getsize64 "$salida") - 4096 ))
+        n=$(stat -c %s "$t" 2>/dev/null || echo 0)
+        [ "$n" -gt "$max" ] && n=$max
+        { printf 'TISMA-TRAZA %d\n' "$n"; head -c "$n" "$t" 2>/dev/null; } |
+            dd of="$salida" iflag=fullblock oflag=direct bs=4096 conv=sync status=none
+    fi
 else
     echo "init-analisis: falta /usr/lib/tisma/detonar-invitado" >&2
 fi

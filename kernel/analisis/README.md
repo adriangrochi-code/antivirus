@@ -64,3 +64,28 @@ Seguridad:
 - **Los sockets de control de QEMU (consola y QMP) van en una carpeta aparte**, fuera de la compartida.
 - **La foto es del anfitrión:** root, permisos 0600, en `/var/lib/escudo`; se rehace cuando cambian el kernel o
   el squashfs (guardar su SHA-256 junto a la foto). Compatible con `-sandbox spawn=deny` (no usa `exec:`).
+
+## Muestra por discos (sin carpeta compartida)
+
+En lugar de compartir una carpeta por 9p (un servidor de archivos del anfitrión al alcance de la muestra, con
+historial de fallos), la muestra entra y el resultado sale por dos discos virtuales reconocidos por su número de
+serie:
+
+- `tisma-entrada` (solo lectura): un tar con `orden.json` y `muestra/`, relleno hasta un tamaño fijo (64 MB).
+- `tisma-salida` (16 MB): `TISMA-TRAZA <bytes>` y la traza. El anfitrión solo interpreta esa cabecera y lee como
+  mucho ese número de bytes: no monta nada ni interpreta un sistema de archivos escrito por la VM.
+
+El invitado lee y escribe estos discos **sin caché** (`iflag/oflag=direct`, `blockdev --flushbufs`): en la VM
+precalentada el kernel pudo leerlos antes de la foto y su caché tendría el contenido de entonces. Comprobado: la
+foto se toma con la entrada vacía y cada análisis lee la muestra nueva (`DISCOS=1
+tests/analisis-vm-precalentada.py`, misma traza que por 9p). Funciona igual con QEMU y con Cloud Hypervisor.
+
+## Cloud Hypervisor (en lugar de QEMU)
+
+VMM en Rust: el mismo aislamiento por hardware (KVM) con ~50 000 líneas en vez de ~2 millones de QEMU (en C),
+seccomp sobre sí mismo por defecto, **Landlock** (solo puede abrir el kernel, el squashfs y su carpeta) y foto /
+restauración incluidas. No está en Debian: `kernel/analisis/compilar-ch.sh` lo compila en la versión fijada
+(v54.1, commit fijado, `--locked`); binario de 6 MB.
+
+**Necesita KVM**: no se puede probar en emulación. `tests/analisis-ch-test.py` (preparar / analizar / arrancar)
+queda listo para un equipo con KVM; aquí solo se comprobó que acepta toda la configuración.

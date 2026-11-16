@@ -22,7 +22,36 @@ import time
 from pathlib import Path
 
 
-def qemu_argv(kernel: str, sqfs: str, carpeta: Path, serie: Path, qmp: Path) -> list[str]:
+ENTRADA_MB, SALIDA_MB = 64, 16      # tamaño FIJO: tras restaurar la foto el invitado debe ver el mismo disco
+DISCOS = bool(os.environ.get("DISCOS"))   # DISCOS=1: la muestra va por discos (sin 9p)
+
+
+def crear_discos(carpeta: Path, entrada: Path, salida: Path) -> None:
+    """Entrada: tar de orden.json + muestra/ (relleno hasta ENTRADA_MB). Salida: ceros (SALIDA_MB)."""
+    import tarfile
+    with tarfile.open(entrada, "w", format=tarfile.USTAR_FORMAT) as t:
+        for nombre in ("orden.json", "muestra"):
+            if (carpeta / nombre).exists():
+                t.add(carpeta / nombre, arcname=nombre)
+    if entrada.stat().st_size > ENTRADA_MB << 20:
+        raise SystemExit("la muestra no cabe en el disco de entrada")
+    os.truncate(entrada, ENTRADA_MB << 20)
+    with open(salida, "wb") as f:
+        f.truncate(SALIDA_MB << 20)
+
+
+def leer_salida(salida: Path) -> str:
+    """Solo se interpreta una cabecera fija y una longitud acotada: lo demás es texto sin confianza."""
+    with open(salida, "rb") as f:
+        cab = f.readline(64)
+        if not cab.startswith(b"TISMA-TRAZA "):
+            return ""
+        n = int(cab.split()[1]) if cab.split()[1].isdigit() else 0
+        return f.read(min(n, SALIDA_MB << 20)).decode(errors="replace")
+
+
+def qemu_argv(kernel: str, sqfs: str, carpeta: Path, serie: Path, qmp: Path,
+              discos: tuple[Path, Path] | None = None) -> list[str]:
     kvm = os.access("/dev/kvm", os.W_OK)
     # sin KVM (solo pruebas) no hay reloj de referencia: frecuencia fija para que el arranque no se cuelgue
     tsc = "" if kvm else " tsc_early_khz=2000000"
@@ -37,8 +66,12 @@ def qemu_argv(kernel: str, sqfs: str, carpeta: Path, serie: Path, qmp: Path) -> 
                    "tisma.espera lsm=landlock,lockdown,yama,apparmor lockdown=integrity panic=-1 quiet "
                    "no_timer_check pci=off" + tsc,
         "-drive", f"id=raiz,file={sqfs},format=raw,if=none,readonly=on", "-device", "virtio-blk-device,drive=raiz",
-        "-fsdev", f"local,id=m,path={carpeta},security_model=mapped-xattr",
-        "-device", "virtio-9p-device,fsdev=m,mount_tag=muestra",
+        *(["-drive", f"id=ent,file={discos[0]},format=raw,if=none,readonly=on,cache=none",
+            "-device", "virtio-blk-device,drive=ent,serial=tisma-entrada",
+            "-drive", f"id=sal,file={discos[1]},format=raw,if=none,cache=none",
+            "-device", "virtio-blk-device,drive=sal,serial=tisma-salida"] if discos else
+          ["-fsdev", f"local,id=m,path={carpeta},security_model=mapped-xattr",
+           "-device", "virtio-9p-device,fsdev=m,mount_tag=muestra"]),
         "-device", "virtio-rng-device",
     ]
 
@@ -101,7 +134,10 @@ def preparar(kernel: str, sqfs: str, foto: str) -> None:
     w = Path(tempfile.mkdtemp(prefix="precal-"))
     t0 = time.time()
     ctl = Path(tempfile.mkdtemp(prefix="precal-ctl-"))   # control de QEMU FUERA de la carpeta compartida
-    p = subprocess.Popen(qemu_argv(kernel, sqfs, w, ctl / "serie", ctl / "qmp"), stdout=subprocess.DEVNULL)
+    discos = (ctl / "entrada.img", ctl / "salida.img") if DISCOS else None
+    if discos:
+        crear_discos(w, *discos)                         # vacíos: solo para que la foto tenga los mismos discos
+    p = subprocess.Popen(qemu_argv(kernel, sqfs, w, ctl / "serie", ctl / "qmp", discos), stdout=subprocess.DEVNULL)
     try:
         serie = conectar(ctl / "serie")
         esperar_texto(serie, b"TISMA-LISTO", 300)
@@ -127,8 +163,11 @@ def analizar(kernel: str, sqfs: str, foto: str, segundos: int = 10) -> None:
     muestra_de_prueba(w)
     t0 = time.time()
     ctl = Path(tempfile.mkdtemp(prefix="precal-ctl-"))   # control de QEMU FUERA de la carpeta compartida
-    p = subprocess.Popen([*qemu_argv(kernel, sqfs, w, ctl / "serie", ctl / "qmp"), "-incoming", f"file:{foto}"],
-                         stdout=subprocess.DEVNULL)
+    discos = (ctl / "entrada.img", ctl / "salida.img") if DISCOS else None
+    if discos:
+        crear_discos(w, *discos)
+    p = subprocess.Popen([*qemu_argv(kernel, sqfs, w, ctl / "serie", ctl / "qmp", discos),
+                          "-incoming", f"file:{foto}"], stdout=subprocess.DEVNULL)
     try:
         c = conectar(ctl / "qmp")
         qmp(c, "qmp_capabilities")
@@ -145,7 +184,10 @@ def analizar(kernel: str, sqfs: str, foto: str, segundos: int = 10) -> None:
         total = time.time() - t0
     finally:
         p.kill()
-    traza = (w / "traza.txt").read_text(errors="replace") if (w / "traza.txt").exists() else ""
+    if discos:
+        traza = leer_salida(discos[1])
+    else:
+        traza = (w / "traza.txt").read_text(errors="replace") if (w / "traza.txt").exists() else ""
     print(f"modo=precalentado restaurada_s={t_restaurada:.2f} total_s={total:.1f} traza_lineas={len(traza.splitlines())} "
           f"lee_senuelo={traza.count('id_ed25519')}")
     if os.environ.get("ALEATORIO"):
