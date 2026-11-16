@@ -1,0 +1,19 @@
+[Unit]
+Description=Escudo: descargar la máquina virtual de análisis rápida (no cabe en la ISO)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/run/live
+ConditionPathExists=/usr/share/tisma/vm-analisis.conf
+ConditionPathExists=!/usr/lib/tisma/vm/vmlinuz-analisis
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/bin/escudo vm-descargar
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/usr/lib/tisma
+PrivateTmp=yes

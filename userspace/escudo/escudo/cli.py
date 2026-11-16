@@ -168,6 +168,13 @@ def cmd_permitir(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_vm_descargar(cfg: Config, args) -> int:
+    """Servicio tisma-vm-analisis: descarga y comprueba la VM de análisis rápida (no cabe en la ISO)."""
+    from .vm_descarga import instalar
+    print(f"VM de análisis: {instalar()}")
+    return 0
+
+
 def cmd_teclado(cfg: Config, args) -> int:
     """El usuario dice que un teclado bloqueado era suyo (p. ej. un lector de códigos de barras)."""
     import subprocess
@@ -423,6 +430,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--kit", action="store_true", help="copiar el kit de endurecimiento a C:\\TISMA-Kit")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_windows)
+
+    s = sub.add_parser("vm-descargar", help="Descargar y comprobar la VM de análisis rápida (servicio)")
+    s.set_defaults(func=cmd_vm_descargar)
 
     s = sub.add_parser("analizar", help="Informe de un archivo sospechoso (YARA, ML, capa)")
     s.add_argument("path")

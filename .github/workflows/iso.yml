@@ -67,6 +67,26 @@ jobs:
           # El árbol de fuentes ya no hace falta (solo los .deb): libera ~8 GB para el chroot
           rm -rf build/linux-*/
           df -h /
+      # VM de análisis rápida de Escudo (kernel/analisis): ~300 MB que NO caben en la ISO. Se publica como archivo
+      # aparte en la misma release y la ISO lleva solo su dirección y su huella SHA-256 (tisma-vm-analisis la
+      # descarga y la comprueba al instalar). Si falla, la ISO sale igual (Escudo usa su aislamiento normal).
+      - name: VM de análisis de Escudo (se descarga al instalar)
+        continue-on-error: true
+        run: |
+          make vm-analisis BUILD_DIR="$PWD/build"
+          paquete="tisma-vm-analisis-$ETIQUETA.tar"
+          tar -C build/vm --owner=0 --group=0 --numeric-owner -cf "build/$paquete" vmlinuz-analisis analisis.squashfs
+          sha=$(sha256sum "build/$paquete" | cut -d' ' -f1)
+          mkdir -p publicar-vm && mv "build/$paquete" publicar-vm/
+          echo "TISMA_VM_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$ETIQUETA/$paquete" >> "$GITHUB_ENV"
+          echo "TISMA_VM_SHA256=$sha" >> "$GITHUB_ENV"
+          ls -la publicar-vm
+      - name: Limpiar lo de la VM de análisis
+        if: always()
+        run: |
+          grep -q " $PWD/build/chroot/" /proc/mounts && { echo "chroot con montajes: no se borra"; exit 0; }
+          sudo rm -rf build/chroot build/analisis build/vm build/tisma-minima.iso
+          df -h /
       - name: Clave de Secure Boot (si está en los secretos)
         env:
           SB_KEY: ${{ secrets.TISMA_SB_KEY }}
@@ -87,7 +107,8 @@ jobs:
         run: |
           sudo env BUILD_DIR="$PWD/build" TISMA_SIN_COMPILAR="$SIN_COMPILAR" TISMA_BORRAR_CHROOT=1 \
             ISO_NAME="tisma-os-$ETIQUETA-amd64.iso" \
-            TISMA_SB_KEY="${TISMA_SB_KEY:-}" TISMA_SB_CERT="${TISMA_SB_CERT:-}" ./iso/build-iso.sh
+            TISMA_SB_KEY="${TISMA_SB_KEY:-}" TISMA_SB_CERT="${TISMA_SB_CERT:-}" \
+            TISMA_VM_URL="${TISMA_VM_URL:-}" TISMA_VM_SHA256="${TISMA_VM_SHA256:-}" ./iso/build-iso.sh
           rm -f "$RUNNER_TEMP/sb.key"
       - name: Preparar archivos (partes si pasa de 2 GiB)
         run: |
@@ -107,6 +128,7 @@ jobs:
           else
             mv "$iso" "$iso.sha256" ../publicar/
           fi
+          [[ -d ../publicar-vm ]] && mv ../publicar-vm/* ../publicar/ || true
           ls -la ../publicar
       - name: Publicar release
         env:

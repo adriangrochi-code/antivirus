@@ -380,6 +380,20 @@ elif [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 && "$
     install -D -m 644 -t "$CHROOT/usr/lib/tisma/vm" "$BUILD_DIR"/vm/{detonacion.iso,vmlinuz,initrd.img}
     log "Imagen de análisis incluida (Escudo analizará en máquina virtual si hay KVM)"
 fi
+# VM de análisis rápida para DESCARGAR al instalar (~300 MB: no cabe en la ISO publicada). El CI la construye
+# (make vm-analisis), la sube a la misma release y pasa su dirección y su huella: tisma-vm-analisis la baja,
+# comprueba la huella y la instala. QEMU va en «esenciales» (se descarga al instalar, junto con LibreOffice).
+if [[ -n "${TISMA_VM_URL:-}" && -n "${TISMA_VM_SHA256:-}" && "${TISMA_ISO_MINIMA:-0}" != 1 \
+      && ! -f "$CHROOT/usr/lib/tisma/vm/vmlinuz-analisis" ]]; then
+    [[ "$TISMA_VM_URL" =~ ^https://[A-Za-z0-9./%_-]+$ && "$TISMA_VM_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "TISMA_VM_URL o TISMA_VM_SHA256 no válidas"
+    printf '# Escudo: VM de análisis rápida (se descarga y se comprueba al instalar)\nURL=%s\nSHA256=%s\n' \
+        "$TISMA_VM_URL" "$TISMA_VM_SHA256" > "$CHROOT/usr/share/tisma/vm-analisis.conf"
+    { echo "# Escudo: máquina virtual de análisis (la imagen se descarga aparte, tisma-vm-analisis)"
+      echo "qemu-system-x86"; } >> "$CHROOT/usr/share/tisma/perfiles/esenciales.list"
+    in_chroot systemctl enable tisma-vm-analisis.timer 2>/dev/null || true
+    log "VM de análisis: se descargará al instalar ($TISMA_VM_URL)"
+fi
 # Flathub en Discover desde el primer arranque (apps que Debian no trae o en versiones más nuevas)
 if in_chroot sh -c 'command -v flatpak' >/dev/null; then
     in_chroot flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo \

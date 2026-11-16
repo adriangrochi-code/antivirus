@@ -1,0 +1,11 @@
+[Unit]
+Description=Escudo: intentar descargar la VM de análisis hasta conseguirlo
+ConditionPathExists=!/usr/lib/tisma/vm/vmlinuz-analisis
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
