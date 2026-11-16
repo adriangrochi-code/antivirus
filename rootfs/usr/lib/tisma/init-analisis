@@ -1,0 +1,23 @@
+#!/bin/sh
+# Primer proceso (init=) de la máquina virtual de análisis rápida. Sustituye al arranque «live» + systemd: el
+# sistema de análisis (squashfs de solo lectura) ya es la raíz; aquí solo se preparan las zonas escribibles en
+# memoria, se ejecuta el análisis de Escudo y se apaga. Todo lo escrito se pierde al apagar.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /dev/shm && mount -t devpts devpts /dev/pts && mount -t tmpfs -o mode=1777 tmpfs /dev/shm
+mount -t securityfs securityfs /sys/kernel/security 2>/dev/null
+for d in /run /tmp /var/tmp /var/lib /var/log /home /root; do
+    mount -t tmpfs -o mode=0755 tmpfs "$d" 2>/dev/null
+done
+chmod 1777 /tmp /var/tmp
+if [ -x /usr/lib/tisma/detonar-invitado ]; then
+    /usr/lib/tisma/detonar-invitado
+else
+    echo "init-analisis: falta /usr/lib/tisma/detonar-invitado" >&2
+fi
+sync
+# Apagado inmediato (sin systemd); si no se puede, init termina y el kernel reinicia: QEMU (-no-reboot) se cierra
+systemctl --force --force poweroff 2>/dev/null || poweroff -f 2>/dev/null
+exit 0

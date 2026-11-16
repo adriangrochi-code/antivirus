@@ -5,6 +5,8 @@
 # Perfiles:
 #   minimal   x86_64_defconfig + kvm_guest: máquinas virtuales, compilación rápida
 #   generic   config de Debian (BASE_CONFIG) + fragmentos: hardware real, la ISO
+#   analisis  máquina virtual de análisis de Escudo: diminuto, sin módulos, arranca en microvm sin initramfs
+#             (solo los fragmentos de seguridad + kernel/analisis/analisis.config)
 #   tailored  config base + localmodconfig + fragmento de hardware generado por
 #             `centinela plan`: kernel optimizado para UNA máquina concreta
 #
@@ -62,6 +64,13 @@ case "$KERNEL_PROFILE" in
     generic)
         [[ -f "${BASE_CONFIG:-}" ]] || die "Perfil generic requiere BASE_CONFIG (p. ej. /boot/config-* de Debian)"
         cp "$BASE_CONFIG" .config
+        ;;
+    analisis)
+        make -s x86_64_defconfig
+        make -s kvm_guest.config
+        # Solo endurecimiento y superficie mínima: el resto de fragmentos son del escritorio
+        FRAGMENTS=("$HERE/fragments/10-security.config" "$HERE/fragments/15-superficie.config" \
+                   "$HERE/analisis/analisis.config")
         ;;
     tailored)
         base="${BASE_CONFIG:-/boot/config-$(uname -r)}"

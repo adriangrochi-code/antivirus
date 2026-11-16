@@ -11,7 +11,7 @@ export KERNEL_VERSION BUILD_DIR
 LATEST := $(shell ./kernel/latest-lts.sh $(basename $(KERNEL_VERSION)) 2>/dev/null)
 DEBCFG := $(BUILD_DIR)/debian-config
 
-.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes iso-minima iso-test vm-detonacion
+.PHONY: kernel kernel-minimal cve-check iso test qemu-test check-latest base-config check-paquetes iso-minima iso-test vm-detonacion vm-analisis
 
 check-paquetes:
 	python3 iso/check-packages.py $(DEBIAN_MIRROR) $(DEBIAN_SUITE)
@@ -67,6 +67,17 @@ vm-detonacion: iso-minima
 	cp $(BUILD_DIR)/tisma-minima.iso $(BUILD_DIR)/vm/detonacion.iso
 	xorriso -osirrox on -indev $(BUILD_DIR)/vm/detonacion.iso -extract /live/vmlinuz $(BUILD_DIR)/vm/vmlinuz \
 	    -extract /live/initrd.img $(BUILD_DIR)/vm/initrd.img
+
+# VM de análisis rápida (kernel/analisis/README.md): kernel «analisis» (microvm, sin módulos) + el squashfs de la
+# ISO mínima como raíz, sin initramfs ni systemd. En su propio BUILD_DIR para no mezclar sus paquetes con los
+# del kernel que lleva la ISO.
+vm-analisis: vm-detonacion
+	mkdir -p $(BUILD_DIR)/analisis
+	ln -f $(BUILD_DIR)/linux-$(KERNEL_VERSION).tar.xz $(BUILD_DIR)/analisis/ 2>/dev/null || true
+	BUILD_DIR=$(BUILD_DIR)/analisis KERNEL_PROFILE=analisis ./kernel/build-kernel.sh
+	cp $(BUILD_DIR)/analisis/linux-$(KERNEL_VERSION)/arch/x86/boot/bzImage $(BUILD_DIR)/vm/vmlinuz-analisis
+	xorriso -osirrox on -indev $(BUILD_DIR)/vm/detonacion.iso -extract /live/filesystem.squashfs \
+	    $(BUILD_DIR)/vm/analisis.squashfs
 
 iso-test:
 	./tests/qemu-iso-test.sh $(BUILD_DIR)/tisma-minima.iso
