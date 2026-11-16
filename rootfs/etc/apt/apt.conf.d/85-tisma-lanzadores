@@ -1,0 +1,4 @@
+// TISMA: tras instalar o quitar programas (Tienda, perfiles, LibreOffice al instalar…), los lanzadores nuevos
+// también reciben los ajustes del menú: «Opciones avanzadas», nombres claros y palabras de búsqueda (quien
+// busca el programa que ya conoce encuentra el equivalente). Antes solo se aplicaba a lo que traía la ISO.
+DPkg::Post-Invoke { "if [ -x /usr/lib/tisma/lanzadores ]; then /usr/lib/tisma/lanzadores / >/dev/null 2>&1 || true; fi"; };

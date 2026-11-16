@@ -481,3 +481,29 @@ def test_comprobar_el_usb(tmp_path):
     r = correr("boot=live tisma.comprobar")
     assert r.returncode == 1 and "CON ERRORES" in r.stdout
     assert correr("boot=live").stdout == ""                              # arranque normal: no hace nada
+
+
+def test_buscar_el_programa_que_ya_conoce(tmp_path):
+    """Buscar el nombre del programa conocido encuentra el equivalente (menú y Tienda); lo instalado después
+    también recibe los ajustes (apt) y un programa desinstalado no deja su lanzador roto."""
+    import importlib.util
+    import xml.etree.ElementTree as ET
+    spec = importlib.util.spec_from_file_location("lanzadores", ROOT.parent / "iso/lanzadores.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    apps = tmp_path / "usr/share/applications"
+    apps.mkdir(parents=True)
+    (apps / "libreoffice-calc.desktop").write_text("[Desktop Entry]\nName=LibreOffice Calc\nKeywords=Hoja;\n")
+    m.aplicar(str(tmp_path))
+    local = tmp_path / "usr/local/share/applications/libreoffice-calc.desktop"
+    assert "Keywords=Hoja;excel;xlsx;" in local.read_text()
+    (apps / "libreoffice-calc.desktop").unlink()
+    m.aplicar(str(tmp_path))
+    assert not local.exists()                                  # desinstalado: sin lanzador huérfano
+    cat = ET.fromstring(m.catalogo_appstream())
+    comp = [c for c in cat if c.findtext("id") == "org.gimp.GIMP"][0]
+    assert comp.get("merge") == "append" and "photoshop" in [k.text for k in comp.iter("keyword")]
+    hook = (ROOT / "etc/apt/apt.conf.d/85-tisma-lanzadores").read_text()
+    assert "DPkg::Post-Invoke" in hook and "/usr/lib/tisma/lanzadores /" in hook
+    build = (ROOT.parent / "iso/build-iso.sh").read_text()
+    assert '"$CHROOT/usr/lib/tisma/lanzadores"' in build and "appstreamcli refresh-cache" in build

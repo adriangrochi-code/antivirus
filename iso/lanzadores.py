@@ -64,6 +64,72 @@ def renombrar(texto: str, nombre: str) -> str:
     return cab + sep + resto
 
 
+# Palabras de búsqueda: quien viene de otro sistema busca el programa que ya conoce y encuentra el equivalente
+# (en el menú y en la Tienda, antes de instalarlo). No se muestran en pantalla: solo se usan al buscar.
+# lanzador → (ids de AppStream para la Tienda, palabras)
+PALABRAS = {
+    "libreoffice-writer.desktop": (["org.libreoffice.LibreOffice.writer"],
+                                   "word;docx;doc;procesador de textos;documento de texto;"),
+    "libreoffice-calc.desktop": (["org.libreoffice.LibreOffice.calc"], "excel;xlsx;xls;hoja de calculo;planilla;"),
+    "libreoffice-impress.desktop": (["org.libreoffice.LibreOffice.impress"],
+                                    "powerpoint;pptx;ppt;presentacion;diapositivas;"),
+    "libreoffice-draw.desktop": (["org.libreoffice.LibreOffice.draw"], "visio;publisher;diagrama;afiche;"),
+    "org.gimp.GIMP.desktop": (["org.gimp.GIMP"], "photoshop;editar fotos;retocar fotos;"),
+    "gimp.desktop": (["org.gimp.GIMP"], "photoshop;editar fotos;retocar fotos;"),
+    "org.inkscape.Inkscape.desktop": (["org.inkscape.Inkscape"], "illustrator;corel;coreldraw;vectores;logo;"),
+    "org.kde.krita.desktop": (["org.kde.krita"], "sai;clip studio;dibujo digital;ilustracion;"),
+    "org.kde.kolourpaint.desktop": (["org.kde.kolourpaint"], "paint;dibujar;"),
+    "org.kde.kdenlive.desktop": (["org.kde.kdenlive"], "premiere;vegas;filmora;movie maker;editar video;"),
+    "com.obsproject.Studio.desktop": (["com.obsproject.Studio"], "grabar pantalla;streaming;transmitir;"),
+    "org.mozilla.Thunderbird.desktop": (["org.mozilla.Thunderbird"], "outlook;correo;email;mail;"),
+    "thunderbird.desktop": (["org.mozilla.Thunderbird"], "outlook;correo;email;mail;"),
+    "org.kde.okular.desktop": (["org.kde.okular"], "acrobat;adobe reader;lector pdf;"),
+    "org.kde.kate.desktop": (["org.kde.kate"], "bloc de notas;notepad;notepad++;"),
+    "org.kde.spectacle.desktop": (["org.kde.spectacle"], "recortes;snipping;captura;"),
+    "org.kde.dolphin.desktop": (["org.kde.dolphin"], "explorador;explorer;mis documentos;mi pc;"),
+    "org.kde.ark.desktop": (["org.kde.ark"], "winrar;7zip;zip;rar;comprimir;descomprimir;"),
+    "org.kde.haruna.desktop": (["org.kde.haruna"], "vlc;reproductor;media player;peliculas;"),
+    "org.kde.elisa.desktop": (["org.kde.elisa"], "itunes;reproductor de musica;"),
+    "org.kde.gwenview.desktop": (["org.kde.gwenview"], "visor de fotos;imagenes;"),
+    "org.kde.plasma-systemmonitor.desktop": (["org.kde.plasma-systemmonitor"],
+                                             "administrador de tareas;task manager;procesos;"),
+    "org.freecad.FreeCAD.desktop": (["org.freecad.FreeCAD"], "solidworks;autocad;inventor;fusion;cad;"),
+    "org.kicad.kicad.desktop": (["org.kicad.kicad"], "altium;eagle;proteus;circuito impreso;pcb;"),
+    "blender.desktop": (["org.blender.Blender"], "3ds max;maya;cinema 4d;modelado 3d;"),
+    "audacity.desktop": (["org.audacityteam.Audacity"], "editar audio;grabar voz;"),
+    "net.tisma.Navegador.desktop": ([], "chrome;edge;internet;"),
+    "net.tisma.Preferencias.desktop": ([], "panel de control;configuracion;"),
+    "tisma-tienda.desktop": ([], "store;play store;app store;"),
+}
+
+
+def palabras(texto: str, extra: str) -> str:
+    """Suma palabras a Keywords= (sin repetir) solo en [Desktop Entry]."""
+    cab, sep, resto = texto.partition("\n[Desktop Action")
+    m = re.search(r"(?m)^Keywords=(.*)$", cab)
+    actuales = [k for k in (m.group(1) if m else "").split(";") if k]
+    nuevas = actuales + [k for k in extra.split(";") if k and k not in actuales]
+    linea = "Keywords=" + ";".join(nuevas) + ";"
+    cab = re.sub(r"(?m)^Keywords=.*$", lambda _: linea, cab, count=1) if m else cab.rstrip("\n") + "\n" + linea + "\n"
+    return cab + sep + resto
+
+
+def catalogo_appstream() -> str:
+    """Catálogo AppStream que suma estas palabras a los programas de la Tienda (merge=append)."""
+    from xml.sax.saxutils import escape
+    comps = {}
+    for ids, extra in PALABRAS.values():
+        for i in ids:
+            comps.setdefault(i, [])
+            comps[i] += [k for k in extra.split(";") if k and k not in comps[i]]
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<components version="0.16" origin="tisma-equivalentes">']
+    for i, ks in sorted(comps.items()):
+        out.append(f'  <component merge="append"><id>{escape(i)}</id><keywords>' +
+                   "".join(f"<keyword>{escape(k)}</keyword>" for k in ks) + "</keywords></component>")
+    return "\n".join(out + ["</components>", ""])
+
+
 # Lanzadores cuya orden cambia: (orden original, orden TISMA)
 EXEC = {"opensnitch_ui.desktop": ("opensnitch-ui", "tisma-opensnitch")}
 
@@ -78,9 +144,11 @@ def aplicar(raiz: str) -> list[str]:
     origen = Path(raiz, "usr/share/applications")
     destino = Path(raiz, "usr/local/share/applications")
     hechos = []
-    for nombre in sorted(set(AVANZADO) | set(RENOMBRAR)):
+    for nombre in sorted(set(AVANZADO) | set(RENOMBRAR) | set(PALABRAS) | set(EXEC)):
         f = origen / nombre
         if not f.is_file():
+            # El programa se desinstaló: sin su copia (quedaría un lanzador roto en el menú)
+            (destino / nombre).unlink(missing_ok=True)
             continue
         texto = f.read_text(errors="replace")
         if nombre in RENOMBRAR:
@@ -89,6 +157,8 @@ def aplicar(raiz: str) -> list[str]:
             texto = avanzado(texto)
         if nombre in EXEC:
             texto = cambiar_exec(texto, *EXEC[nombre])
+        if nombre in PALABRAS:
+            texto = palabras(texto, PALABRAS[nombre][1])
         destino.mkdir(parents=True, exist_ok=True)
         (destino / nombre).write_text(texto)
         hechos.append(nombre)
@@ -96,4 +166,9 @@ def aplicar(raiz: str) -> list[str]:
 
 
 if __name__ == "__main__":
-    print("\n".join(aplicar(sys.argv[1])))
+    hechos = aplicar(sys.argv[1])
+    cat = Path(sys.argv[1], "usr/share/swcatalog/xml/tisma-equivalentes.xml")
+    cat.parent.mkdir(parents=True, exist_ok=True)
+    if not cat.is_file() or cat.read_text() != catalogo_appstream():
+        cat.write_text(catalogo_appstream())
+    print("\n".join(hechos))

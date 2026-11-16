@@ -421,6 +421,11 @@ if [[ -f "$CHROOT/usr/share/applications/org.kde.dolphin.desktop" ]]; then
 fi
 # Menú limpio: sin lanzadores técnicos o repetidos y con nombres claros (iso/lanzadores.py)
 python3 "$HERE/lanzadores.py" "$CHROOT" >/dev/null
+# El mismo ajuste en el sistema, para lo que se instale después (apt.conf.d/85-tisma-lanzadores)
+install -m 755 "$HERE/lanzadores.py" "$CHROOT/usr/lib/tisma/lanzadores"
+sed -i '1s|^#!.*|#!/usr/bin/python3 -I|' "$CHROOT/usr/lib/tisma/lanzadores"
+# La Tienda busca también por esas palabras (catálogo AppStream tisma-equivalentes.xml)
+in_chroot appstreamcli refresh-cache --force >/dev/null 2>&1 || true
 # Sin carpeta «Plantillas» en la carpeta personal: las plantillas de «Crear nuevo» viven en /usr/share/templates.
 if [[ -f "$CHROOT/etc/xdg/user-dirs.defaults" ]]; then
     sed -i 's/^TEMPLATES=/#TEMPLATES=/' "$CHROOT/etc/xdg/user-dirs.defaults"
