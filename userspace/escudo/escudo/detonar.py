@@ -249,6 +249,18 @@ def vm_disponible() -> bool:
             and (vm_rapida() or all((VM_DIR / f).exists() for f in VM_CLASICA)))
 
 
+def pedir_vm(run=subprocess.run) -> bool:
+    """Si el equipo puede usar la VM rápida y aún no está, pide su descarga (tisma-vm-analisis, verificada con la
+    huella que trae la ISO) sin esperar: este análisis sigue en el aislamiento normal."""
+    if vm_rapida() or not os.path.exists("/dev/kvm") or not os.path.exists("/usr/share/tisma/vm-analisis.conf"):
+        return False
+    try:
+        run(["systemctl", "start", "--no-block", "tisma-vm-analisis.service"], capture_output=True, timeout=10)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def vm_argv(workdir: Path, segundos: int, kvm: bool = True, rapida: bool | None = None) -> list[str]:
     accel = ["-enable-kvm", "-cpu", "host"] if kvm else []        # sin KVM (pruebas): emulado, muy lento
     if rapida if rapida is not None else vm_rapida():
@@ -304,6 +316,8 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
                 ["msiexec", "/i", f"/tmp/muestra/{name}", "/qn", *args]
         else:
             vm = vm_disponible() if usar_vm is None else usar_vm
+            if usar_vm is None and not vm:
+                pedir_vm()                           # se descarga para la próxima vez; esta, aislamiento normal
         if vm:
             (base / "orden.json").write_text(json.dumps({"muestra": name, "args": args}))
             cmd = vm_argv(base, segundos, kvm=os.access("/dev/kvm", os.W_OK))
