@@ -40,6 +40,12 @@ WRITABLE = [
     "/sys/module/pcie_aspm/parameters/policy",
     "/sys/bus/pci/devices/*/power/control",
     "/sys/class/drm/card*/device/power_dpm_state",
+    # tisma-adapt (perfil firmado del equipo): solo lo que el vocabulario del perfil permite
+    "/sys/class/drm/card*/device/power_dpm_force_performance_level",
+    "/sys/bus/usb/devices/*/power/autosuspend_delay_ms",
+    "/sys/module/snd_hda_intel/parameters/power_save",
+    "/sys/module/workqueue/parameters/power_efficient",
+    "/sys/devices/system/cpu/cpu*/online",
     "/proc/sys/vm/dirty_writeback_centisecs", "/proc/sys/vm/stat_interval",
     "/sys/class/power_supply/BAT*/charge_control_start_threshold",
     "/sys/class/power_supply/BAT*/charge_control_end_threshold",

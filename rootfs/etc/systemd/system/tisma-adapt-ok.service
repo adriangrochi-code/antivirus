@@ -1,0 +1,12 @@
+[Unit]
+Description=TISMA adapt: el arranque llegó a 3 minutos sin colgarse (el contador vuelve a cero)
+ConditionPathExists=!/run/live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela adapt arranque-ok
+ProtectHome=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/centinela
+ProtectSystem=strict

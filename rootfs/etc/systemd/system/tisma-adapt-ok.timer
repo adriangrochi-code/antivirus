@@ -1,0 +1,9 @@
+[Unit]
+Description=TISMA adapt: confirmar el arranque a los 3 minutos
+
+[Timer]
+OnBootSec=3min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

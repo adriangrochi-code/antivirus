@@ -182,6 +182,27 @@ def cmd_perfil(args) -> int:
     return 0
 
 
+def cmd_adapt(args) -> int:
+    """tisma-adapt: estado de la política y contador de arranques fallidos (lo usan los servicios de arranque)."""
+    from . import adapt
+    if args.accion == "arranque-inicio":
+        n = adapt.arranque_inicio()
+        print(f"Arranques sin confirmar: {n}")
+    elif args.accion == "arranque-ok":
+        adapt.arranque_ok()
+    elif args.accion == "reanudar":
+        adapt.reanudar_perfil()
+        print("Se volverá a usar el perfil del equipo (si hay uno firmado y válido)")
+    else:
+        p = adapt.perfil_activo()
+        pol = adapt._leer_json(adapt.POLITICA)
+        print(json.dumps({"perfil": (p or {}).get("equipo") or "ninguno (valores de Debian)",
+                          "version": (p or {}).get("version"), "politica": pol,
+                          "lista_negra": adapt._leer_json(adapt.NEGRA).get("ajustes", []),
+                          "arranques": adapt._leer_json(adapt.ARRANQUES)}, indent=1, ensure_ascii=False))
+    return 0
+
+
 def cmd_fabrica(args) -> int:
     """Valores de fábrica de Debian: sin ajustes de Centinela (reversible con «centinela apply --reactivar»)."""
     for f in ap.fabrica(dry_run=args.dry_run):
@@ -598,6 +619,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("archivo", nargs="?", default="")
     s.add_argument("--clave", default="", help="clave privada Ed25519 (PEM) para firmar")
     s.set_defaults(func=cmd_perfil)
+    s = sub.add_parser("adapt", help="tisma-adapt: estado de la política por carga y modo; arranques fallidos")
+    s.add_argument("accion", choices=["estado", "arranque-inicio", "arranque-ok", "reanudar"], nargs="?",
+                   default="estado")
+    s.set_defaults(func=cmd_adapt)
     s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_fabrica)

@@ -67,7 +67,12 @@ multimedia y juegos.
    anti-retroceso. `centinela perfil validar|firmar|verificar|esquema`. Claves públicas de confianza en
    `/usr/share/tisma/perfiles/claves/*.pem`; la privada se crea y guarda en el equipo de quien publica
    (`openssl genpkey -algorithm ed25519`), nunca en el repositorio.
-3. `tisma-adapt`: clases de carga con histéresis (sobre `adaptd`), un ajuste a la vez con prueba y
-   reversión, contador de arranques fallidos y lista negra por modelo.
+3. ~~`tisma-adapt`~~ Hecho (`centinela/adapt.py`, dentro de `adaptd`; **solo actúa con un perfil firmado y
+   válido del equipo**: hoy no se distribuye ninguno, así que no cambia nada): clases de carga con histéresis
+   (declarado → señales → heurística), un ajuste nuevo a la vez con ventana de prueba y reversión ante errores
+   del kernel de su componente (lista negra local), Máximo baja a Normal con temperatura sostenida sobre el
+   techo, y contador de arranques: dos seguidos que no llegan a 3 minutos suspenden el perfil
+   (`centinela adapt estado|reanudar`). Lo que no es de /sys (hilos de IA, zram, planificador, fondo) se publica
+   en `/run/centinela/politica.json`.
 4. Tablas de la sección 4 dentro del perfil, verificando que cada ruta exista en el equipo.
 5. Prototipos opcionales: ECC «Verificar» con inyección de fallos y pasos 2 y 3 del experimento 6.2.

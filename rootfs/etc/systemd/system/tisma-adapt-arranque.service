@@ -1,0 +1,18 @@
+[Unit]
+Description=TISMA adapt: contar el arranque (dos seguidos sin llegar a 3 minutos suspenden el perfil del equipo)
+DefaultDependencies=no
+After=local-fs.target
+Before=centinela-adaptd.service centinela-power.service
+ConditionPathExists=!/run/live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela adapt arranque-inicio
+ProtectHome=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/centinela
+ProtectSystem=strict
+
+[Install]
+WantedBy=sysinit.target

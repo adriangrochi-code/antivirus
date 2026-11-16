@@ -13,6 +13,10 @@ Nice=-5
 # Sandbox: solo necesita escribir en /proc/sys y /sys (lista blanca interna)
 ProtectSystem=strict
 ReadWritePaths=/var/lib/centinela
+# tisma-adapt publica la política (modo, carga, ajustes) en /run/centinela/politica.json para TISMA Code y otros
+RuntimeDirectory=centinela
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 ProtectHome=yes
 PrivateTmp=yes
 PrivateNetwork=yes

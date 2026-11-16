@@ -153,6 +153,12 @@ class AdaptDaemon:
         self.compactor = Compactor()
         from .calor import Calor
         self.calor = Calor()
+        # tisma-adapt: solo con un perfil firmado y válido para ESTE equipo (si no, nada: valores de Debian)
+        from .adapt import Adaptador, perfil_activo
+        p = perfil_activo()
+        self.adaptador = Adaptador(p, self.act) if p else None
+        self._procesos: set[str] = set()
+        self._cpu_prev = None
         self.modo_ia = Sistema()
         self._ticks = 0
         self.total_mb = mem_available_mb()
@@ -243,10 +249,33 @@ class AdaptDaemon:
                 self.compactor.step(avail, self.total_mb)
             except Exception:  # noqa: BLE001 — una pasada fallida no detiene la adaptación
                 log.exception("Error compactando apps en segundo plano")
+        cargas = running_workloads()
         d = decide(read_psi("memory"), read_psi("cpu"), avail,
-                   self.mem.forecast(self.horizon_steps), self.total_mb, running_workloads())
+                   self.mem.forecast(self.horizon_steps), self.total_mb, cargas)
         self.enter(d.state, d.reasons)
+        if self.adaptador:
+            try:
+                self._adaptar(cargas, ia)
+            except Exception:  # noqa: BLE001 — la política nunca detiene la adaptación base
+                log.exception("Error en tisma-adapt")
         return d
+
+    def _adaptar(self, cargas: set[str], ia: bool) -> None:
+        from .adapt import MODO, procesos_activos
+        from .calor import tiempos_cpu
+        cpu = tiempos_cpu()
+        ocupado = 0.0
+        if cpu and self._cpu_prev and cpu[1] > self._cpu_prev[1]:
+            ocupado = (cpu[0] - self._cpu_prev[0]) / (cpu[1] - self._cpu_prev[1])
+        self._cpu_prev = cpu
+        if self._ticks % 5 == 1:                 # los nombres de procesos cada ~15 s (barato)
+            self._procesos = procesos_activos()
+        prefs = load_state("prefs.json") or {}
+        modo = MODO.get(prefs.get("perfil", "equilibrado"), "normal")
+        pol = self.adaptador.tick(modo, bool(prefs.get("agresivo")), ocupado, cargas, ia, self._procesos)
+        if pol["clase"] != getattr(self, "_clase_log", None):
+            self._clase_log = pol["clase"]
+            log.info("tisma-adapt: modo %s, carga %s (%d ajustes)", pol["modo"], pol["clase"], len(pol["ajustes"]))
 
     def run(self) -> None:
         signal.signal(signal.SIGTERM, lambda *_: self._stop.set())
