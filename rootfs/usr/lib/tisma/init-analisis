@@ -12,6 +12,29 @@ for d in /run /tmp /var/tmp /var/lib /var/log /home /root; do
     mount -t tmpfs -o mode=0755 tmpfs "$d" 2>/dev/null
 done
 chmod 1777 /tmp /var/tmp
+# VM precalentada (tisma.espera en el arranque): todo queda listo y la VM espera aquí. El anfitrión guarda una
+# foto de la memoria en este punto y cada análisis la restaura; entonces llega por la consola la orden
+# «analizar <segundos> <semilla>». La carpeta de la muestra (9p) se monta DESPUÉS: no forma parte de la foto.
+if grep -qw tisma.espera /proc/cmdline; then
+    echo "TISMA-LISTO"
+    read -r orden seg semilla || orden=""
+    [ "$orden" = analizar ] || { echo "init-analisis: orden no válida" >&2; seg=""; }
+    case "$seg" in ''|*[!0-9]*) seg="" ;; esac
+    # Todos los análisis salen de la MISMA foto, también el estado del generador aleatorio del kernel: se mezcla
+    # la semilla nueva del anfitrión y se fuerza la renovación (RNDRESEEDCRNG) antes de ejecutar nada más.
+    # Sin semilla válida no se analiza (fallar cerrado).
+    case "$semilla" in
+        *[!0-9a-f]*|'') seg="" ;;
+        *) python3 -I -c 'import fcntl, os, sys
+fd = os.open("/dev/urandom", os.O_WRONLY)
+os.write(fd, bytes.fromhex(sys.argv[1]))
+fcntl.ioctl(fd, 0x5207)  # RNDRESEEDCRNG' "$semilla" || seg="" ;;
+    esac
+    if [ -z "$seg" ]; then
+        systemctl --force --force poweroff 2>/dev/null || poweroff -f 2>/dev/null; exit 0
+    fi
+    export TISMA_DETONAR_SEG="$seg"
+fi
 if [ -x /usr/lib/tisma/detonar-invitado ]; then
     /usr/lib/tisma/detonar-invitado
 else
