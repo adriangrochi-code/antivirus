@@ -205,6 +205,7 @@ class Session:
                 self.especialistas = Pool(llm)
             except Exception as e:  # noqa: BLE001 (configuración no válida: se avisa y se sigue sin ellos)
                 self.emit("info", message=f"Especialistas desactivados: {e}")
+        self._extra_schemas: list[dict] = []   # las certificadas de Hope, si está (se suman al crear Hope)
         self.schemas = list(tools.TOOL_SCHEMAS) + [kits.SCHEMA]
         self.kits: set[str] = set()           # kits de herramientas activos en la tarea actual
         if self.especialistas and self.especialistas.specs:
@@ -259,6 +260,12 @@ class Session:
             try:
                 self.hope = HopeTools(self.kb.dir / "hope", chat=self._role_chat("hope"),
                                       endpoint=self.current.endpoint, model=self.current.model)
+                from .hope_bridge import esquemas_certificados
+                nombres = self.tool_names
+                self._extra_schemas = [s for s in esquemas_certificados()
+                                       if s["function"]["name"] not in nombres]
+                self.schemas += self._extra_schemas
+                self.tool_names = {t["function"]["name"] for t in self.schemas}
             except Exception as e:  # noqa: BLE001
                 self.emit("info", message=f"Herramientas de Hope no disponibles: {e}")
 
@@ -285,7 +292,8 @@ class Session:
         if self.especialistas:
             self.especialistas.close()
         self.especialistas = Pool(self.llm)
-        self.schemas = list(tools.TOOL_SCHEMAS) + [kits.SCHEMA] + (ESP_SCHEMAS if self.especialistas.specs else [])
+        self.schemas = list(tools.TOOL_SCHEMAS) + [kits.SCHEMA] + (ESP_SCHEMAS if self.especialistas.specs else []) + \
+            self._extra_schemas
         self.tool_names = {t["function"]["name"] for t in self.schemas}
         note = self.especialistas.describe()
         if note and "especialista_buscar" not in self.messages[0]["content"]:
@@ -786,6 +794,12 @@ class Session:
                 out, ok = exactas.run(self.ws.root, name, args)
             except exactas.ExactaError as e:
                 return reply(f"Error: {e}", False, args)
+            return reply(out, ok, args)
+        if self.hope and name in getattr(self.hope, "CERTIFICADAS", ()):
+            try:
+                out, ok = self.hope.certificada(name, args)
+            except Exception as e:  # noqa: BLE001
+                return reply(f"Error en Hope: {e}", False, args)
             return reply(out, ok, args)
         if name in ("hope", "hope_ayuda", "consejo"):
             if not self.hope:

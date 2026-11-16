@@ -7,7 +7,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="${1:-https://github.com/adriangrochi-code/hope-0.1}"
 # Commit FIJADO: la build siempre usa exactamente este código revisado
-HOPE_COMMIT="${HOPE_COMMIT:-7a3a9e633d627df8db4335d73acb488b73d4f9ca}"
+HOPE_COMMIT="${HOPE_COMMIT:-213f2e92ffe868ed965e562814cf88b02e998fd3}"
 DEST="$HERE/vendor"
 WORK=""
 if [[ -d "$SRC/hope" ]]; then

@@ -28,7 +28,9 @@ KITS: dict[str, dict] = {
     "calculo": {"desc": "cálculo exacto, unidades, álgebra, numérico, estadística, lógica, bits, fechas, "
                         "constantes; con Hope, su catálogo y el consejo de 4 agentes",
                 "tools": {"calcular", "unidades", "algebra", "numerico", "estadistica", "logica", "bits", "fechas",
-                          "huella", "constantes", "hope", "hope_ayuda", "consejo"},
+                          "huella", "constantes", "hope", "hope_ayuda", "consejo",
+                          # certificadas de hope.api (resultado con su prueba)
+                          "calc_cert", "equivalencia", "raiz", "integral", "lp", "smt", "grafo"},
                 "claves": r"calcul|cu[aá]nto|ecuaci|unidad|integral|deriva|matriz|resistenc|potencia|fuerza|"
                           r"estad[ií]st|promedio|media\b|desviaci|regresi|probabil|hexadecimal|\bhex\b|bits?\b|"
                           r"complemento a dos|ieee|sha256|\bhash|checksum|fecha|d[ií]as entre|zona horaria|"

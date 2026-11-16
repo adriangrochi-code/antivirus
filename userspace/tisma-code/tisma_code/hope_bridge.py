@@ -38,6 +38,27 @@ from hope.tools.builtin import default_catalog  # noqa: E402
 from hope.tools.tlm import ToolUsageMemory  # noqa: E402
 import hope.tools.sandbox as _hope_sandbox  # noqa: E402
 
+try:                                            # hope.api ≥ 0.1: herramientas certificadas (versiones anteriores no)
+    from hope import api as hope_api  # noqa: E402
+except ImportError:
+    hope_api = None
+
+# Las 7 certificadas de hope.api v0.1: devuelven el resultado CON su prueba (intervalo que contiene el valor,
+# duales de la optimización, modelo reevaluado…) o avisan «[NO verificado]».
+CERTIFICADAS = ("calc_cert", "equivalencia", "raiz", "integral", "lp", "smt", "grafo")
+AVISO_NO_VERIFICADO = ("\n(Este resultado NO quedó verificado: no lo des por cierto; compruébalo de otra forma o "
+                       "dilo así en la respuesta.)")
+
+
+def esquemas_certificados() -> list[dict]:
+    """Esquemas OpenAI de las certificadas (vacío si este Hope no tiene hope.api)."""
+    if hope_api is None:
+        return []
+    try:
+        return list(hope_api.Herramientas().especificaciones(list(CERTIFICADAS)))
+    except Exception:  # noqa: BLE001 — un Hope distinto no debe impedir abrir TISMA Code
+        return []
+
 
 class _JailedSubprocess:
     """Sustituye a ``subprocess`` dentro de hope/tools/sandbox.py.
@@ -106,6 +127,7 @@ def tool_help(topic: str = "", limit: int = 60) -> str:
 
 class HopeTools:
     """Una instancia por proyecto; la memoria y la TLM se guardan en su carpeta de datos."""
+    CERTIFICADAS = CERTIFICADAS if hope_api is not None else ()
 
     def __init__(self, data_dir: Path, chat=None, endpoint: str = "http://127.0.0.1:8080/v1",
                  model: str = "local"):
@@ -121,6 +143,19 @@ class HopeTools:
         self.runner = ToolRunner(self.catalog, memory=self.notebook, tlm=self.tlm, topic="tisma-code")
         self.usage = AgentUsageMemory(data_dir / "hope_consejo.json")
         self._lock = threading.Lock()
+
+    def certificada(self, nombre: str, args: dict) -> tuple[str, bool]:
+        """Ejecuta una herramienta certificada de hope.api. Sin guardián: las de archivos y red se niegan solas."""
+        if hope_api is None or nombre not in CERTIFICADAS:
+            return f"error: «{nombre}» no está disponible", False
+        if not hasattr(self, "_api"):
+            self._api = hope_api.Herramientas()
+        with self._lock:
+            r = self._api.ejecutar(nombre, args)
+        texto = r.texto()
+        if r.ok and r.verificado is False:
+            texto += AVISO_NO_VERIFICADO
+        return texto, bool(r.ok)
 
     def set_endpoint(self, endpoint: str, model: str) -> None:
         self.teacher.config.endpoint, self.teacher.config.model = endpoint, model
