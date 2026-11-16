@@ -408,6 +408,11 @@ def cmd_autotune(args) -> int:
     if args.al_arrancar:
         print(autotune.boot_apply(args.dry_run))
         return 0
+    if args.cpu_uv:
+        r = autotune.run_cpu_uv(seconds=args.segundos, dry_run=args.dry_run)
+        print(json.dumps(r, ensure_ascii=False) if args.json else
+              f"{r['estado']}: {r.get('motivo') or json.dumps(r.get('resultado'), ensure_ascii=False)}")
+        return 0
     r = autotune.run(seconds=args.segundos, dry_run=args.dry_run)
     if args.json:
         print(json.dumps(r, ensure_ascii=False))
@@ -585,6 +590,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--json", action="store_true")
     s.add_argument("--al-arrancar", action="store_true", help="(servicio) comprobar cuelgues y reaplicar el perfil")
+    s.add_argument("--cpu-uv", action="store_true",
+                   help="bajar el voltaje del procesador al mínimo estable con el mismo rendimiento (tisma_uv)")
     s.set_defaults(func=cmd_autotune)
 
     s = sub.add_parser("arranque", help="analiza qué retrasa el arranque y cómo mejorarlo")

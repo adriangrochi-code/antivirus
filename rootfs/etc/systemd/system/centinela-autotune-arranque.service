@@ -15,7 +15,8 @@ RuntimeDirectoryPreserve=yes
 ProtectHome=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+# CAP_SYS_MODULE: cargar el módulo firmado tisma_uv para reaplicar el undervolt de CPU guardado
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_SYS_MODULE
 
 [Install]
 WantedBy=tisma-fase2.target

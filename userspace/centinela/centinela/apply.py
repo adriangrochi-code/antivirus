@@ -46,6 +46,8 @@ WRITABLE = [
     "/sys/module/snd_hda_intel/parameters/power_save",
     "/sys/module/workqueue/parameters/power_efficient",
     "/sys/devices/system/cpu/cpu*/online",
+    # undervolt de CPU acotado (módulo firmado tisma_uv: solo baja el voltaje, 0-24 pasos de 6,25 mV)
+    "/sys/kernel/tisma_uv/pasos",
     "/proc/sys/vm/dirty_writeback_centisecs", "/proc/sys/vm/stat_interval",
     "/sys/class/power_supply/BAT*/charge_control_start_threshold",
     "/sys/class/power_supply/BAT*/charge_control_end_threshold",

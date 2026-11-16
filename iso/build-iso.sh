@@ -464,6 +464,38 @@ else
     log "Sin TISMA_SB_KEY: el kernel TISMA no se firma (con Secure Boot activado arrancará el de Debian)"
 fi
 in_chroot systemctl reenable tisma-secureboot.service 2>/dev/null || true
+# Undervolt de CPU acotado (tisma_uv, solo AMD Excavator 15h/60h-6Fh: solo baja el voltaje): el lockdown impide
+# escribir MSR desde programas, así que va como módulo FIRMADO con la clave de TISMA. Se compila contra los
+# kernels de Debian de la imagen; la clave se copia a un tmpfs dentro del chroot y se desmonta al firmar (nunca
+# queda en la imagen). Sin clave no se incluye: sin firma no cargaría con Secure Boot.
+if [[ -n "${TISMA_SB_KEY:-}" && -n "${TISMA_SB_CERT:-}" ]]; then
+    for kd in "$CHROOT"/lib/modules/*; do
+        kv="$(basename "$kd")"
+        [[ "$kv" == *centinela* ]] && continue
+        in_chroot apt-get install -y -q --no-install-recommends "linux-headers-$kv" >/dev/null 2>&1 || {
+            log "AVISO: sin cabeceras para $kv: tisma_uv no se incluye"; continue; }
+        rm -rf "$CHROOT/tmp/tisma_uv" && cp -r "$REPO/userspace/centinela/kmod/tisma_uv" "$CHROOT/tmp/tisma_uv"
+        if in_chroot make -s -C "/usr/src/linux-headers-$kv" M=/tmp/tisma_uv modules >/dev/null 2>&1; then
+            mkdir -p "$CHROOT/run/tisma-clave" && mount -t tmpfs -o size=1m,mode=0700 none "$CHROOT/run/tisma-clave"
+            cp "$TISMA_SB_KEY" "$CHROOT/run/tisma-clave/k.pem"; cp "$TISMA_SB_CERT" "$CHROOT/run/tisma-clave/c.pem"
+            firma="$(ls "$CHROOT"/usr/lib/linux-kbuild-*/scripts/sign-file 2>/dev/null | head -n1)"
+            if [[ -n "$firma" ]] && in_chroot "${firma#"$CHROOT"}" sha256 /run/tisma-clave/k.pem /run/tisma-clave/c.pem \
+                    /tmp/tisma_uv/tisma_uv.ko; then
+                install -D -m 644 "$CHROOT/tmp/tisma_uv/tisma_uv.ko" "$kd/updates/tisma_uv.ko"
+                in_chroot depmod "$kv"
+                log "tisma_uv firmado para $kv"
+            else
+                log "AVISO: no se pudo firmar tisma_uv para $kv"
+            fi
+            umount "$CHROOT/run/tisma-clave"; rmdir "$CHROOT/run/tisma-clave"
+        fi
+        rm -rf "$CHROOT/tmp/tisma_uv"
+        in_chroot apt-get purge -y -q "linux-headers-$kv" >/dev/null 2>&1 || true
+    done
+    in_chroot apt-get autoremove -y -q >/dev/null 2>&1 || true
+else
+    log "Sin TISMA_SB_KEY: no se incluye tisma_uv (undervolt de CPU)"
+fi
 # Pantalla de arranque con el logo (el tema lo genera make-branding.py a partir de «spinner»)
 in_chroot sh -c 'command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/tisma ] && plymouth-set-default-theme tisma' \
     || log "AVISO: sin tema de arranque TISMA"

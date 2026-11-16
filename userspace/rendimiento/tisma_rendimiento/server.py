@@ -150,8 +150,10 @@ class Handler(BaseHTTPRequestHandler):
             p = AUTOTUNE["proc"]
             if p is not None and p.poll() is None:
                 return self._send(409, {"error": "ya hay una optimización en curso"})
-            AUTOTUNE["proc"] = POPEN(["pkexec", "/usr/bin/centinela", "autotune", "--segundos", str(seg), "--json"],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            argv = ["pkexec", "/usr/bin/centinela", "autotune", "--segundos", str(seg), "--json"]
+            if b.get("cpu_uv") is True:             # bajar el voltaje del procesador (módulo firmado tisma_uv)
+                argv.append("--cpu-uv")
+            AUTOTUNE["proc"] = POPEN(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self._send(200, {"ok": True})
         if u.path == "/api/umbral":
             on = b.get("activo")

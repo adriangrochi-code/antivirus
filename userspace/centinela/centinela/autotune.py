@@ -238,6 +238,168 @@ def search(steps: list[int], apply, test, progress=lambda *_: None, known_bad: s
     return stable, history
 
 
+# ---------------------------------------------------------------- undervolt de CPU (módulo firmado tisma_uv)
+UV_SYS = "/sys/kernel/tisma_uv"
+UV_PASO_MV = 6.25
+UV_MAX_PASOS = 24
+PERDIDA_MAX = 0.03                 # «mismo rendimiento»: hasta 3 % menos de trabajo hecho que de fábrica
+
+
+def _cpu_compatible() -> bool:
+    fam = mod = None
+    vendor = ""
+    for linea in (sysfs.read("/proc/cpuinfo", "") or "").splitlines():
+        k, _, v = linea.partition(":")
+        k, v = k.strip(), v.strip()
+        if k == "vendor_id":
+            vendor = v
+        elif k == "cpu family" and fam is None:
+            fam = int(v)
+        elif k == "model" and mod is None:
+            mod = int(v)
+        if fam is not None and mod is not None and vendor:
+            break
+    return vendor == "AuthenticAMD" and fam == 0x15 and mod is not None and 0x60 <= mod <= 0x6F
+
+
+def cpu_uv_disponible(run=subprocess.run) -> tuple[bool, str]:
+    """¿Se puede bajar el voltaje del procesador aquí? (bool, motivo en simple si no)."""
+    if sysfs.read(f"{UV_SYS}/pasos") is not None:
+        return True, ""
+    if not _cpu_compatible():
+        return False, ("Por ahora solo es posible en procesadores AMD de la familia de la ThinkPad A275 (Excavator: "
+                       "Carrizo y Bristol Ridge). En el resto, el lockdown del kernel no permite tocar el voltaje.")
+    try:
+        r = run(["modprobe", "tisma_uv"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"No se pudo cargar el módulo: {e}"
+    if sysfs.read(f"{UV_SYS}/pasos") is not None:
+        return True, ""
+    err = (r.stderr or "").lower()
+    if "key" in err or "rejected" in err or "required key" in err:
+        return False, ("Falta registrar la clave de TISMA en Secure Boot (una sola vez): «sudo tisma-secureboot "
+                       "activar», reinicia y en la pantalla azul elige «Enroll MOK».")
+    if "not found" in err:
+        return False, ("El módulo no está para este kernel (se actualizó): llega con la próxima actualización de "
+                       "TISMA. Mientras tanto el procesador va con el voltaje de fábrica.")
+    return False, f"No se pudo cargar el módulo: {(r.stderr or '').strip()[:200]}"
+
+
+def set_cpu_uv(act: Actuator, pasos: int) -> None:
+    act.write(f"{UV_SYS}/pasos", str(max(0, min(UV_MAX_PASOS, int(pasos)))))
+
+
+def prueba_cpu(seconds: int = 60) -> StabilityResult:
+    """Solo procesador (con el turbo encendido): cálculo verificado en todos los núcleos, errores del kernel o de
+    hardware (MCE) y temperatura. Devuelve también el trabajo hecho por segundo y los vatios (a batería)."""
+    from .banco import bateria
+    klog = KernelLog()
+    vatios: list[float] = []
+    stress = subprocess.Popen([ESTRES, "cpu", str(seconds)], stdout=subprocess.PIPE, text=True)
+    tmax, motivo = 0.0, ""
+    try:
+        while stress.poll() is None:
+            t = max_temp()
+            tmax = max(tmax, t)
+            w, desc = bateria()
+            if w is not None and desc:
+                vatios.append(w)
+            if t >= TEMP_LIMIT:
+                motivo = f"temperatura {t:.0f} °C"
+                stress.kill()
+                break
+            errs = klog.errors()
+            if errs:
+                motivo = "error del kernel o de hardware: " + errs[0]
+                stress.kill()
+                break
+            time.sleep(1)
+        out = stress.communicate()[0] or "{}"
+    finally:
+        klog.close()
+    try:
+        res = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        res = {}
+    if not motivo and not res.get("ok"):
+        motivo = f"{res.get('errores', '?')} errores de cálculo" if res else "la prueba no terminó"
+    seg = res.get("segundos") or seconds
+    detalle = {**res, "trabajo_por_s": (res.get("iteraciones", 0) / seg) if seg else 0,
+               "vatios": round(sum(vatios) / len(vatios), 2) if vatios else None}
+    return StabilityResult(not motivo, motivo, tmax, detalle)
+
+
+def run_cpu_uv(seconds: int = 60, dry_run: bool = False, test=prueba_cpu, disponible=cpu_uv_disponible) -> dict:
+    """Busca el voltaje MÁS BAJO del procesador que siga estable y rinda igual que de fábrica, con un paso de
+    margen. Mide el antes y el después (trabajo por segundo, temperatura y vatios a batería)."""
+    ok, motivo = disponible()
+    report = {"inicio": time.time(), "ajuste": "cpu_uv", "pasos": [], "resultado": {}, "estado": "en curso"}
+    if not ok:
+        report.update(estado="no disponible", motivo=motivo)
+        write_progress(report)
+        return report
+    act = Actuator(dry_run=dry_run)
+    bad = set((load_state("autotune-inestables.json") or {}).get("uv cpu", []))
+    if sysfs.read("/sys/devices/system/cpu/cpufreq/boost") is not None:
+        act.write("/sys/devices/system/cpu/cpufreq/boost", "1")       # se prueba en el peor caso: turbo
+    set_cpu_uv(act, 0)
+    report["fase"] = "midiendo de fábrica"
+    write_progress(report)
+    base = test(seconds)
+    report["fabrica"] = {"trabajo_por_s": base.detalle.get("trabajo_por_s"), "temp_max": base.temp_max,
+                         "vatios": base.detalle.get("vatios")}
+    if not base.ok:
+        report.update(estado="no se pudo medir de fábrica", motivo=base.motivo)
+        write_progress(report)
+        return report
+    ref = base.detalle.get("trabajo_por_s") or 0
+
+    def marcar(v):
+        if not dry_run:
+            MARKER.parent.mkdir(parents=True, exist_ok=True)
+            MARKER.write_text(json.dumps({"ajuste": "uv cpu", "valor": v, "t": time.time()}))
+
+    def probar(v):
+        report["fase"] = f"-{v * UV_PASO_MV:.2f} mV"
+        write_progress(report)
+        r = test(seconds)
+        rinde = r.detalle.get("trabajo_por_s") or 0
+        if r.ok and ref and rinde < ref * (1 - PERDIDA_MAX):
+            r = StabilityResult(False, f"rinde {100 * (1 - rinde / ref):.0f} % menos que de fábrica", r.temp_max,
+                                r.detalle)
+        report["pasos"].append({"pasos": v, "mv": -v * UV_PASO_MV, "ok": r.ok, "motivo": r.motivo,
+                                "temp_max": r.temp_max, "vatios": r.detalle.get("vatios"),
+                                "trabajo_por_s": r.detalle.get("trabajo_por_s")})
+        write_progress(report)
+        return r
+    try:
+        estable, _ = search(list(range(1, UV_MAX_PASOS + 1)), lambda v: set_cpu_uv(act, v), probar,
+                            known_bad=bad, before=marcar)
+    except BaseException:
+        set_cpu_uv(act, 0)
+        if not dry_run and MARKER.exists():
+            MARKER.unlink()
+        report["estado"] = "interrumpido: voltaje de fábrica"
+        write_progress(report)
+        raise
+    if not dry_run and MARKER.exists():
+        MARKER.unlink()
+    final = next((p for p in reversed(report["pasos"]) if p["pasos"] == estable and p["ok"]), None)
+    report["resultado"] = {"cpu_uv_pasos": estable, "cpu_uv_mv": -estable * UV_PASO_MV}
+    if final:
+        report["ahorro"] = {
+            "temp_c": round((base.temp_max or 0) - (final["temp_max"] or 0), 1),
+            "vatios": (round(base.detalle["vatios"] - final["vatios"], 2)
+                       if base.detalle.get("vatios") and final.get("vatios") else None)}
+    report.update(estado="terminado", fin=time.time())
+    write_progress(report)
+    if not dry_run:
+        prefs = load_state("prefs.json") or {}
+        prefs["cpu_uv_pasos"] = estable
+        save_state("prefs.json", prefs)
+    return report
+
+
 # ---------------------------------------------------------------- orquestación
 def write_progress(data: dict) -> None:
     try:
@@ -335,9 +497,13 @@ def boot_apply(dry_run: bool = False) -> str:
             save_state("autotune-inestables.json", bad)
         for c in gpu_cards():
             reset_gpu(c, dry_run)
+        if sysfs.read(f"{UV_SYS}/pasos") is not None:
+            set_cpu_uv(Actuator(dry_run=dry_run), 0)
         MARKER.unlink()
         prefs = load_state("prefs.json") or {}
         prefs.pop("autotune", None)
+        if m.get("ajuste") == "uv cpu":
+            prefs.pop("cpu_uv_pasos", None)
         save_state("prefs.json", prefs)
         return f"El equipo se colgó probando {m.get('ajuste')} = {m.get('valor')}: valores de fábrica restaurados"
     res = (load_state("prefs.json") or {}).get("autotune") or {}
@@ -352,4 +518,10 @@ def boot_apply(dry_run: bool = False) -> str:
             if m == "curve" and f"gpu_oc_{name}" in res:
                 set_gpu_oc(act, c, res[f"gpu_oc_{name}"])
             set_gpu_uv(c, m, res[f"gpu_uv_mv_{name}"], base, dry_run)
+    pasos = (load_state("prefs.json") or {}).get("cpu_uv_pasos")
+    if pasos:
+        ok, _ = cpu_uv_disponible()
+        if ok:
+            set_cpu_uv(act, pasos)
+            return f"Perfil estable aplicado (procesador -{pasos * UV_PASO_MV:.2f} mV)"
     return "Perfil estable aplicado" if res else "Sin perfil automático"

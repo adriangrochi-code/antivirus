@@ -85,6 +85,16 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     <div id="memWarn"></div>
   </section>
 
+  <section class="card w4" id="uvCard">
+    <h3>Bajar el voltaje del procesador <small>mismo rendimiento, menos consumo y calor</small></h3>
+    <div class="note">Busca solo el voltaje más bajo con el que el procesador sigue estable y rinde igual que de fábrica, en pasos de 6,25 mV (como mucho 150 mV), y deja un paso de margen. Cada paso se prueba con cálculos verificados en todos los núcleos; si algo falla o rinde menos, vuelve al anterior, y si el equipo se colgara, al reiniciar vuelve solo a fábrica. Mide el antes y el después (para ver los vatios, hazlo a batería). Tarda unos 25 minutos. Por ahora solo en procesadores como el de la ThinkPad A275.</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn p" id="uvBtn" style="padding:12px 20px;font-size:15px">Buscar el voltaje mínimo estable</button>
+      <span class="note" id="uvEstado" style="margin:0"></span>
+    </div>
+    <div id="uvRes"></div>
+  </section>
+
   <section class="card w4" id="autoCard">
     <h3>Overclock automático <small>herramienta manual: overclock + undervolt con pruebas de estabilidad; ningún modo lo usa</small></h3>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -131,13 +141,25 @@ $("#turbo").onclick=async()=>{const on=!$("#turbo").classList.contains("on");con
 document.querySelectorAll("#perfil button").forEach(b=>b.onclick=async()=>{const r=await api("/api/perfil",{perfil:b.dataset.p});toast(r.ok?`Perfil ${b.textContent}`:"Error: "+r.salida,!r.ok);tick()});
 let autoSec=45,autoTimer=null;
 document.querySelectorAll("#autoDur button").forEach(b=>b.onclick=()=>{autoSec=+b.dataset.s;document.querySelectorAll("#autoDur button").forEach(x=>x.classList.toggle("on",x===b))});
-function renderAuto(r){const p=r.progreso||{};const lbl=x=>x.ajuste.startsWith("oc")?`Overclock GPU +${x.valor} %`:x.ajuste.startsWith("uv")?`Undervolt GPU ${x.valor} mV`:`${x.ajuste} ${x.valor}`;
+function renderAuto(r){const p=r.progreso||{};if(p.ajuste==="cpu_uv"){pintarUv(r);return}const lbl=x=>x.ajuste.startsWith("oc")?`Overclock GPU +${x.valor} %`:x.ajuste.startsWith("uv")?`Undervolt GPU ${x.valor} mV`:`${x.ajuste} ${x.valor}`;
  const pasos=(p.pasos||[]).map(x=>`<div class="b" style="grid-template-columns:190px 1fr 70px"><span>${x.ok?"✓":"✗"} ${esc(lbl(x))}</span><div class="t"><i style="width:${Math.min(100,(x.temp_max||0))}%;background:${x.ok?"var(--ok)":"var(--err)"}"></i></div><span class="n">${(x.temp_max||0).toFixed(0)} °C</span></div>${x.ok?"":`<div class="note" style="margin:-4px 0 6px 0">${esc(x.motivo)}</div>`}`).join("");
  const res=p.resultado&&Object.keys(p.resultado).length?`<div class="warn" style="background:#1f4d3a;border-color:#2f7a5a;color:#bff5dc">Resultado estable: ${Object.entries(p.resultado).map(([k,v])=>`${esc(k.replace("gpu_oc_","overclock GPU ").replace("gpu_uv_mv_","undervolt GPU "))} = ${esc(v)}${k.startsWith("gpu_oc")?" %":k.startsWith("gpu_uv")?" mV":""}`).join(" · ")}</div>`:"";
  const fase=r.en_curso?`<div class="note">En curso: ${esc(p.fase||"preparando…")}. Puedes seguir usando el equipo, aunque irá más lento.</div>`:"";
  const cap=p.capacidades?`<div class="note">Detectado: ${p.capacidades.gpu_oc?.length?"overclock de GPU":"sin overclock de GPU"} · ${Object.keys(p.capacidades.gpu_uv||{}).length?"undervolt de GPU":"sin undervolt de GPU"} · ${p.capacidades.turbo?"Turbo":"sin Turbo"}. ${esc(p.aviso_cpu_uv||"")}</div>`:"";
  $("#autoOut").innerHTML=fase+`<div class="bars">${pasos}</div>`+res+cap;$("#auto").disabled=!!r.en_curso;$("#auto").textContent=r.en_curso?"Optimizando…":"⚡ Optimizar automáticamente"}
 async function pollAuto(){try{const r=await api("/api/autotune");renderAuto(r);if(!r.en_curso&&autoTimer){clearInterval(autoTimer);autoTimer=null;toast(r.codigo===0?"Optimización terminada":"La optimización no se completó",r.codigo!==0)}}catch(e){}}
+function pintarUv(resp){
+ const r=(resp||{}).progreso;
+ if(!r||r.ajuste!=="cpu_uv")return;
+ const fab=r.fabrica||{};const pasos=(r.pasos||[]).map(p=>`${p.ok?"✓":"✗"} ${p.mv.toFixed(2)} mV${p.vatios?` · ${p.vatios} W`:""} · ${Math.round(p.temp_max||0)} °C${p.motivo?" · "+esc(p.motivo):""}`).join("<br>");
+ let txt=resp.en_curso||r.estado==="en curso"?`Probando ${esc(r.fase||"")}…`:r.estado==="terminado"?`Listo: ${r.resultado.cpu_uv_mv.toFixed(2)} mV`:esc(r.motivo||r.estado);
+ if(r.ahorro){txt+=` · ${r.ahorro.temp_c>0?r.ahorro.temp_c+" °C menos":"misma temperatura"}${r.ahorro.vatios!=null?` · ${r.ahorro.vatios} W menos`:" (los vatios se ven a batería)"}`}
+ $("#uvEstado").innerHTML=txt;
+ $("#uvRes").innerHTML=pasos?`<div class="note" style="margin-top:8px">De fábrica: ${Math.round(fab.temp_max||0)} °C${fab.vatios?` · ${fab.vatios} W`:""}<br>${pasos}</div>`:"";
+}
+let uvTimer=null;
+async function pollUv(){try{const r=await api("/api/autotune");pintarUv(r);if(!r.en_curso&&uvTimer){clearInterval(uvTimer);uvTimer=null}}catch(e){}}
+$("#uvBtn").onclick=async()=>{try{await api("/api/autotune",{segundos:60,cpu_uv:true});toast("Búsqueda iniciada (te pedirá la contraseña)");uvTimer=setInterval(pollUv,3000);pollUv()}catch(e){toast(e.message,true)}};
 $("#auto").onclick=async()=>{try{await api("/api/autotune",{segundos:autoSec});toast("Optimización iniciada (te pedirá la contraseña)");autoTimer=setInterval(pollAuto,2000);pollAuto()}catch(e){toast(e.message,true)}};
 pollAuto();
 $("#boot").onclick=async()=>{$("#bootOut").textContent="Analizando…";const r=await api("/api/arranque");if(r.error){$("#bootOut").textContent=r.error;return}
