@@ -36,6 +36,16 @@ fn sistema_falso(nombre: &str) -> PathBuf {
     );
     f("sys/kernel/mm/lru_gen/enabled", "0x0007\n");
     f("sys/kernel/sched_ext/state", "disabled\n");
+    f("sys/kernel/mm/transparent_hugepage/enabled", "always [madvise] never\n");
+    f("sys/kernel/mm/transparent_hugepage/hpage_pmd_size", "2097152\n");
+    for t in ["16kB", "64kB", "128kB", "2048kB"] {
+        let m = if t == "2048kB" {
+            "always [inherit] madvise never"
+        } else {
+            "always inherit madvise [never]"
+        };
+        f(&format!("sys/kernel/mm/transparent_hugepage/hugepages-{t}/enabled"), m);
+    }
     f("usr/bin/scx_lavd", "");
     f("usr/bin/scx_../../etc/x", "");
     std::env::set_var("TISMA_RANURAS_RAIZ", &r);
@@ -126,4 +136,67 @@ fn aplicar_es_todo_o_nada() {
     assert!(aplicar("ranura_inventada=1").is_err());
     assert_eq!(aplicar("red=bbr\nreposo=menu\n").unwrap(), 2);
     assert_eq!(Ranura::Reposo.actual().as_deref(), Some("menu"));
+}
+
+#[test]
+fn paginas_grandes_y_medianas() {
+    let _g = UNO_A_LA_VEZ.lock().unwrap_or_else(|e| e.into_inner());
+    let r = sistema_falso("paginas");
+    assert_eq!(Ranura::Paginas.actual().as_deref(), Some("madvise"));
+    assert_eq!(Ranura::Paginas.opciones(), ["always", "madvise", "never"]);
+    // 2 MB no es «mediana»: la gobierna la ranura paginas
+    assert_eq!(tamanos_mthp(), ["16kB", "64kB", "128kB"]);
+    assert_eq!(Ranura::PaginasMedianas.actual().as_deref(), Some("ninguna"));
+    assert!(Ranura::PaginasMedianas.opciones().contains(&"64kB:always".to_string()));
+    assert!(!Ranura::PaginasMedianas.opciones().iter().any(|o| o.ends_with(":never")));
+
+    // el orden de entrada no importa; se guarda en el orden del kernel
+    cambiar(Ranura::PaginasMedianas, "128kB:inherit+64kB:always").unwrap();
+    let leer_t = |t: &str| leer(&r.join(format!("sys/kernel/mm/transparent_hugepage/hugepages-{t}/enabled")));
+    assert_eq!(leer_t("64kB").as_deref(), Some("always"));
+    assert_eq!(leer_t("128kB").as_deref(), Some("inherit"));
+    assert_eq!(leer_t("16kB").as_deref(), Some("never"));
+    assert!(leer_t("2048kB").unwrap().contains("[inherit]"), "la de 2 MB no se toca");
+    assert_eq!(
+        Ranura::PaginasMedianas.actual().as_deref(),
+        Some("64kB:always+128kB:inherit")
+    );
+
+    for malo in [
+        "64kB:never",
+        "64kB:always+64kB:inherit",
+        "3kB:always",
+        "64kB:always+ninguna",
+        "../x:always",
+    ] {
+        assert!(cambiar(Ranura::PaginasMedianas, malo).is_err(), "{malo}");
+    }
+    cambiar(Ranura::Paginas, "never").unwrap();
+    como_kernel(&r);
+    revertir().unwrap();
+    assert_eq!(Ranura::Paginas.actual().as_deref(), Some("madvise"));
+    assert_eq!(Ranura::PaginasMedianas.actual().as_deref(), Some("ninguna"));
+}
+
+/// Un archivo normal guarda solo lo escrito («never»); el kernel sigue mostrando todas las opciones con la
+/// elegida entre corchetes. Esto rehace ese formato en los archivos de THP del sistema falso.
+fn como_kernel(r: &Path) {
+    let base = r.join("sys/kernel/mm/transparent_hugepage");
+    let mut archivos = vec![(base.join("enabled"), vec!["always", "madvise", "never"])];
+    for t in ["16kB", "64kB", "128kB", "2048kB"] {
+        archivos.push((
+            base.join(format!("hugepages-{t}/enabled")),
+            vec!["always", "inherit", "madvise", "never"],
+        ));
+    }
+    for (p, opciones) in archivos {
+        let v = fs::read_to_string(&p).unwrap().trim().to_string();
+        if !v.contains('[') {
+            let txt: Vec<String> = opciones
+                .iter()
+                .map(|o| if *o == v { format!("[{o}]") } else { o.to_string() })
+                .collect();
+            fs::write(&p, txt.join(" ")).unwrap();
+        }
+    }
 }

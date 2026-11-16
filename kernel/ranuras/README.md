@@ -13,6 +13,13 @@ ya trae, y esta herramienta los presenta a todos de la misma forma.
 | `red` | control de congestión TCP | `cubic`, `bbr` |
 | `compresion` | zswap | `zstd`, `lz4` |
 | `memoria` | reclamación de memoria | `mglru`, `clasico` |
+| `paginas` | páginas grandes de 2 MB (THP) | `madvise` (solo quien las pide), `always`, `never` |
+| `paginas_medianas` | páginas medianas de 16 kB a 1 MB (mTHP) | `ninguna`, `64kB:always`, `64kB:always+128kB:inherit` |
+
+Las páginas grandes y medianas reducen los fallos de la TLB (la tabla de traducción de direcciones de la CPU):
+menos ciclos esperando a la memoria, más IPC en programas que mueven mucha memoria (IA local, compilación,
+juegos). A cambio pueden ocupar algo más de RAM; por eso cada perfil de equipo elige. En `paginas_medianas`, los
+tamaños que no se nombran quedan apagados, y `inherit` sigue lo que diga `paginas`.
 
 ```sh
 tisma-ranuras listar                       # ranura, pieza actual, piezas disponibles, descripción (tabuladores)

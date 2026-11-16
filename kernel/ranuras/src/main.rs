@@ -78,9 +78,11 @@ enum Ranura {
     Red,
     Compresion,
     Memoria,
+    Paginas,
+    PaginasMedianas,
 }
 
-const RANURAS: [Ranura; 7] = [
+const RANURAS: [Ranura; 9] = [
     Ranura::Planificador,
     Ranura::Frecuencia,
     Ranura::Reposo,
@@ -88,6 +90,8 @@ const RANURAS: [Ranura; 7] = [
     Ranura::Red,
     Ranura::Compresion,
     Ranura::Memoria,
+    Ranura::Paginas,
+    Ranura::PaginasMedianas,
 ];
 
 const SCX_ESTADO: &str = "sys/kernel/sched_ext/state";
@@ -98,6 +102,7 @@ const CPUIDLE: &str = "sys/devices/system/cpu/cpuidle";
 const TCP: &str = "proc/sys/net/ipv4";
 const ZSWAP: &str = "sys/module/zswap/parameters/compressor";
 const LRU_GEN: &str = "sys/kernel/mm/lru_gen/enabled";
+const THP: &str = "sys/kernel/mm/transparent_hugepage";
 const COMPRESORES: [&str; 6] = ["lz4", "lz4hc", "lzo", "lzo-rle", "zstd", "deflate"];
 
 impl Ranura {
@@ -110,6 +115,8 @@ impl Ranura {
             Ranura::Red => "red",
             Ranura::Compresion => "compresion",
             Ranura::Memoria => "memoria",
+            Ranura::Paginas => "paginas",
+            Ranura::PaginasMedianas => "paginas_medianas",
         }
     }
 
@@ -122,6 +129,8 @@ impl Ranura {
             Ranura::Red => "control de congestión de TCP",
             Ranura::Compresion => "compresor de la memoria comprimida (zswap)",
             Ranura::Memoria => "algoritmo para elegir qué memoria liberar (MGLRU o clásico)",
+            Ranura::Paginas => "páginas grandes de 2 MB (THP): menos fallos de TLB, más IPC en cargas de memoria",
+            Ranura::PaginasMedianas => "páginas medianas (mTHP, 16 kB–1 MB): «tamaño:modo» unidos por +, o «ninguna»",
         }
     }
 
@@ -194,6 +203,22 @@ impl Ranura {
                     vec![]
                 }
             }
+            Ranura::Paginas => leer(&ruta(&format!("{THP}/enabled")))
+                .map(|s| palabras(&s))
+                .unwrap_or_default(),
+            Ranura::PaginasMedianas => {
+                let tam = tamanos_mthp();
+                if tam.is_empty() {
+                    return vec![];
+                }
+                let mut v = vec!["ninguna".to_string()];
+                for t in tam {
+                    for m in modos_mthp(&t) {
+                        v.push(format!("{t}:{m}"));
+                    }
+                }
+                v
+            }
         }
     }
 
@@ -238,6 +263,26 @@ impl Ranura {
                     "clasico".into()
                 }
             }),
+            Ranura::Paginas => leer(&ruta(&format!("{THP}/enabled"))).and_then(|s| entre_corchetes(&s)),
+            Ranura::PaginasMedianas => {
+                let tam = tamanos_mthp();
+                if tam.is_empty() {
+                    return None;
+                }
+                let activos: Vec<String> = tam
+                    .into_iter()
+                    .filter_map(|t| {
+                        let m =
+                            leer(&ruta(&format!("{THP}/hugepages-{t}/enabled"))).and_then(|s| entre_corchetes(&s))?;
+                        (m != "never").then(|| format!("{t}:{m}"))
+                    })
+                    .collect();
+                Some(if activos.is_empty() {
+                    "ninguna".into()
+                } else {
+                    activos.join("+")
+                })
+            }
         }
     }
 
@@ -252,7 +297,13 @@ impl Ranura {
         }
         // disco acepta además «dispositivo:valor,…» (así se guarda el estado anterior por disco)
         let por_disco = self == Ranura::Disco && valor.contains(':');
-        if !por_disco && !ops.iter().any(|o| o == valor) {
+        // páginas medianas acepta combinaciones «64kB:always+128kB:inherit»: se validan por partes
+        let valor_mthp = if self == Ranura::PaginasMedianas {
+            Some(normalizar_mthp(valor, &ops)?)
+        } else {
+            None
+        };
+        if !por_disco && valor_mthp.is_none() && !ops.iter().any(|o| o == valor) {
             return Err(format!(
                 "«{valor}» no es una opción de «{}» (opciones: {})",
                 self.nombre(),
@@ -298,6 +349,25 @@ impl Ranura {
             Ranura::Red => escribir(&ruta(&format!("{TCP}/tcp_congestion_control")), valor)?,
             Ranura::Compresion => escribir(&ruta(ZSWAP), valor)?,
             Ranura::Memoria => escribir(&ruta(LRU_GEN), if valor == "mglru" { "y" } else { "n" })?,
+            Ranura::Paginas => escribir(&ruta(&format!("{THP}/enabled")), valor)?,
+            Ranura::PaginasMedianas => {
+                let elegidos: Vec<(String, String)> = valor_mthp
+                    .as_deref()
+                    .unwrap_or("ninguna")
+                    .split('+')
+                    .filter(|p| *p != "ninguna")
+                    .filter_map(|p| p.split_once(':').map(|(t, m)| (t.into(), m.into())))
+                    .collect();
+                // los tamaños no elegidos se apagan: el estado queda exactamente como se pidió
+                for t in tamanos_mthp() {
+                    let modo = elegidos
+                        .iter()
+                        .find(|(et, _)| *et == t)
+                        .map(|(_, m)| m.as_str())
+                        .unwrap_or("never");
+                    escribir(&ruta(&format!("{THP}/hugepages-{t}/enabled")), modo)?;
+                }
+            }
         }
         // Verificación: el kernel puede aceptar la escritura y no aplicarla
         let ahora = self.actual().unwrap_or_default();
@@ -310,6 +380,7 @@ impl Ranura {
                         .unwrap_or_default()
                         .contains(&valor.to_string())
             }),
+            Ranura::PaginasMedianas => Some(ahora.as_str()) == valor_mthp.as_deref(),
             _ => ahora == valor,
         };
         if ok {
@@ -321,6 +392,56 @@ impl Ranura {
             ))
         }
     }
+}
+
+/// Tamaños de página mediana (mTHP) para memoria anónima, menores que la página grande (PMD, 2 MB en x86),
+/// ordenados de menor a mayor: «16kB», «32kB»…
+fn tamanos_mthp() -> Vec<String> {
+    let pmd_kb = leer(&ruta(&format!("{THP}/hpage_pmd_size")))
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|b| b / 1024)
+        .unwrap_or(2048);
+    let mut v: Vec<(u64, String)> = entradas(THP, |n| n.starts_with("hugepages-") && n.ends_with("kB"))
+        .into_iter()
+        .filter_map(|n| {
+            let t = n.trim_start_matches("hugepages-").to_string();
+            let kb = t.trim_end_matches("kB").parse::<u64>().ok()?;
+            (kb < pmd_kb && ruta(&format!("{THP}/{n}/enabled")).exists()).then_some((kb, t))
+        })
+        .collect();
+    v.sort();
+    v.into_iter().map(|(_, t)| t).collect()
+}
+
+/// Modos de un tamaño mediano, sin «never» (no elegirlo ya significa apagarlo).
+fn modos_mthp(t: &str) -> Vec<String> {
+    leer(&ruta(&format!("{THP}/hugepages-{t}/enabled")))
+        .map(|s| palabras(&s))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| m != "never")
+        .collect()
+}
+
+/// «128kB:inherit+64kB:always» → «64kB:always+128kB:inherit» (orden del kernel), validando cada parte.
+fn normalizar_mthp(valor: &str, ops: &[String]) -> Result<String, String> {
+    if valor == "ninguna" {
+        return Ok(valor.into());
+    }
+    let mut partes: Vec<&str> = vec![];
+    for p in valor.split('+') {
+        if !ops.iter().any(|o| o == p) || p == "ninguna" {
+            return Err(format!("«{p}» no es una opción de «paginas_medianas»"));
+        }
+        let t = p.split(':').next().unwrap_or("");
+        if partes.iter().any(|q| q.split(':').next() == Some(t)) {
+            return Err(format!("el tamaño {t} aparece dos veces"));
+        }
+        partes.push(p);
+    }
+    let orden = tamanos_mthp();
+    partes.sort_by_key(|p| orden.iter().position(|t| Some(t.as_str()) == p.split(':').next()));
+    Ok(partes.join("+"))
 }
 
 fn cpus() -> Vec<String> {

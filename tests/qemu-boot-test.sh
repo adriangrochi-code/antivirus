@@ -23,6 +23,7 @@ fi
 [[ -x "${RANURAS_BIN:-}" ]] && cp "$RANURAS_BIN" "$WORK/root/bin/tisma-ranuras"
 # Prueba real del binder (Waydroid): binderfs + transacción entre procesos
 gcc -O2 -static -o "$WORK/root/bin/binder-test" "$(dirname "${BASH_SOURCE[0]}")/binder-test.c"
+gcc -O2 -static -o "$WORK/root/bin/paginas-test" "$(dirname "${BASH_SOURCE[0]}")/paginas-test.c"
 cat > "$WORK/root/init" <<'INIT'
 #!/bin/busybox sh
 /bin/busybox --install -s /bin
@@ -69,7 +70,12 @@ if [ -x /bin/tisma-ranuras ]; then
     fi
     printf 'red=reno\nreposo=inventado\n' > /plan; tisma-ranuras aplicar /plan
     echo "ranura_todo_o_nada=$(cat /proc/sys/net/ipv4/tcp_congestion_control)"
+    # Páginas: con «madvise» (lo normal) la memoria corriente no recibe páginas grandes; con las ranuras sí
+    echo "paginas_base: $(paginas-test)"
+    tisma-ranuras cambiar paginas_medianas 64kB:always >/dev/null && echo "paginas_medianas: $(paginas-test)"
+    tisma-ranuras cambiar paginas always >/dev/null && echo "paginas_grandes: $(paginas-test)"
     tisma-ranuras revertir
+    echo "paginas_revertidas=$(tisma-ranuras listar | grep '^paginas' | cut -f2 | tr '\n' ' ')"
     echo "ranura_revertida=$(cat /proc/sys/net/ipv4/tcp_congestion_control) $(cat /sys/kernel/sched_ext/state)"
 fi
 echo "vulns=$(grep -l Vulnerable /sys/devices/system/cpu/vulnerabilities/* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
@@ -104,6 +110,9 @@ if [[ -x "${RANURAS_BIN:-}" ]]; then
     check "ranura_red=bbr" "la ranura red no cambió"
     check "ranura_todo_o_nada=bbr" "aplicar con un error no deshizo los cambios"
     check "ranura_revertida=cubic" "revertir no volvió al valor original"
+    check "paginas_medianas: paginas_2m_kb=0 mthp64=[1-9]" "la ranura paginas_medianas no dio páginas de 64 kB"
+    check "paginas_grandes: paginas_2m_kb=[1-9]" "la ranura paginas no dio páginas de 2 MB"
+    check "paginas_revertidas=madvise ninguna" "revertir no devolvió las páginas a su estado"
     if [[ -x "${SCX_BIN:-}" ]]; then
         check "ranura_scx=enabled" "la ranura planificador no activó $(basename "$SCX_BIN")"
         check "ranura_revertida=cubic disabled" "revertir no volvió a eevdf"
