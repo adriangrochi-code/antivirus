@@ -102,6 +102,7 @@ def cmd_protect(cfg: Config, args) -> int:
         try:
             consulta = Consulta(gate or _Gate(quarantine=rtp.quarantine, scanner=rtp.scanner))
             consulta.start()
+            rtp.al_revisar = consulta.analizador.precalentar      # analizar los programas al terminar la descarga
         except OSError as e:
             logging.getLogger("escudo").warning("Consulta de archivos desactivada: %s", e)
             consulta = None

@@ -69,6 +69,18 @@ def is_external(path: str, fd: int | None = None, st: os.stat_result | None = No
     return False
 
 
+PRECALENTAR_MAX = 300 << 20
+
+
+def candidato(path: str, head: bytes, st: os.stat_result) -> bool:
+    """¿Vale la pena analizarlo nada más descargarlo? Programas (Linux y Windows) y guiones ejecutables que vienen
+    de fuera: lo que la puerta pararía al primer clic."""
+    if not (0 < st.st_size <= PRECALENTAR_MAX):
+        return False
+    programa = head.startswith((b"\x7fELF", b"MZ")) or (head.startswith(b"#!") and st.st_mode & 0o111)
+    return bool(programa) and is_external(path, st=st)
+
+
 def decide(path: str, external: bool, sha: str | None, allowlist: dict) -> str:
     """'permitir' | 'denegar' | 'analizar'"""
     if not external or path.startswith(str(DET_DIR) + "/"):
@@ -91,6 +103,10 @@ class Gate:
         self._hash_cache: dict[tuple, str] = {}
         self._queued: set[str] = set()
         self._jobs: queue.Queue = queue.Queue()
+        self._previos: queue.Queue = queue.Queue()      # descargas recién terminadas (antes del primer clic)
+        self._pidieron: set[str] = set()                # alguien intentó abrirlo mientras se analizaba de antemano
+        self._uno = threading.Lock()                    # un análisis a la vez: no duplicar el gasto
+        self._hilo_previo: threading.Thread | None = None
         self._stop = threading.Event()
         self.fd = -1
         self._marked: set[str] = set()
@@ -221,7 +237,12 @@ class Gate:
         d = decide(path, external, sha, self.allow)
         if d == "permitir":
             return FAN_ALLOW
-        if d == "analizar" and sha not in self._queued:
+        if d == "analizar" and sha in self._queued and sha not in self._pidieron:
+            self._pidieron.add(sha)                      # ya se analizaba desde la descarga: avisar igualmente
+            self.alert(Alert("primera_ejecucion", "low", f"{os.path.basename(path)} se está analizando desde que "
+                             "terminó la descarga: falta poco.", pid, path,
+                             "Vuelve a abrirlo cuando Escudo avise del resultado."))
+        elif d == "analizar" and sha not in self._queued:
             uid, gid = self._owner(pid)
             self._queued.add(sha)
             self._jobs.put((path, sha, uid, gid))
@@ -244,17 +265,61 @@ class Gate:
         return (65534, 65534) if uid == 0 else (uid, gid)   # nunca se analiza como root
 
     # ------------------------------------------------------------ análisis
+    # ------------------------------------------------------------ análisis de antemano
+    def precalentar(self, path: str) -> bool:
+        """Al terminar una descarga: si es un programa que viene de fuera y no se conoce, se analiza ya, en segundo
+        plano, para que el primer clic no tenga que esperar. Sin aviso si sale limpio (salvo que alguien intentara
+        abrirlo mientras tanto); peligroso o sospechoso se avisa igual que siempre."""
+        try:
+            st = os.stat(path, follow_symlinks=False)
+            if not os.path.isfile(path) or os.path.islink(path):
+                return False
+            with open(path, "rb") as fh:
+                head = fh.read(4)
+            if not candidato(path, head, st):
+                return False
+            sha = detonar.sha256_file(path)
+        except OSError:
+            return False
+        if sha in self._queued or decide(path, True, sha, self.allow) != "analizar":
+            return False
+        self._queued.add(sha)
+        uid, gid = (st.st_uid, st.st_gid) if st.st_uid else (65534, 65534)   # nunca como root
+        self._previos.put((path, sha, uid, gid))
+        if self._hilo_previo is None or not self._hilo_previo.is_alive():
+            self._hilo_previo = threading.Thread(target=self._worker_previo, daemon=True, name="detonar-previo")
+            self._hilo_previo.start()
+        return True
+
+    def _worker_previo(self) -> None:
+        while not self._stop.is_set():
+            try:
+                path, sha, uid, gid = self._previos.get(timeout=300)
+            except queue.Empty:
+                return
+            while not self._jobs.empty() and not self._stop.is_set():
+                time.sleep(1)                            # lo que el usuario intenta abrir va primero
+            try:
+                with self._uno:
+                    self.analyze(path, sha, uid, gid, avisar_limpio=False)
+            except Exception:  # noqa: BLE001
+                log.exception("Fallo analizando de antemano %s", path)
+            finally:
+                self._queued.discard(sha)
+                self._pidieron.discard(sha)
+
     def _worker(self) -> None:
         while not self._stop.is_set():
             path, sha, uid, gid = self._jobs.get()
             try:
-                self.analyze(path, sha, uid, gid)
+                with self._uno:
+                    self.analyze(path, sha, uid, gid)
             except Exception:  # noqa: BLE001
                 log.exception("Fallo analizando %s", path)
             finally:
                 self._queued.discard(sha)
 
-    def analyze(self, path: str, sha: str, uid: int, gid: int) -> detonar.Informe | None:
+    def analyze(self, path: str, sha: str, uid: int, gid: int, avisar_limpio: bool = True) -> detonar.Informe | None:
         try:
             if detonar.sha256_file(path) != sha:
                 return None                            # el archivo cambió mientras esperaba: se analizará al ejecutarlo
@@ -286,6 +351,8 @@ class Gate:
         # En el aviso, frases simples (el detalle técnico queda en el informe de TISMA Seguridad)
         simples = [p for g in informe.explicar(inf.to_dict())["grupos"] for p in g["puntos"]]
         if inf.veredicto == "limpio":
+            if not avisar_limpio and sha not in self._pidieron:
+                return inf
             self.alert(Alert("primera_ejecucion", "low", f"{name}: sin comportamiento malicioso ({inf.entorno}, "
                              f"{inf.segundos:.0f} s).", None, path, "Ya puedes abrirlo con normalidad."))
         elif inf.veredicto == "sospechoso":

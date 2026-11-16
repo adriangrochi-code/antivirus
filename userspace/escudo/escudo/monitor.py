@@ -123,6 +123,7 @@ class RealTimeProtection:
         self._pending: dict[str, float] = {}
         self._inodes: dict[str, int] = {}     # ruta → inodo al cerrarse (para encontrarlo si se renombra)
         self._lock = threading.Lock()
+        self.al_revisar = None        # puerta de primera ejecución: analizar de antemano los programas descargados
 
     def on_detection(self, d: Detection) -> None:
         log.warning("AMENAZA DETECTADA: %s", d)
@@ -160,6 +161,13 @@ class RealTimeProtection:
             for d in dets:
                 if d is not peor:
                     log.warning("  + %s", d)
+            if peor.severity in ("high", "medium"):
+                return
+        if self.al_revisar is not None:
+            try:
+                self.al_revisar(path)
+            except Exception:  # noqa: BLE001 — el análisis de antemano nunca debe parar el escáner
+                log.exception("Error preparando el análisis de antemano")
 
     def _check_renamed(self, path: str, ino: int | None = None) -> None:
         """El archivo ya no está con ese nombre: se cerró y se renombró (descargas X.crdownload → final, guardados
