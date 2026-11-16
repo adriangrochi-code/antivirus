@@ -21,10 +21,12 @@ Cada fila: el ataque, las capas que lo frenan (defensa en profundidad) y el ries
 | 10 | **Acceso físico / portátil robado** | Cifrado LUKS2 en el instalador; USBGuard (`tisma-seguridad usb`); FireWire bloqueado; IOMMU estricto contra DMA | **Secure Boot aún no** (falta shim/UKI firmado) |
 | 11 | **Cadena de suministro** | Kernel con firma PGP fijada; Debian verificado desde InRelease; Strata, Tisma engine, Node y REA con hash fijado; Hope y OpenJarvis en commit fijado; npm sin scripts de instalación | Una dependencia comprometida *antes* de fijarla |
 | 12 | **Inyección de instrucciones a la IA** (repos, documentos o webs maliciosos) | TISMA Code: cada escritura/comando pide permiso; comandos sin red ni `$HOME`; Hope y REA aislados; fuentes marcadas como no verificadas; el motor local debe ser del usuario | El usuario puede aprobar una acción dañina |
-| 13 | **Criptomineros / abuso de recursos** | Patrones de Escudo (stratum), adaptd ve la presión de CPU | Detección por comportamiento sostenido aún básica |
+| 13 | **Criptomineros / abuso de recursos** | Patrones de Escudo (stratum); `escudo/consumo.py`: programa de una carpeta del usuario con media CPU sostenida y conexión a un puerto de minería o nombre disfrazado de proceso del kernel (2 min), o con la pantalla bloqueada (10 min) → aviso | Solo avisa (no detiene); un minero instalado en /usr por root no cuenta (eso ya es un compromiso total) |
 
 ## Pendientes priorizados
 1. **Secure Boot** con UKI firmado y llave propia (MOK), que además acelera el arranque.
 2. Restringir espacios de nombres sin privilegios por perfil de AppArmor (como Ubuntu 24.04), permitiéndolos solo
    a bubblewrap y a los navegadores.
-3. Detección de mineros por consumo sostenido de CPU de procesos desconocidos.
+3. ~~Detección de mineros por consumo sostenido~~ Hecho (`escudo/consumo.py`).
+4. Estabilidad: arranque a prueba de fallos hecho (menú automático y «Volver a como estaba antes de la última
+   actualización» desde el arranque, `/etc/grub.d/42_tisma_volver` + initramfs `tisma-volver`).

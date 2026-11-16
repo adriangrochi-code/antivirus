@@ -198,11 +198,18 @@ def procesos_sin_archivo(proc: str = "/proc", vistos: set | None = None) -> list
 
 
 def vigilar_procesos(stop: threading.Event, intervalo: float = 30.0, on_alert=None) -> None:
+    from .consumo import VigiaConsumo, muestra
     on_alert = on_alert or emit
     vistos: set = set()
+    consumo = VigiaConsumo()
     while not stop.wait(intervalo):
         for a in procesos_sin_archivo(vistos=vistos):
             on_alert(a)
+        try:
+            for a in consumo.paso(muestra(), time.monotonic()):
+                on_alert(a)
+        except OSError as e:
+            log.debug("consumo: %s", e)
 
 
 def follow(path: str, stop: threading.Event, timeout: float = 30.0):
