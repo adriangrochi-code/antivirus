@@ -458,14 +458,17 @@ install -D -m 755 "$CHROOT/usr/share/tisma/live/instalar-tisma.desktop" "$CHROOT
 # Todo lo que el instalador y la sesión del USB ejecutan de verdad. La build instala sin «recomendados» y así
 # faltaron user-setup (sin usuario en el USB: pantalla negra), dosfstools y squashfs-tools (la instalación fallaba)
 # y cryptsetup-initramfs (un sistema cifrado no arrancaba). Si falta algo, la ISO no se genera.
-for orden in calamares calamares-install-debian unsquashfs rsync mkfs.fat mkfs.ext4 mkfs.btrfs cryptsetup sfdisk \
-             grub-install efibootmgr os-prober blkid mkswap update-initramfs locale-gen useradd chpasswd sddm kwin_wayland; do
-    in_chroot sh -c "command -v $orden" >/dev/null || die "falta «$orden» en la imagen (el instalador fallaría)"
-done
-for f in /usr/lib/user-setup/user-setup-apply /usr/share/initramfs-tools/hooks/cryptroot \
-         /usr/share/polkit-1/actions/com.github.calamares.calamares.policy; do
-    [[ -e "$CHROOT$f" ]] || die "falta $f en la imagen"
-done
+# La imagen mínima (pruebas y VM de análisis de Escudo) no lleva escritorio ni instalador.
+if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
+    for orden in calamares calamares-install-debian unsquashfs rsync mkfs.fat mkfs.ext4 mkfs.btrfs cryptsetup sfdisk \
+                 grub-install efibootmgr os-prober blkid mkswap update-initramfs locale-gen useradd chpasswd sddm kwin_wayland; do
+        in_chroot sh -c "command -v $orden" >/dev/null || die "falta «$orden» en la imagen (el instalador fallaría)"
+    done
+    for f in /usr/lib/user-setup/user-setup-apply /usr/share/initramfs-tools/hooks/cryptroot \
+             /usr/share/polkit-1/actions/com.github.calamares.calamares.policy; do
+        [[ -e "$CHROOT$f" ]] || die "falta $f en la imagen"
+    done
+fi
 # El instalador se abre solo en la sesión del USB y sin pedir contraseña; si el arranque se queda sin pantalla de
 # inicio, el vigía muestra por qué
 in_chroot systemctl enable tisma-live-instalador.service tisma-vigia-arranque.service 2>/dev/null || true
