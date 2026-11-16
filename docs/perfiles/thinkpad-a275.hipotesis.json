@@ -1,0 +1,38 @@
+{
+  "formato": 1,
+  "version": 1,
+  "_nota": "HIPÓTESIS del documento de traspaso (§4.2), SIN MEDIR y SIN FIRMAR: no se aplica. Se firma cuando `centinela banco` muestre una mejora repetible frente a la línea base afinada en una A275 real.",
+  "equipo": {"dmi_sys_vendor": "LENOVO", "dmi_product_version": "ThinkPad A275"},
+  "hardware": {"cpu": "AMD Bristol Ridge (Excavator, 2 módulos CMT)", "memoria": "1 canal", "rapl": false,
+               "amd_pstate": false, "ecc": false},
+  "limites_duros": {"temp_max_c": 90, "memoria_reservada_mb": 768, "mitigaciones": "auto"},
+  "modos": {
+    "eco": {
+      "inactivo": {"cpu.governor": "conservative", "cpu.boost": 0, "pcie.aspm": "powersupersave",
+                   "sata.alpm": "med_power_with_dipm", "gpu.dpm": "low", "wifi.ahorro": 1, "usb.autosuspend_s": 1,
+                   "audio.power_save_s": 1, "vm.dirty_writeback_centisecs": 1500, "workqueue.power_efficient": 1},
+      "interactivo": {"cpu.governor": "schedutil", "cpu.boost": 0, "zram.algoritmo": "zstd", "zram.tamano_pct": 25},
+      "lote": {"cpu.boost": 0, "fondo.peso_cpu": 10},
+      "ia": {"ia.hilos_por_modulo": 1, "ia.kv": "q8_0", "ia.contexto_max": 8192},
+      "fondo": {"fondo.peso_cpu": 10, "fondo.solo_con_cargador": 1}
+    },
+    "normal": {
+      "inactivo": {"cpu.governor": "schedutil", "cpu.boost": 1, "pcie.aspm": "default",
+                   "sata.alpm": "med_power_with_dipm", "gpu.dpm": "auto", "wifi.ahorro": 1, "usb.autosuspend_s": 2,
+                   "audio.power_save_s": 10, "workqueue.power_efficient": 1},
+      "interactivo": {"cpu.governor": "schedutil", "cpu.boost": 1, "zram.algoritmo": "lz4 zstd", "zram.tamano_pct": 50},
+      "ia": {"ia.hilos_por_modulo": 1, "ia.kv": "q8_0", "ia.contexto_max": 16384},
+      "fondo": {"fondo.peso_cpu": 20}
+    },
+    "maximo": {
+      "inactivo": {"cpu.governor": "schedutil", "cpu.boost": 1, "pcie.aspm": "default", "sata.alpm": "max_performance",
+                   "gpu.dpm": "auto", "wifi.ahorro": 0, "usb.autosuspend_s": -1, "audio.power_save_s": 0,
+                   "workqueue.power_efficient": 0},
+      "juego": {"cpu.governor": "performance", "gpu.dpm": "high", "juego.tope_fps": 0},
+      "ia": {"ia.hilos_por_modulo": 1, "ia.kv": "f16", "ia.contexto_max": 32768}
+    }
+  },
+  "agresivo": {"eco": {"inactivo": {"cpu.modulos_activos": 1}}},
+  "agresivo_seguro": ["cpu.modulos_activos"],
+  "lista_negra": []
+}

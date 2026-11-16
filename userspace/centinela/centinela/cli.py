@@ -150,6 +150,38 @@ def cmd_banco(args) -> int:
     return 0
 
 
+def cmd_perfil(args) -> int:
+    """Perfiles de equipo firmados: validar, firmar (en el equipo de quien publica), verificar y esquema."""
+    from . import perfil
+    if args.accion == "esquema":
+        print(json.dumps(perfil.esquema_json(), indent=1, ensure_ascii=False))
+        return 0
+    p = json.loads(open(args.archivo, encoding="utf-8").read())
+    if args.accion == "validar":
+        e = perfil.validar(p)
+        print("\n".join(e) or "Válido")
+        return 1 if e else 0
+    if args.accion == "firmar":
+        if not args.clave:
+            print("Falta --clave (Ed25519 privada, PEM; nunca en el repositorio)", file=sys.stderr)
+            return 2
+        e = perfil.validar(p)
+        if e:
+            print("No se firma un perfil inválido:\n" + "\n".join(e), file=sys.stderr)
+            return 1
+        with open(args.archivo + ".sig", "wb") as fh:
+            fh.write(perfil.firmar(p, args.clave))
+        print(f"Firmado: {args.archivo}.sig")
+        return 0
+    try:
+        perfil.cargar(args.archivo)
+    except perfil.PerfilInvalido as e:
+        print(f"No se usa: {e}")
+        return 1
+    print("Válido, firmado y de este equipo")
+    return 0
+
+
 def cmd_fabrica(args) -> int:
     """Valores de fábrica de Debian: sin ajustes de Centinela (reversible con «centinela apply --reactivar»)."""
     for f in ap.fabrica(dry_run=args.dry_run):
@@ -561,6 +593,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--hilos", type=int, default=0)
     s.add_argument("--salida", default="", help="archivo para el inventario")
     s.set_defaults(func=cmd_banco)
+    s = sub.add_parser("perfil", help="perfiles de equipo firmados (validar, firmar, verificar, esquema)")
+    s.add_argument("accion", choices=["validar", "firmar", "verificar", "esquema"])
+    s.add_argument("archivo", nargs="?", default="")
+    s.add_argument("--clave", default="", help="clave privada Ed25519 (PEM) para firmar")
+    s.set_defaults(func=cmd_perfil)
     s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_fabrica)

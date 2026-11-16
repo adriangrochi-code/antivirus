@@ -1,0 +1,434 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Perfil de equipo TISMA",
+ "$defs": {
+  "ajustes": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "cpu.governor": {
+     "enum": [
+      "powersave",
+      "conservative",
+      "schedutil",
+      "ondemand",
+      "performance"
+     ]
+    },
+    "cpu.boost": {
+     "enum": [
+      0,
+      1
+     ]
+    },
+    "cpu.epp": {
+     "enum": [
+      "power",
+      "balance_power",
+      "balance_performance",
+      "performance"
+     ]
+    },
+    "cpu.modulos_activos": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 64
+    },
+    "pcie.aspm": {
+     "enum": [
+      "default",
+      "performance",
+      "powersave",
+      "powersupersave"
+     ]
+    },
+    "sata.alpm": {
+     "enum": [
+      "max_performance",
+      "medium_power",
+      "med_power_with_dipm",
+      "min_power"
+     ]
+    },
+    "nvme.apst_latencia_us": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 100000
+    },
+    "gpu.dpm": {
+     "enum": [
+      "auto",
+      "low",
+      "high"
+     ]
+    },
+    "wifi.ahorro": {
+     "enum": [
+      0,
+      1
+     ]
+    },
+    "usb.autosuspend_s": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 60
+    },
+    "audio.power_save_s": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 60
+    },
+    "vm.dirty_writeback_centisecs": {
+     "type": "integer",
+     "minimum": 100,
+     "maximum": 6000
+    },
+    "vm.swappiness": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 200
+    },
+    "vm.page_cluster": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 3
+    },
+    "workqueue.power_efficient": {
+     "enum": [
+      0,
+      1
+     ]
+    },
+    "zram.algoritmo": {
+     "enum": [
+      "lz4",
+      "zstd",
+      "lz4 zstd"
+     ]
+    },
+    "zram.tamano_pct": {
+     "type": "integer",
+     "minimum": 10,
+     "maximum": 100
+    },
+    "thp": {
+     "enum": [
+      "never",
+      "madvise"
+     ]
+    },
+    "scx.planificador": {
+     "enum": [
+      "",
+      "scx_lavd",
+      "scx_bpfland",
+      "scx_rusty"
+     ]
+    },
+    "fondo.peso_cpu": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100
+    },
+    "fondo.solo_con_cargador": {
+     "enum": [
+      0,
+      1
+     ]
+    },
+    "ia.hilos_por_modulo": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 2
+    },
+    "ia.kv": {
+     "enum": [
+      "q8_0",
+      "f16"
+     ]
+    },
+    "ia.contexto_max": {
+     "type": "integer",
+     "minimum": 2048,
+     "maximum": 131072
+    },
+    "juego.tope_fps": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 240
+    }
+   }
+  }
+ },
+ "type": "object",
+ "required": [
+  "formato",
+  "version",
+  "equipo",
+  "limites_duros",
+  "modos"
+ ],
+ "properties": {
+  "formato": {
+   "const": 1
+  },
+  "version": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "equipo": {
+   "type": "object",
+   "properties": {
+    "dmi_sys_vendor": {
+     "type": "string"
+    },
+    "dmi_product_name": {
+     "type": "string"
+    },
+    "dmi_product_version": {
+     "type": "string"
+    },
+    "cpu_modelo": {
+     "type": "string"
+    }
+   }
+  },
+  "hardware": {
+   "type": "object"
+  },
+  "limites_duros": {
+   "type": "object",
+   "required": [
+    "temp_max_c",
+    "memoria_reservada_mb"
+   ],
+   "properties": {
+    "temp_max_c": {
+     "type": "integer",
+     "minimum": 60,
+     "maximum": 100
+    },
+    "memoria_reservada_mb": {
+     "type": "integer",
+     "minimum": 256,
+     "maximum": 8192
+    },
+    "mitigaciones": {
+     "const": "auto"
+    }
+   }
+  },
+  "modos": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "eco": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    },
+    "normal": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    },
+    "maximo": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    }
+   }
+  },
+  "agresivo": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "eco": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    },
+    "normal": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    },
+    "maximo": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "interactivo": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "multimedia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "lote": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "juego": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "ia": {
+       "$ref": "#/$defs/ajustes"
+      },
+      "fondo": {
+       "$ref": "#/$defs/ajustes"
+      }
+     }
+    }
+   }
+  },
+  "agresivo_seguro": {
+   "type": "array",
+   "items": {
+    "enum": [
+     "cpu.governor",
+     "cpu.boost",
+     "cpu.epp",
+     "cpu.modulos_activos",
+     "pcie.aspm",
+     "sata.alpm",
+     "nvme.apst_latencia_us",
+     "gpu.dpm",
+     "wifi.ahorro",
+     "usb.autosuspend_s",
+     "audio.power_save_s",
+     "vm.dirty_writeback_centisecs",
+     "vm.swappiness",
+     "vm.page_cluster",
+     "workqueue.power_efficient",
+     "zram.algoritmo",
+     "zram.tamano_pct",
+     "thp",
+     "scx.planificador",
+     "fondo.peso_cpu",
+     "fondo.solo_con_cargador",
+     "ia.hilos_por_modulo",
+     "ia.kv",
+     "ia.contexto_max",
+     "juego.tope_fps"
+    ]
+   }
+  },
+  "lista_negra": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ }
+}

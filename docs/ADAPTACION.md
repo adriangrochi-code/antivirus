@@ -60,7 +60,13 @@ multimedia y juegos.
 ## 4. Próximos pasos (en este orden)
 
 1. Correr el banco en la A275 y publicar la tabla (sin esto no se cambia ningún valor por defecto).
-2. Formato del perfil firmado (Ed25519, por DMI + CPU) con esquema validable y anti-retroceso.
+2. ~~Formato del perfil firmado~~ Hecho: `centinela/perfil.py`, esquema en `docs/perfil.schema.json`, ejemplo
+   (hipótesis sin medir ni firmar) en `docs/perfiles/thinkpad-a275.hipotesis.json`. Vocabulario cerrado de
+   ajustes con sus valores permitidos, límites duros (mitigaciones siempre «auto», techo de temperatura,
+   memoria reservada), variante agresiva solo con ajustes marcados como seguros, lista negra y versión
+   anti-retroceso. `centinela perfil validar|firmar|verificar|esquema`. Claves públicas de confianza en
+   `/usr/share/tisma/perfiles/claves/*.pem`; la privada se crea y guarda en el equipo de quien publica
+   (`openssl genpkey -algorithm ed25519`), nunca en el repositorio.
 3. `tisma-adapt`: clases de carga con histéresis (sobre `adaptd`), un ajuste a la vez con prueba y
    reversión, contador de arranques fallidos y lista negra por modelo.
 4. Tablas de la sección 4 dentro del perfil, verificando que cada ruta exista en el equipo.
