@@ -234,15 +234,37 @@ def sandbox_argv(home: Path, workdir: Path, muestra: str, args: list[str], traza
             muestra, *args]
 
 
+VM_RAPIDA = ("vmlinuz-analisis", "analisis.squashfs")
+VM_CLASICA = ("vmlinuz", "initrd.img", "detonacion.iso")
+
+
+def vm_rapida() -> bool:
+    """VM de análisis rápida (kernel/analisis/README.md): microvm + kernel «analisis» sin módulos ni BPF, el squashfs
+    como raíz y sin systemd. Mismo aislamiento, la mitad de tiempo y un tercio de memoria."""
+    return all((VM_DIR / f).exists() for f in VM_RAPIDA)
+
+
 def vm_disponible() -> bool:
     return (os.access("/dev/kvm", os.R_OK | os.W_OK) and shutil.which("qemu-system-x86_64") is not None
-            and all((VM_DIR / f).exists() for f in ("vmlinuz", "initrd.img", "detonacion.iso")))
+            and (vm_rapida() or all((VM_DIR / f).exists() for f in VM_CLASICA)))
 
 
-def vm_argv(workdir: Path, segundos: int, kvm: bool = True) -> list[str]:
+def vm_argv(workdir: Path, segundos: int, kvm: bool = True, rapida: bool | None = None) -> list[str]:
+    accel = ["-enable-kvm", "-cpu", "host"] if kvm else []        # sin KVM (pruebas): emulado, muy lento
+    if rapida if rapida is not None else vm_rapida():
+        append = (f"console=ttyS0 root=/dev/vda rootfstype=squashfs ro init=/usr/lib/tisma/init-analisis "
+                  f"tisma.detonar={segundos} lsm=landlock,lockdown,yama,apparmor lockdown=integrity panic=-1 "
+                  "quiet no_timer_check pci=off" + ("" if kvm else " tsc_early_khz=2000000"))
+        return ["qemu-system-x86_64", *accel, "-M", "microvm", "-m", "512", "-smp", "2", "-display", "none",
+                "-no-reboot", "-nodefaults", "-no-user-config", "-serial", "stdio", "-nic", "none",
+                "-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",
+                "-kernel", str(VM_DIR / "vmlinuz-analisis"), "-append", append,
+                "-drive", f"id=raiz,file={VM_DIR / 'analisis.squashfs'},format=raw,if=none,readonly=on",
+                "-device", "virtio-blk-device,drive=raiz",
+                "-fsdev", f"local,id=muestra,path={workdir},security_model=mapped-xattr",
+                "-device", "virtio-9p-device,fsdev=muestra,mount_tag=muestra"]
     append = (f"boot=live components quiet console=ttyS0 tisma.detonar={segundos} "
               "lsm=landlock,lockdown,yama,apparmor,bpf lockdown=integrity panic=5")
-    accel = ["-enable-kvm", "-cpu", "host"] if kvm else []        # sin KVM (pruebas): emulado, muy lento
     return ["qemu-system-x86_64", *accel, "-m", "1536", "-smp", "2", "-nographic",
             "-no-reboot", "-nic", "none",             # sin red: lo que intente se registra, no sale
             "-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",

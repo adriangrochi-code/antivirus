@@ -371,7 +371,12 @@ in_chroot systemctl enable tisma-detonar 2>/dev/null || true
 # Imagen de la máquina virtual de análisis (make vm-detonacion, ~300 MB ya comprimidos): solo en la ISO completa.
 # Sin ella Escudo analiza lo descargado en su sandbox (bubblewrap + seccomp).
 rm -rf "$CHROOT/usr/lib/tisma/vm"
-if [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 && "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
+if [[ -f "$BUILD_DIR/vm/analisis.squashfs" && -f "$BUILD_DIR/vm/vmlinuz-analisis" && "${TISMA_ISO_MINIMA:-0}" != 1 \
+      && "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
+    # VM rápida (make vm-analisis): microvm + kernel «analisis»; sustituye a la clásica (no hacen falta las dos)
+    install -D -m 644 -t "$CHROOT/usr/lib/tisma/vm" "$BUILD_DIR"/vm/{analisis.squashfs,vmlinuz-analisis}
+    log "Imagen de análisis rápida incluida (Escudo analizará en máquina virtual si hay KVM)"
+elif [[ -f "$BUILD_DIR/vm/detonacion.iso" && "${TISMA_ISO_MINIMA:-0}" != 1 && "${TISMA_ISO_COMPLETA:-0}" == 1 ]]; then
     install -D -m 644 -t "$CHROOT/usr/lib/tisma/vm" "$BUILD_DIR"/vm/{detonacion.iso,vmlinuz,initrd.img}
     log "Imagen de análisis incluida (Escudo analizará en máquina virtual si hay KVM)"
 fi
