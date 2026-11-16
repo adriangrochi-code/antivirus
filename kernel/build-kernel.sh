@@ -5,6 +5,8 @@
 # Perfiles:
 #   minimal   x86_64_defconfig + kvm_guest: máquinas virtuales, compilación rápida
 #   generic   config de Debian (BASE_CONFIG) + fragmentos: hardware real, la ISO
+#   analisis  máquina virtual de análisis de Escudo: diminuto, sin módulos, arranca en microvm sin initramfs
+#             (solo los fragmentos de seguridad + kernel/analisis/analisis.config)
 #   tailored  config base + localmodconfig + fragmento de hardware generado por
 #             `centinela plan`: kernel optimizado para UNA máquina concreta
 #
@@ -73,6 +75,13 @@ case "$KERNEL_PROFILE" in
         # en disco durante la compilación y en el paquete -dbg. No cambia el kernel que se ejecuta.
         scripts/config --disable DEBUG_INFO_COMPRESSED_NONE --enable DEBUG_INFO_COMPRESSED_ZLIB
         ;;
+    analisis)
+        make -s x86_64_defconfig
+        make -s kvm_guest.config
+        # Solo endurecimiento y superficie mínima: el resto de fragmentos son del escritorio
+        FRAGMENTS=("$HERE/fragments/10-security.config" "$HERE/fragments/15-superficie.config" \
+                   "$HERE/analisis/analisis.config")
+        ;;
     tailored)
         base="${BASE_CONFIG:-/boot/config-$(uname -r)}"
         [[ -f "$base" ]] || die "No existe la config base $base"
@@ -134,7 +143,7 @@ log "$missing opciones no aplicadas (dependencias o no soportadas en esta arquit
 # El perfil generic (todos los drivers de Debian + información de depuración para BTF) necesita ~35 GB:
 # sin espacio, el paquete -dbg queda roto a mitad de la compilación.
 libre_gb=$(( $(df -Pk "$BUILD_DIR" | awk 'NR==2 {print $4}') / 1024 / 1024 ))
-necesita=$([[ "$KERNEL_PROFILE" == minimal ]] && echo 8 || echo 35)
+necesita=$([[ "$KERNEL_PROFILE" == generic || "$KERNEL_PROFILE" == tailored ]] && echo 35 || echo 8)
 (( libre_gb >= necesita )) || log "AVISO: solo hay ${libre_gb} GB libres; el perfil $KERNEL_PROFILE necesita ~${necesita} GB"
 log "Compilando con $JOBS hilos (perfil $KERNEL_PROFILE)"
 make -j"$JOBS" LOCALVERSION="$LOCALVERSION" KDEB_PKGVERSION="$KERNEL_VERSION-1" \
