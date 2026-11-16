@@ -102,12 +102,13 @@ def test_a275_shared_memory_profile():
     assert p.desktop_light
     assert any("canal simple" in r for r in p.recommendations)
     assert any("0x09" in r and "AmdSetup" in r for r in p.recommendations)
-    assert p.gpu_oc_percent == 10 and "amdgpu.ppfeaturemask=0xffffffff" in p.cmdline
+    # Límite duro §5: ni Máximo hace overclock por su cuenta
+    assert p.gpu_oc_percent == 0 and "amdgpu.ppfeaturemask=0xffffffff" not in p.cmdline
     gtt = [c for c in p.cmdline if c.startswith("amdgpu.gttsize=")]
     assert gtt and int(gtt[0].split("=")[1]) >= 8192          # un modelo de 7-8 B en Q4 cabe en la gráfica
     assert p.memlock_mb > 0
     quiet = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "equilibrado")
-    assert quiet.gpu_oc_percent == 0                 # el OC solo en perfil rendimiento
+    assert quiet.gpu_oc_percent == 0
 
 
 def test_light_kwinrc_keeps_other_settings():
@@ -199,7 +200,7 @@ def test_user_oc_choice_beats_plan_and_apply_keeps_prefs(tmp_path, monkeypatch):
     (card / "pp_sclk_od").write_text("0")
     monkeypatch.setattr(sysfs, "ROOT", str(root))
     p = make_plan(A275_HW, {"memory": {"bandwidth_gbs": {"read": 11.8}}}, "escritorio", "rendimiento")
-    assert p.gpu_oc_percent == 10
+    p.gpu_oc_percent = 10                       # (planes viejos guardados): la elección del usuario manda
     act = Actuator(dry_run=True)
     apply.apply_power(p, act)
     assert not any(path.endswith("pp_sclk_od") and v == "10" for path, v in act.changes)   # el usuario puso 0

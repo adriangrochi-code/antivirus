@@ -400,16 +400,15 @@ def _shared_memory(plan: Plan, hw: dict, bench: dict) -> None:
                  "local usa modelos de 1,5–4 B en Q4 (o MoE con ~1–3 B activos) con llama.cpp; a ~13 GB/s, un modelo "
                  "de 2 GB da del orden de 5 tokens/s. La velocidad la limita la RAM, no la CPU: TISMA Code mide "
                  "solo la especulación por n-gramas y MTP, que generan más tokens por cada lectura de memoria.")
-    if power_profile_allows_oc(plan) and igpu.get("overdrive"):
-        plan.gpu_oc_percent = 10
-        plan.cmdline.append("amdgpu.ppfeaturemask=0xffffffff")   # habilita overdrive (efecto tras reiniciar)
-        plan.why("Overclock de la GPU integrada +10 % (amdgpu overdrive) con vigilancia de temperatura: se revierte "
-                 "solo si supera 90 °C.")
+    # Límite duro (documento de traspaso, §5): ningún modo sube frecuencias ni baja voltajes por encima de lo que
+    # ofrece el fabricante. Antes «rendimiento» sugería +10 % de GPU: ya no (el overclock manual de TISMA
+    # Rendimiento queda como herramienta aparte, a elección explícita de la persona).
     plan.cmdline = [c for c in plan.cmdline if c]
 
 
 def power_profile_allows_oc(plan: Plan) -> bool:
-    return plan.power_profile == "rendimiento" and plan.use_case in ("juegos", "escritorio")
+    """Ningún modo hace overclock (límite duro §5)."""
+    return False
 
 
 def make_plan(hw: dict, bench: dict | None = None, use_case: str = "escritorio",

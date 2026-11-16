@@ -17,7 +17,7 @@ afinada** (Debian con TLP y thermald), medida con `centinela banco`.
 | Slices de systemd | `tisma-segundo-plano.slice` (mantenimiento, escaneos) | Parcial |
 | Modos Eco / Normal / Máximo | perfiles `silencioso` / `equilibrado` / `rendimiento` (+ batería: `energia.py`) | Nombres hechos; faltan las tablas por clase de carga |
 | Límite térmico | `calor.py` (registro de frenado), `adaptd.thermal_guard` (overclock de GPU) | Parcial: falta «Máximo vuelve a Normal si la temperatura sostenida supera el techo» |
-| Sin overclock ni undervolt (límite duro §5) | `centinela oc` / `autotune` existen | **Choca con §5**: quedan fuera de los modos y de la ISO por defecto hasta decidirlo |
+| Sin overclock ni undervolt (límite duro §5) | Ningún modo lo hace (antes «Máximo» sugería +10 % de GPU) | Queda el overclock MANUAL de TISMA Rendimiento y `autotune`: decidir si se quitan |
 | ECC pasivo (§6.1) | `salud-hardware` (EDAC/MCE vía rasdaemon, SMART, btrfs, pstore), scrub mensual | Hecho; falta prueba de RAM al instalar |
 | Banco de pruebas (§8) | `centinela banco` (este cambio) | Hecho lo medible sin ventanas |
 
