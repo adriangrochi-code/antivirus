@@ -2,7 +2,8 @@
 # Dentro de la máquina virtual de análisis (arranque con tisma.detonar=<segundos>): monta la carpeta compartida
 # con la muestra, la ejecuta en la jaula de Escudo como «nobody» y deja la traza para el anfitrión.
 set -u
-seg=$(sed -n 's/.*tisma\.detonar=\([0-9]*\).*/\1/p' /proc/cmdline)
+# En la VM precalentada la duración llega con la orden (init-analisis), no en el arranque
+seg=${TISMA_DETONAR_SEG:-$(sed -n 's/.*tisma\.detonar=\([0-9]*\).*/\1/p' /proc/cmdline)}
 [ -n "$seg" ] || seg=45
 mkdir -p /mnt/muestra
 mount -t 9p -o trans=virtio,version=9p2000.L,msize=262144 muestra /mnt/muestra || exit 1

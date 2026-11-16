@@ -10,7 +10,7 @@ arranque «live», systemd y 1,5 GB de RAM, cada vez. Aquí está la versión r�
 | Kernel | el del sistema, con módulos | perfil `analisis`: diminuto, sin módulos ni BPF |
 | Arranque | initramfs + live-boot + systemd | el squashfs es la raíz; `init-analisis` y apagado |
 | RAM | 1536 MB | 512 MB |
-| Tiempo, VM sin KVM, muestra de prueba* | 15,2 s | 6,8 s |
+| Tiempo, VM sin KVM, muestra de prueba* | 15,2 s | 6,8 s (precalentada: 4,4–5,1 s) |
 
 \* `tests/analisis-vm-test.sh`, 3 repeticiones, emulación TCG (sin KVM); la clásica ni siquiera incluye aquí el
 arranque «live» de la ISO. Con KVM ambas son mucho más rápidas; la proporción es lo que importa. La traza de
@@ -43,3 +43,24 @@ qemu-system-x86_64 -enable-kvm -cpu host -M microvm -m 512 -smp 2 -display none 
 `analisis.squashfs` es el `live/filesystem.squashfs` de la ISO mínima (ya trae Python, bubblewrap y strace).
 Sin KVM (solo pruebas) hay que añadir `tsc_early_khz=2000000`: en emulación pura el kernel a veces no logra
 medir el reloj de la CPU y se queda esperando; con KVM la frecuencia la da el hipervisor.
+
+## VM precalentada (foto de la memoria)
+
+Se arranca la VM **una vez** con `tisma.espera`: `init-analisis` deja todo listo, escribe `TISMA-LISTO` en la
+consola y espera una orden. El anfitrión guarda entonces una foto de la memoria (QMP `stop` + `migrate
+file:<foto>`, ~50 MB). Cada análisis arranca QEMU con la misma línea más `-incoming file:<foto>`, espera a que
+cargue, `cont`, y manda por la consola `analizar <segundos> <semilla hex>`. Medido sin KVM
+(`tests/analisis-vm-precalentada.py`): **restaurar tarda 0,06–0,14 s** en vez de ~4 s de arranque.
+
+Seguridad:
+
+- **Cada análisis parte de la misma foto limpia** y se descarta al terminar; nada pasa de un análisis a otro.
+- **Generador aleatorio:** todos los análisis heredarían el mismo estado aleatorio de la foto. `init-analisis`
+  mezcla la semilla nueva del anfitrión y fuerza la renovación (`RNDRESEEDCRNG`) antes de ejecutar nada; virtio-rng
+  añade entropía continua. Comprobado: tres análisis seguidos leen bytes distintos de `/dev/urandom`.
+  (VM Generation ID lo haría solo, pero la máquina microvm de QEMU no lo publica en ACPI.)
+- **Falla cerrado:** orden desconocida, sin semilla o semilla no hexadecimal → la VM se apaga sin analizar.
+- **La carpeta de la muestra (9p) no está en la foto:** se monta después de restaurar, con la muestra nueva.
+- **Los sockets de control de QEMU (consola y QMP) van en una carpeta aparte**, fuera de la compartida.
+- **La foto es del anfitrión:** root, permisos 0600, en `/var/lib/escudo`; se rehace cuando cambian el kernel o
+  el squashfs (guardar su SHA-256 junto a la foto). Compatible con `-sandbox spawn=deny` (no usa `exec:`).
