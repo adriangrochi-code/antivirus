@@ -325,6 +325,8 @@ fi
 ENDURECIDO=(-O2 -static-pie -fPIE -pthread -fstack-protector-strong -fstack-clash-protection -fcf-protection=full
             -D_FORTIFY_SOURCE=3 -ftrivial-auto-var-init=zero "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack")
 gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-membench" "$REPO/userspace/centinela/tools/membench.c"
+# Fuentes fijas para la prueba «compilacion» de `centinela banco` (misma carga en cada equipo y corrida)
+install -D -m 644 -t "$CHROOT/usr/share/centinela/tools" "$REPO"/userspace/centinela/tools/*.c
 gcc "${ENDURECIDO[@]}" -o "$LIB/centinela-estres" "$REPO/userspace/centinela/tools/estres.c"
 mkdir -p "$CHROOT/var/lib/centinela" "$CHROOT/var/lib/escudo"
 # Centinela escribe aquí el ajuste de gráficos para todas las sesiones (con ProtectSystem no podría crearla)

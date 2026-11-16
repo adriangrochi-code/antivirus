@@ -197,6 +197,14 @@ static int sched_bench(void) {
 
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--sched") == 0) return sched_bench();
+    if (argc > 2 && strcmp(argv[1], "--bw") == 0) {          // banco: ancho de banda con N hilos
+        int n = atoi(argv[2]);
+        if (n < 1 || n > 256) return 2;
+        size_t per = (size_t)(512 / n < 64 ? 64 : 512 / n) << 20;   // ~512 MB en total: fuera de la caché
+        printf("{\"hilos\": %d, \"read\": %.2f, \"write\": %.2f, \"copy\": %.2f}\n", n,
+               bandwidth(OP_READ, n, per, 4), bandwidth(OP_WRITE, n, per, 4), bandwidth(OP_COPY, n, per, 4));
+        return 0;
+    }
     int ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
     int quick = argc > 1 && strcmp(argv[1], "--quick") == 0;
     size_t per_thread = (quick ? 32 : 128) << 20;

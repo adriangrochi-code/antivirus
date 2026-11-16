@@ -116,6 +116,40 @@ def cmd_apply(args) -> int:
     return 0
 
 
+def cmd_banco(args) -> int:
+    """Banco de pruebas de rendimiento por vatio (sección 8 del documento de traspaso)."""
+    from . import banco
+    if args.accion == "inventario":
+        datos = banco.inventario()
+        texto = json.dumps(datos, indent=2, ensure_ascii=False)
+        if args.salida:
+            with open(args.salida, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+            print(f"Inventario en {args.salida}")
+        else:
+            print(texto)
+        return 0
+    if args.accion == "tabla":
+        print(banco.tabla(args.tareas))
+        return 0
+    tareas = args.tareas or [t for t in banco.TAREAS if t not in ("reposo", "inferencia", "compresion_modelo",
+                                                                    "arranque")]
+    malas = [t for t in tareas if t not in banco.TAREAS]
+    if malas:
+        print(f"Tareas desconocidas: {', '.join(malas)}. Hay: {', '.join(banco.TAREAS)}", file=sys.stderr)
+        return 2
+    opciones = {"modelo": args.modelo, "minutos": args.minutos}
+    if args.hilos:
+        opciones["hilos"] = args.hilos
+    _, a_bat = banco.bateria()
+    if not a_bat:
+        print("AVISO: el equipo no está a batería: no se registran vatios ni julios (o anótalos con un medidor "
+              "externo).", file=sys.stderr)
+    out = banco.correr(tareas, args.etiqueta, args.repeticiones, args.csv, opciones)
+    print(f"Resultados en {out}")
+    return 0
+
+
 def cmd_fabrica(args) -> int:
     """Valores de fábrica de Debian: sin ajustes de Centinela (reversible con «centinela apply --reactivar»)."""
     for f in ap.fabrica(dry_run=args.dry_run):
@@ -516,6 +550,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tarea de seguridad: espera como mucho 6 h y nunca se salta, ni con la batería baja")
     s.set_defaults(func=cmd_esperar_libre)
 
+    s = sub.add_parser("banco", help="banco de pruebas de rendimiento por vatio con salida CSV")
+    s.add_argument("accion", choices=["correr", "inventario", "tabla"])
+    s.add_argument("tareas", nargs="*", help="tareas a correr, o archivos CSV para «tabla»")
+    s.add_argument("--etiqueta", default="sin-etiqueta", help="debian, debian-tlp, tisma-eco, tisma-normal…")
+    s.add_argument("--repeticiones", type=int, default=3)
+    s.add_argument("--csv", default="", help="archivo de salida (se agrega si existe)")
+    s.add_argument("--modelo", default="", help="GGUF para inferencia y compresion_modelo")
+    s.add_argument("--minutos", type=float, default=10, help="duración de «reposo»")
+    s.add_argument("--hilos", type=int, default=0)
+    s.add_argument("--salida", default="", help="archivo para el inventario")
+    s.set_defaults(func=cmd_banco)
     s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_fabrica)
