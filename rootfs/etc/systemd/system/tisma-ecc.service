@@ -1,0 +1,17 @@
+[Unit]
+Description=TISMA - ECC por software (Verificar): revisar los modelos de IA en memoria (opcional)
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=/usr/bin/centinela ecc revisar --mb 512
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=idle
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela
+RuntimeDirectory=centinela
+RuntimeDirectoryPreserve=yes
+ProtectHome=read-only
+PrivateNetwork=yes
+NoNewPrivileges=yes

@@ -115,6 +115,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, status.snapshot())
         if u.path == "/api/equipo":
             return self._send(200, device_info())
+        if u.path == "/api/ecc":
+            prefs = read_json(Path("/var/lib/centinela/prefs.json"))
+            est = read_json(Path("/var/lib/centinela/ecc-estado.json"))
+            return self._send(200, {"nivel": prefs.get("ecc", "desactivado"), "acumulado": est.get("_total", {}),
+                                    "ultima": est.get("_ultima")})
         if u.path == "/api/autotune":
             p = AUTOTUNE["proc"]
             running = p is not None and p.poll() is None
@@ -143,6 +148,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "perfil inválido"})
             r = RUN(["systemctl", "start", f"centinela-perfil@{perfil}.service"], capture_output=True, text=True, timeout=60)
             return self._send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0, "salida": (r.stderr or r.stdout)[-400:]})
+        if u.path == "/api/ecc":
+            nivel = b.get("nivel")
+            if nivel not in ("desactivado", "verificar"):
+                return self._send(400, {"error": "nivel inválido"})
+            r = RUN(["systemctl", "start", f"centinela-ecc@{nivel}.service"], capture_output=True, text=True, timeout=60)
+            return self._send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0})
         if u.path == "/api/autotune":
             seg = b.get("segundos", 45)
             if isinstance(seg, bool) or not isinstance(seg, int) or not 10 <= seg <= 600:

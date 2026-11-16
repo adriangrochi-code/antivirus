@@ -8,7 +8,9 @@ polkit.addRule(function(action, subject) {
                                 unit == "centinela-perfil@equilibrado.service" ||
                                 unit == "centinela-perfil@rendimiento.service" ||
                                 unit == "centinela-automodo@si.service" ||
-                                unit == "centinela-automodo@no.service")) {
+                                unit == "centinela-automodo@no.service" ||
+                                unit == "centinela-ecc@verificar.service" ||
+                                unit == "centinela-ecc@desactivado.service")) {
             return polkit.Result.YES;
         }
     }

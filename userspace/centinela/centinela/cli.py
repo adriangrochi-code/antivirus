@@ -209,6 +209,21 @@ def cmd_adapt(args) -> int:
     return 0
 
 
+def cmd_ecc(args) -> int:
+    """ECC por software, nivel «Verificar» (opcional, desactivado por defecto)."""
+    from . import ecc
+    if args.accion == "nivel":
+        print(f"ECC por software: {ecc.poner_nivel(args.valor)}. {ecc.TEXTO}")
+    elif args.accion == "revisar":
+        print(json.dumps(ecc.rafaga(args.mb), ensure_ascii=False))
+    elif args.accion == "prueba":
+        print(json.dumps(ecc.prueba_inyeccion(), ensure_ascii=False))
+    else:
+        print(json.dumps({"nivel": ecc.nivel(), "texto": ecc.TEXTO,
+                          "estado": ap.load_state("ecc-estado.json") or {}}, ensure_ascii=False, indent=1))
+    return 0
+
+
 def cmd_fabrica(args) -> int:
     """Valores de fábrica de Debian: sin ajustes de Centinela (reversible con «centinela apply --reactivar»)."""
     for f in ap.fabrica(dry_run=args.dry_run):
@@ -651,6 +666,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("automodo", help="cambio de modo automático: batería baja → Eco, al enchufar vuelve")
     s.add_argument("estado", choices=["si", "no"])
     s.set_defaults(func=cmd_automodo)
+    s = sub.add_parser("ecc", help="ECC por software opcional: nivel, revisar, prueba de inyección de fallos")
+    s.add_argument("accion", choices=["estado", "nivel", "revisar", "prueba"], nargs="?", default="estado")
+    s.add_argument("valor", nargs="?", default="desactivado", choices=["desactivado", "verificar"])
+    s.add_argument("--mb", type=int, default=512)
+    s.set_defaults(func=cmd_ecc)
     s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_fabrica)

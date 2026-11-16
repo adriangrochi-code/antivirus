@@ -1,0 +1,11 @@
+[Unit]
+Description=Centinela - ECC por software: %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela ecc nivel %i
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela
+ProtectHome=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes

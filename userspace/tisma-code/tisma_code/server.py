@@ -186,6 +186,10 @@ class App:
         while True:
             if not una_vez:
                 espera(60)
+            try:
+                self.revisar_ecc()
+            except Exception:  # noqa: BLE001 — nunca debe detener la vigilancia
+                pass
             srv = self.server
             sesion = self.session
             ocupado = (sesion is not None and sesion._busy.locked()) or self._optimizing.locked() or \
@@ -202,6 +206,36 @@ class App:
                 return
 
     dormido: str | None = None
+    ECC_ALERTA = Path("/run/centinela/ecc-alerta.json")
+    _ecc_visto = 0.0
+
+    def revisar_ecc(self) -> bool:
+        """El revisor de memoria (ECC por software, opcional) encontró datos dañados en el modelo que usa el motor
+        y no pudo corregirlos en caliente: se vuelve a cargar el modelo desde el disco (en cuanto no esté
+        respondiendo)."""
+        try:
+            a = json.loads(self.ECC_ALERTA.read_text())
+        except (OSError, ValueError):
+            return False
+        srv = self.server
+        if a.get("t", 0) <= self._ecc_visto or not srv.proc or srv.proc.poll() is not None:
+            return False
+        if os.path.realpath(a.get("archivo", "")) != os.path.realpath(getattr(srv, "path", "") or ""):
+            return False
+        if self.session is not None and self.session._busy.locked():
+            return False                                   # se reintenta en el próximo minuto
+        self._ecc_visto = a["t"]
+        path = srv.path
+        srv.stop()
+        try:
+            srv.start(path, self.hw)
+        except (OSError, RuntimeError, ValueError) as e:
+            self.push({"type": "error", "message": f"No se pudo recargar el modelo: {e}"})
+            return False
+        srv.restaurar_prefijo()
+        self.push({"type": "info", "message": "La revisión de memoria encontró un error en el modelo cargado: se "
+                   "volvió a cargar desde el disco. Si se repite, conviene pasar «Memory test» en el arranque."})
+        return True
 
     def despertar(self) -> bool:
         """Si el motor está en pausa por reposo, lo vuelve a arrancar (mismo puerto y clave) antes de responder."""

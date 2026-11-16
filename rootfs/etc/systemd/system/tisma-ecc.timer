@@ -1,0 +1,10 @@
+[Unit]
+Description=TISMA - ECC por software: una ráfaga cada 30 minutos (solo si está activado)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

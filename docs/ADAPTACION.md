@@ -78,4 +78,9 @@ multimedia y juegos.
    (`centinela adapt estado|reanudar`). Lo que no es de /sys (hilos de IA, zram, planificador, fondo) se publica
    en `/run/centinela/politica.json`.
 4. Tablas de la sección 4 dentro del perfil, verificando que cada ruta exista en el equipo.
-5. Prototipos opcionales: ECC «Verificar» con inyección de fallos y pasos 2 y 3 del experimento 6.2.
+5. ~~ECC «Verificar»~~ Hecho, opcional y desactivado por defecto (`centinela/ecc.py`; TISMA Rendimiento →
+   «Protección de memoria por software»): huellas BLAKE2b por bloque de 4 MiB de los modelos de IA, revisión cada
+   30 min a prioridad mínima y nunca mientras la IA genera, recarga desde el disco si un bloque no coincide y aviso
+   a TISMA Code si el motor tiene el modelo en uso. `centinela ecc prueba` mide detección y velocidad con fallos
+   inyectados. No sustituye a la memoria con ECC.
+6. Pasos 2 y 3 del experimento 6.2 (compresión del modelo): esperan los datos de la A275.

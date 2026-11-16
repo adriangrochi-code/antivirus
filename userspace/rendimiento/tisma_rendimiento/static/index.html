@@ -85,6 +85,13 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     <div id="memWarn"></div>
   </section>
 
+  <section class="card w4" id="eccCard">
+    <h3>Protección de memoria por software <small>opcional</small></h3>
+    <div class="note">Detecta y corrige algunos errores en los modelos de IA y en datos críticos; no sustituye a la memoria con ECC. Revisa cada media hora, con la prioridad más baja y nunca mientras la IA está generando. No protege frente a un atacante.</div>
+    <div class="seg" id="eccNivel" style="margin-top:10px"><button data-n="desactivado">Desactivada</button><button data-n="verificar">Verificar</button></div>
+    <div class="note" id="eccEstado"></div>
+  </section>
+
   <section class="card w4" id="uvCard">
     <h3>Bajar el voltaje del procesador <small>mismo rendimiento, menos consumo y calor</small></h3>
     <div class="note">Busca solo el voltaje más bajo con el que el procesador sigue estable y rinde igual que de fábrica, en pasos de 6,25 mV (como mucho 150 mV), y deja un paso de margen. Cada paso se prueba con cálculos verificados en todos los núcleos; si algo falla o rinde menos, vuelve al anterior, y si el equipo se colgara, al reiniciar vuelve solo a fábrica. Mide el antes y el después (para ver los vatios, hazlo a batería). Tarda unos 25 minutos. Por ahora solo en procesadores como el de la ThinkPad A275.</div>
@@ -157,6 +164,13 @@ function pintarUv(resp){
  $("#uvEstado").innerHTML=txt;
  $("#uvRes").innerHTML=pasos?`<div class="note" style="margin-top:8px">De fábrica: ${Math.round(fab.temp_max||0)} °C${fab.vatios?` · ${fab.vatios} W`:""}<br>${pasos}</div>`:"";
 }
+async function pintarEcc(){try{const e=await api("/api/ecc");
+ document.querySelectorAll("#eccNivel button").forEach(b=>b.classList.toggle("on",b.dataset.n===e.nivel));
+ const t=e.acumulado||{};
+ $("#eccEstado").textContent=e.nivel!=="verificar"?"":(t.errores?`Encontró ${t.errores} error(es) de memoria y corrigió ${t.corregidos}. Conviene pasar «Memory test» desde el menú de arranque.`:(e.ultima?"Sin errores encontrados hasta ahora.":"La primera revisión será en unos minutos."));
+}catch(e){}}
+document.querySelectorAll("#eccNivel button").forEach(b=>b.onclick=async()=>{try{await api("/api/ecc",{nivel:b.dataset.n});toast(b.dataset.n==="verificar"?"Protección de memoria activada":"Protección de memoria desactivada");pintarEcc()}catch(e){toast(e.message,true)}});
+pintarEcc();
 let uvTimer=null;
 async function pollUv(){try{const r=await api("/api/autotune");pintarUv(r);if(!r.en_curso&&uvTimer){clearInterval(uvTimer);uvTimer=null}}catch(e){}}
 $("#uvBtn").onclick=async()=>{try{await api("/api/autotune",{segundos:60,cpu_uv:true});toast("Búsqueda iniciada (te pedirá la contraseña)");uvTimer=setInterval(pollUv,3000);pollUv()}catch(e){toast(e.message,true)}};
