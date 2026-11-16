@@ -1,6 +1,6 @@
 """Preferencias TISMA: lo que una persona cambia de verdad, en una sola ventana y en simple.
 
-Aspecto (claro/oscuro y color), tamaño del texto, fondo de pantalla, modo de energía (Eco · Equilibrado · Turbo),
+Aspecto (claro/oscuro y color), tamaño del texto, fondo de pantalla, modo de energía (Eco · Normal · Máximo),
 cuándo se apaga y bloquea la pantalla, e idioma del teclado. Lo demás, en «Opciones avanzadas» (Configuración del
 sistema, TISMA Rendimiento, TISMA Seguridad).
 

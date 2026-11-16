@@ -158,6 +158,43 @@ def light_kwinrc(current: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+FABRICA = "fabrica"                  # marca en STATE_DIR: Centinela no aplica nada (valores de Debian)
+
+
+def en_fabrica() -> bool:
+    return os.path.exists(os.path.join(STATE_DIR, FABRICA))
+
+
+def fabrica(dry_run: bool = False) -> list[str]:
+    """Vuelve a los valores de Debian: borra SOLO los archivos que generó Centinela (llevan su encabezado) y deja
+    una marca para que no se vuelvan a aplicar al arrancar. Los cambios en caliente terminan al reiniciar."""
+    quitados = []
+    for rel in list(render_files(Plan(use_case="escritorio", power_profile="equilibrado", cmdline=[]))) + [
+            "systemd/zram-generator.conf", "systemd/system.conf.d/60-centinela-memlock.conf",
+            "systemd/oomd.conf.d/60-centinela.conf", "centinela/hilos.json"]:
+        path = os.path.join(ETC, rel)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                propio = rel.startswith("centinela/") or fh.read(len(HEADER)) == HEADER
+        except OSError:
+            continue
+        if propio and path not in quitados:
+            if not dry_run:
+                os.unlink(path)
+            quitados.append(path)
+    if not dry_run:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        open(os.path.join(STATE_DIR, FABRICA), "w").close()
+    return quitados
+
+
+def reactivar() -> None:
+    try:
+        os.unlink(os.path.join(STATE_DIR, FABRICA))
+    except FileNotFoundError:
+        pass
+
+
 def persist(plan: Plan, dry_run: bool = False) -> list[str]:
     files = render_files(plan)
     if plan.desktop_light:

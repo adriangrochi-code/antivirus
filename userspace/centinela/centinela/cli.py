@@ -94,6 +94,12 @@ def cmd_plan(args) -> int:
 
 
 def cmd_apply(args) -> int:
+    if getattr(args, "reactivar", False):
+        ap.reactivar()
+    if ap.en_fabrica():
+        print("Centinela está en valores de fábrica de Debian (centinela fabrica): no se aplica nada. "
+              "Para volver a ajustar el equipo: centinela apply --reactivar")
+        return 0
     plan = _plan_from_state(args)
     # Se conservan las demás preferencias (overclock elegido, perfil del autoajuste): antes se sobrescribía
     # el archivo en cada arranque y el perfil probado del autoajuste nunca se volvía a aplicar.
@@ -110,7 +116,25 @@ def cmd_apply(args) -> int:
     return 0
 
 
+def cmd_fabrica(args) -> int:
+    """Valores de fábrica de Debian: sin ajustes de Centinela (reversible con «centinela apply --reactivar»)."""
+    for f in ap.fabrica(dry_run=args.dry_run):
+        print(f"quitado {f}")
+    if not args.dry_run:
+        for svc in ("centinela-adaptd.service",):
+            subprocess.run(["systemctl", "stop", svc], check=False)
+        if os.path.exists("/usr/sbin/update-grub"):
+            subprocess.run(["/usr/sbin/update-grub"], check=False)
+        if os.path.exists("/usr/sbin/update-initramfs"):
+            subprocess.run(["/usr/sbin/update-initramfs", "-u"], check=False)
+    print("Listo: reinicia para quedar con los valores de Debian.")
+    return 0
+
+
 def cmd_power(args) -> int:
+    if ap.en_fabrica():
+        print("En valores de fábrica: sin cambios de perfil (centinela apply --reactivar)")
+        return 0
     prefs = ap.load_state("prefs.json") or {}
     prefs["perfil"] = args.perfil
     ap.save_state("prefs.json", prefs)
@@ -139,6 +163,12 @@ def _kernel_version() -> str:
 
 
 def cmd_build_kernel(args) -> int:
+    # Decisión del proyecto: el sistema usa el kernel de Debian (con sus parches de seguridad); compilar uno por
+    # equipo queda solo para desarrollo, sin soporte oficial
+    if not args.dev:
+        print("build-kernel es solo para desarrollo y no tiene soporte: TISMA usa el kernel de Debian. "
+              "Si igual quieres compilarlo: centinela build-kernel --dev", file=sys.stderr)
+        return 2
     plan = _plan_from_state(args)
     ap.persist(plan)
     version = _kernel_version()
@@ -241,6 +271,8 @@ def cmd_energia(args) -> int:
     act = ap.Actuator(dry_run=args.dry_run)
     if args.modo == "umbral":
         print(energia.set_threshold(args.valor, act))
+        return 0
+    if ap.en_fabrica():
         return 0
     mode = args.modo if args.modo != "auto" else ("corriente" if energia.on_ac() else "bateria")
     r = energia.apply(mode, act)
@@ -387,6 +419,9 @@ def cmd_esperar_libre(args) -> int:
 
 
 def cmd_adaptd(args) -> int:
+    if ap.en_fabrica():
+        print("En valores de fábrica: adaptd no ajusta nada")
+        return 0
     plan = _plan_from_state(args)
     # Si el usuario cambia de perfil (centinela-perfil@), adaptd recalcula su plan base en vez de volver al viejo
     AdaptDaemon(plan, interval=args.interval, dry_run=args.dry_run, allow_game_boost=not args.no_game_boost,
@@ -419,7 +454,10 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--json", action="store_true")
         s.add_argument("--quick", action="store_true")
         s.set_defaults(func=func)
+        if name == "apply":
+            s.add_argument("--reactivar", action="store_true", help="salir de los valores de fábrica (fabrica)")
         if name == "build-kernel":
+            s.add_argument("--dev", action="store_true", help="modo desarrollo, sin soporte oficial")
             s.add_argument("--build-dir", default="/var/cache/centinela/kernel")
             s.add_argument("--install", action="store_true")
             s.add_argument("--firmar-dkms", action="store_true",
@@ -478,6 +516,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tarea de seguridad: espera como mucho 6 h y nunca se salta, ni con la batería baja")
     s.set_defaults(func=cmd_esperar_libre)
 
+    s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(func=cmd_fabrica)
     s = sub.add_parser("power")
     s.add_argument("perfil", choices=POWER_PROFILES)
     s.add_argument("--dry-run", action="store_true")
