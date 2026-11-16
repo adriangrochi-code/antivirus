@@ -131,6 +131,11 @@ log "$missing opciones no aplicadas (dependencias o no soportadas en esta arquit
 [[ "${STRICT_CONFIG:-0}" == 1 && $missing -gt 0 ]] && die "STRICT_CONFIG=1 y hay opciones sin aplicar"
 
 # ---------------------------------------------------------------- compilación
+# El perfil generic (todos los drivers de Debian + información de depuración para BTF) necesita ~35 GB:
+# sin espacio, el paquete -dbg queda roto a mitad de la compilación.
+libre_gb=$(( $(df -Pk "$BUILD_DIR" | awk 'NR==2 {print $4}') / 1024 / 1024 ))
+necesita=$([[ "$KERNEL_PROFILE" == minimal ]] && echo 8 || echo 35)
+(( libre_gb >= necesita )) || log "AVISO: solo hay ${libre_gb} GB libres; el perfil $KERNEL_PROFILE necesita ~${necesita} GB"
 log "Compilando con $JOBS hilos (perfil $KERNEL_PROFILE)"
 make -j"$JOBS" LOCALVERSION="$LOCALVERSION" KDEB_PKGVERSION="$KERNEL_VERSION-1" \
      bindeb-pkg 2>&1 | tail -n 20
