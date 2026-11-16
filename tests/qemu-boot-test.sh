@@ -11,6 +11,9 @@ cp "$(command -v busybox)" "$WORK/root/bin/busybox"
 # Planificador sched_ext opcional (SCX_BIN=ruta/a/scx_lavd): se copia con sus bibliotecas
 if [[ -x "${SCX_BIN:-}" ]]; then
     cp "$SCX_BIN" "$WORK/root/bin/scx"
+    # libbpf lee la config del kernel desde /boot (como en Debian)
+    cfg="$(dirname "$KERNEL")/../../../.config"
+    [[ -f "$cfg" ]] && mkdir -p "$WORK/root/boot" && cp "$cfg" "$WORK/root/boot/config-$(file -bL "$KERNEL" | grep -oP 'version \K[^ ]+')"
     for lib in $(ldd "$SCX_BIN" | grep -oE '/[^ ]+'); do
         mkdir -p "$WORK/root$(dirname "$lib")"; cp -L "$lib" "$WORK/root$lib"
     done
@@ -50,7 +53,7 @@ if [ -x /bin/scx ]; then
     /bin/binder-test >/dev/null 2>&1; echo "scx_binder=$?"
     kill %1; i=0; while [ "$(cat /sys/kernel/sched_ext/state)" != disabled ] && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
     echo "scx_al_salir=$(cat /sys/kernel/sched_ext/state)"
-    grep -iE "error|fail" /scx.log | head -n 3
+    grep -iE "error|fail" /scx.log | head -n 4; sed -n "/BEGIN PROG LOAD LOG/,/END PROG LOAD LOG/p" /scx.log | tail -n 12
 fi
 echo "vulns=$(grep -l Vulnerable /sys/devices/system/cpu/vulnerabilities/* 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
 echo "== FIN =="
