@@ -1,0 +1,11 @@
+[Unit]
+Description=Centinela - modo automático por batería: %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/centinela automodo %i
+ProtectSystem=strict
+ReadWritePaths=/var/lib/centinela
+ProtectHome=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes

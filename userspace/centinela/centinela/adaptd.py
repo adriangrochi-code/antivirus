@@ -244,6 +244,11 @@ class AdaptDaemon:
         elif not ia and self.modo_ia.pausado:
             log.info("Modo IA terminado: se reanuda el mantenimiento de memoria")
             self.modo_ia.reanudar()
+        if self._ticks % 20 == 10:                # cada ~minuto: modo automático por batería (si está activado)
+            try:
+                self._automodo()
+            except Exception:  # noqa: BLE001
+                log.exception("Error en el modo automático")
         if self._ticks % 20 == 0 and not ia:      # cada ~minuto: comprimir la memoria fría de apps sin usar
             try:
                 self.compactor.step(avail, self.total_mb)
@@ -259,6 +264,23 @@ class AdaptDaemon:
             except Exception:  # noqa: BLE001 — la política nunca detiene la adaptación base
                 log.exception("Error en tisma-adapt")
         return d
+
+    def _automodo(self) -> None:
+        from . import automodo, energia
+        from .apply import en_fabrica
+        prefs = load_state("prefs.json") or {}
+        if en_fabrica() or not prefs.get("auto_modo"):
+            return
+        en_ac = energia.on_ac()
+        nuevo, prefs2 = automodo.decidir(prefs, en_ac, automodo.capacidad())
+        if prefs2 != prefs:
+            save_state("prefs.json", prefs2)
+            self._prefs_mtime = self._mtime()
+        if nuevo and self.reload_plan:
+            self.base = self.reload_plan()
+            apply_power(self.base, self.act)
+            energia.apply("corriente" if en_ac else "bateria", self.act, nuevo)
+            log.info("Modo automático: %s", nuevo)
 
     def _adaptar(self, cargas: set[str], ia: bool) -> None:
         from .adapt import MODO, procesos_activos

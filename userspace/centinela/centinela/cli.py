@@ -224,12 +224,24 @@ def cmd_fabrica(args) -> int:
     return 0
 
 
+def cmd_automodo(args) -> int:
+    prefs = ap.load_state("prefs.json") or {}
+    prefs["auto_modo"] = args.estado == "si"
+    if not prefs["auto_modo"]:
+        prefs.pop("auto_previo", None)
+    ap.save_state("prefs.json", prefs)
+    print("Modo automático " + ("activado: batería baja → Eco; al enchufar vuelve el de antes" if prefs["auto_modo"]
+                                else "desactivado"))
+    return 0
+
+
 def cmd_power(args) -> int:
     if ap.en_fabrica():
         print("En valores de fábrica: sin cambios de perfil (centinela apply --reactivar)")
         return 0
     prefs = ap.load_state("prefs.json") or {}
     prefs["perfil"] = args.perfil
+    prefs.pop("auto_previo", None)            # elegido a mano: manda la persona
     ap.save_state("prefs.json", prefs)
     plan = _plan_from_state(args)
     act = ap.Actuator(dry_run=args.dry_run)
@@ -636,6 +648,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("accion", choices=["estado", "arranque-inicio", "arranque-ok", "reanudar"], nargs="?",
                    default="estado")
     s.set_defaults(func=cmd_adapt)
+    s = sub.add_parser("automodo", help="cambio de modo automático: batería baja → Eco, al enchufar vuelve")
+    s.add_argument("estado", choices=["si", "no"])
+    s.set_defaults(func=cmd_automodo)
     s = sub.add_parser("fabrica", help="volver a los valores de Debian (sin ajustes de Centinela; reversible)")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(func=cmd_fabrica)

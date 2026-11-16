@@ -83,3 +83,12 @@ def test_huella_solo_con_lector(monkeypatch):
                                       " - #1: left-index-finger\n"))
     assert s.huella() == {"lector": True, "registradas": 2}
     assert s.AVANZADO["huella"] == ["systemsettings", "kcm_users"]
+
+
+def test_auto_modo_solo_su_servicio(monkeypatch):
+    r = Run()
+    monkeypatch.setattr(s, "RUN", r)
+    s.poner_auto_modo(True)
+    s.poner_auto_modo(False)
+    assert r.calls == [["systemctl", "start", "centinela-automodo@si.service"],
+                       ["systemctl", "start", "centinela-automodo@no.service"]]

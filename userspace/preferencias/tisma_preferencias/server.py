@@ -195,6 +195,18 @@ def energia_actual() -> str:
     return leer_conf().get("energia", "equilibrado")
 
 
+def auto_modo_actual() -> bool:
+    try:
+        return bool(json.loads(Path("/var/lib/centinela/prefs.json").read_text()).get("auto_modo"))
+    except (OSError, ValueError):
+        return False
+
+
+def poner_auto_modo(activo: bool) -> dict:
+    ok, out = _ok(["systemctl", "start", f"centinela-automodo@{'si' if activo else 'no'}.service"], timeout=60)
+    return {"ok": ok, "salida": out}
+
+
 def poner_energia(p: str) -> dict:
     ok, out = _ok(["systemctl", "start", f"centinela-perfil@{p}.service"], timeout=60)
     if ok:
@@ -264,6 +276,7 @@ def estado() -> dict:
     return {"tema": b.get("tema", "oscuro"), "acento": b.get("acento", "violeta"), "acentos": ACENTOS,
             "tamano": tamano_actual(), "energia": energia_actual(), "pantalla": pantalla_actual(),
             "teclado": teclado_actual(), "teclados": TECLADOS, "fondos": fondos(), "huella": huella(),
+            "auto_modo": auto_modo_actual(),
             "bateria": any(Path(p, "type").read_text().strip() == "Battery"
                            for p in Path("/sys/class/power_supply").glob("*") if Path(p, "type").is_file())}
 
@@ -359,6 +372,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, poner_fondo(FONDOS / b["id"]))
         if u == "/api/energia" and b.get("valor") in ENERGIA:
             return self._send(200, poner_energia(b["valor"]))
+        if u == "/api/automodo" and isinstance(b.get("activo"), bool):
+            return self._send(200, poner_auto_modo(b["activo"]))
         if u == "/api/pantalla" and b.get("valor") in PANTALLA:
             return self._send(200, poner_pantalla(b["valor"]))
         if u == "/api/teclado" and b.get("valor") in TECLADOS:

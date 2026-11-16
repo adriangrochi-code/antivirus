@@ -1,12 +1,14 @@
 // El usuario de la sesión local activa puede cambiar el perfil de potencia sin contraseña
-// (lo usa TISMA Asistente). Solo estas tres unidades; nada más se habilita.
+// (lo usa TISMA Asistente) y el modo automático por batería. Solo estas unidades; nada más se habilita.
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" && subject.local && subject.active) {
         var unit = action.lookup("unit");
         var verb = action.lookup("verb");
         if (verb == "start" && (unit == "centinela-perfil@silencioso.service" ||
                                 unit == "centinela-perfil@equilibrado.service" ||
-                                unit == "centinela-perfil@rendimiento.service")) {
+                                unit == "centinela-perfil@rendimiento.service" ||
+                                unit == "centinela-automodo@si.service" ||
+                                unit == "centinela-automodo@no.service")) {
             return polkit.Result.YES;
         }
     }
