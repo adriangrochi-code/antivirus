@@ -227,7 +227,7 @@ struct Opts {
 
     /// Nombres de cgroup que son de FONDO (en cualquier nivel de /sys/fs/cgroup): sus tareas, y las de sus
     /// cgroups hijos, solo usan la CPU sobrante. systemd pone lo de segundo plano en background.slice.
-    #[clap(long = "fondo-cgroup", default_values_t = ["background.slice".to_string(), "tisma-fondo.slice".to_string()])]
+    #[clap(long = "fondo-cgroup", default_values_t = ["background.slice".to_string(), "tisma-segundo-plano.slice".to_string(), "tisma-fondo.slice".to_string()])]
     fondo_cgroup: Vec<String>,
 
     /// Espera máxima de una tarea de fondo antes de pasar delante una vez (milisegundos; menor que el

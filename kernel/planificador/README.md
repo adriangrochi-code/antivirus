@@ -6,7 +6,7 @@ prioriza lo interactivo y reparte primero entre núcleos completos: en el A12 de
 núcleos que comparten FPU y L2 como «hermanos», así que los hilos pesados se separan solos.
 
 **Lo que añade TISMA: la clase de fondo.** Las tareas de los cgroups de fondo (`background.slice` de systemd,
-`tisma-fondo.slice`, configurable con `--fondo-cgroup`) van a una cola aparte que solo se atiende cuando ninguna
+`tisma-segundo-plano.slice` de TISMA y `tisma-fondo.slice`; configurable con `--fondo-cgroup`) van a una cola aparte que solo se atiende cuando ninguna
 CPU tiene trabajo de primer plano:
 
 - cuando llega trabajo de primer plano y no hay CPU libre, se le quita la CPU a una tarea de fondo al instante;
@@ -27,3 +27,8 @@ las tareas al 100 %:
 
 Uso: `tisma-ranuras cambiar planificador scx_tisma` (instalado en `/usr/bin`). Compilar: `./compilar.sh`
 (clona sched-ext/scx en el commit fijado, copia `scx_tisma/` dentro y compila con clang ≥ 20).
+
+**Comparado con `CPUWeight=idle`:** las unidades de TISMA en `tisma-segundo-plano.slice` ya llevan
+`CPUWeight=idle`, que con el planificador de Linux (eevdf) también les deja solo la CPU sobrante. Para ellas
+scx_tisma aporta poco más; su ventaja está en lo que no lleva esa marca (el `background.slice` de las sesiones de
+usuario y lo que se lance sin prioridad) y en sumarlo a la lógica interactiva de scx_bpfland.
