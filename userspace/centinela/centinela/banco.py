@@ -315,6 +315,60 @@ def inventario(run=sh) -> dict:
     }
 
 
+# ---------------------------------------------------------------- configuraciones a comparar
+LINEA_AFINADA = ["tlp", "thermald"]
+
+
+def _instalado(paquete: str, run=sh) -> bool:
+    return "install ok installed" in run(["dpkg-query", "-W", "-f=${Status}", paquete])
+
+
+def preparar(config: str, run=sh, estado: Path | None = None) -> list[str]:
+    """Deja el equipo listo para medir una configuración (sección 8):
+    * «debian-tlp»: línea base afinada = Debian sin TISMA + TLP y thermald (se instalan y activan solos).
+    * «debian» o «tisma»: quita TLP y thermald, pero SOLO si los instaló el banco (lo anota en su estado).
+    Devuelve los pasos hechos o avisos, en simple."""
+    from .apply import STATE_DIR, en_fabrica
+    marca = estado or Path(STATE_DIR) / "banco-instalados.json"
+    try:
+        nuestros = json.loads(marca.read_text())
+    except (OSError, ValueError):
+        nuestros = []
+    pasos = []
+    if config == "debian-tlp":
+        if not en_fabrica():
+            return ["Primero «sudo centinela fabrica» y reinicia: TISMA y TLP no deben ajustar el equipo a la vez."]
+        faltan = [p for p in LINEA_AFINADA if not _instalado(p, run)]
+        if faltan:
+            run(["apt-get", "install", "-y", "--no-install-recommends", *faltan], timeout=1800)
+            nuevos = [p for p in faltan if _instalado(p, run)]
+            nuestros = sorted(set(nuestros) | set(nuevos))
+            marca.parent.mkdir(parents=True, exist_ok=True)
+            marca.write_text(json.dumps(nuestros))
+            pasos.append(f"Instalados: {', '.join(nuevos) or 'ninguno (¿sin conexión?)'}")
+        for svc in LINEA_AFINADA:
+            if _instalado(svc, run):
+                run(["systemctl", "enable", "--now", f"{svc}.service"])
+        if not run(["systemctl", "is-active", "thermald"]).strip().startswith("active"):
+            pasos.append("thermald no corre en este procesador (solo funciona con Intel): la línea base queda con TLP.")
+        pasos.append("Listo: mide con --etiqueta debian-tlp.")
+    elif config in ("debian", "tisma"):
+        quitar = [p for p in nuestros if _instalado(p, run)]
+        if quitar:
+            for svc in quitar:
+                run(["systemctl", "disable", "--now", f"{svc}.service"])
+            run(["apt-get", "purge", "-y", *quitar], timeout=1800)
+            pasos.append(f"Quitados (los había instalado el banco): {', '.join(quitar)}")
+        marca.unlink(missing_ok=True)
+        if config == "tisma":
+            pasos.append("Para medir TISMA: «sudo centinela apply --reactivar», reinicia y elige el modo.")
+        else:
+            pasos.append("Para medir Debian sin ajustes: «sudo centinela fabrica» y reinicia (si no lo hiciste).")
+    else:
+        pasos.append("Configuraciones: debian, debian-tlp, tisma")
+    return pasos
+
+
 # ---------------------------------------------------------------- corrida y CSV
 def equipo() -> str:
     return " ".join(filter(None, (sysfs.read("/sys/class/dmi/id/sys_vendor"),

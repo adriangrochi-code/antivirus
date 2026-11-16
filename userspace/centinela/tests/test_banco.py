@@ -41,3 +41,29 @@ def test_inventario_campos():
     for k in ("cpu", "memoria_dmi", "equipo_dmi", "modulos_cmt", "edac", "vulnerabilidades", "tpm", "bateria",
               "cpufreq", "rapl"):
         assert k in d
+
+
+def test_preparar_linea_base_afinada(tmp_path, monkeypatch):
+    from centinela import apply
+    monkeypatch.setattr(apply, "STATE_DIR", str(tmp_path))
+    instalados, llamadas = set(), []
+
+    def run(argv, timeout=600):
+        llamadas.append(argv)
+        if argv[0] == "dpkg-query":
+            return "install ok installed" if argv[-1] in instalados else ""
+        if argv[:2] == ["apt-get", "install"]:
+            instalados.update(argv[4:])
+        if argv[:2] == ["apt-get", "purge"]:
+            instalados.difference_update(argv[3:])
+        return "inactive" if argv[:2] == ["systemctl", "is-active"] else ""
+    marca = tmp_path / "banco.json"
+    assert "Primero" in banco.preparar("debian-tlp", run, marca)[0]          # sin fábrica: no
+    (tmp_path / "fabrica").touch()
+    instalados.add("thermald")                                              # ya estaba: no es nuestro
+    pasos = banco.preparar("debian-tlp", run, marca)
+    assert "Instalados: tlp" in pasos[0] and any("solo funciona con Intel" in p for p in pasos)
+    assert ["systemctl", "enable", "--now", "tlp.service"] in llamadas
+    pasos = banco.preparar("debian", run, marca)
+    assert "Quitados (los había instalado el banco): tlp" in pasos[0]
+    assert instalados == {"thermald"}                                       # el que ya estaba, se queda

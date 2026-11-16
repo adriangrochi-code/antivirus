@@ -132,6 +132,12 @@ def cmd_banco(args) -> int:
     if args.accion == "tabla":
         print(banco.tabla(args.tareas))
         return 0
+    if args.accion == "preparar":
+        if os.geteuid() != 0:
+            print("Necesita administrador: sudo centinela banco preparar …", file=sys.stderr)
+            return 2
+        print("\n".join(banco.preparar((args.tareas or [""])[0])))
+        return 0
     tareas = args.tareas or [t for t in banco.TAREAS if t not in ("reposo", "inferencia", "compresion_modelo",
                                                                     "arranque")]
     malas = [t for t in tareas if t not in banco.TAREAS]
@@ -604,7 +610,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_esperar_libre)
 
     s = sub.add_parser("banco", help="banco de pruebas de rendimiento por vatio con salida CSV")
-    s.add_argument("accion", choices=["correr", "inventario", "tabla"])
+    s.add_argument("accion", choices=["correr", "inventario", "tabla", "preparar"])
     s.add_argument("tareas", nargs="*", help="tareas a correr, o archivos CSV para «tabla»")
     s.add_argument("--etiqueta", default="sin-etiqueta", help="debian, debian-tlp, tisma-eco, tisma-normal…")
     s.add_argument("--repeticiones", type=int, default=3)

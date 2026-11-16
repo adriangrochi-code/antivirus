@@ -65,6 +65,7 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
     <div class="seg" id="perfil"><button data-p="silencioso" title="Más batería y menos ruido: rinde lo justo y vuelve a reposo enseguida">Eco</button><button data-p="equilibrado">Normal</button><button data-p="rendimiento" title="Toda la potencia, también a batería">Máximo</button></div>
     <div class="row" id="turboRow"><div class="k">Aceleración extra del procesador<div class="note" style="margin:0">Sube la frecuencia por encima de la base mientras la temperatura lo permite (en Eco se apaga para ahorrar)</div></div><button class="tog" id="turbo"></button></div>
     <div class="row" id="umbralRow" hidden><div class="k">Cuidar la batería<div class="note" style="margin:0">Carga solo hasta el 80 %: alarga años su vida si el portátil pasa mucho tiempo enchufado</div></div><button class="tog" id="umbral"></button></div>
+    <div class="note" style="margin-top:10px">Herramienta manual: ningún modo (Eco, Normal o Máximo) sube frecuencias ni baja voltajes por su cuenta. Si lo usas, el equipo se calienta más y puede volverse inestable; TISMA lo vuelve a fábrica solo si pasa de 90 °C.</div>
     <div id="ocBox">
     <div class="row" style="align-items:flex-start;flex-direction:column;gap:6px">
       <div style="display:flex;width:100%"><div class="k">Overclock de la GPU integrada</div><div class="v" id="ocVal">0 %</div></div>
@@ -85,7 +86,7 @@ pre{background:var(--bar);border-radius:8px;padding:10px;font:12px/1.4 "JetBrain
   </section>
 
   <section class="card w4" id="autoCard">
-    <h3>Optimización automática <small>overclock + undervolt con pruebas de estabilidad internas</small></h3>
+    <h3>Overclock automático <small>herramienta manual: overclock + undervolt con pruebas de estabilidad; ningún modo lo usa</small></h3>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <button class="btn p" id="auto" style="padding:12px 20px;font-size:15px">⚡ Optimizar automáticamente</button>
       <div class="seg" id="autoDur" style="width:auto;white-space:nowrap"><button data-s="20">Rápida · 6 min</button><button data-s="45" class="on">Completa · 14 min</button><button data-s="90">Exhaustiva · 28 min</button></div>
