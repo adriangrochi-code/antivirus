@@ -287,7 +287,7 @@ def vm_argv(workdir: Path, segundos: int, kvm: bool = True, rapida: bool | None 
 
 def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: int | None = None,
             gid: int | None = None, usar_vm: bool | None = None, run=subprocess.run,
-            base_dir: Path | None = None) -> Informe:
+            base_dir: Path | None = None, fondo: bool = False) -> Informe:
     """Ejecuta `path` en el entorno controlado y devuelve el informe. Nunca lo ejecuta fuera de él."""
     args = args or []
     digest = sha256_file(path)
@@ -324,7 +324,7 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
             if os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
                 # QEMU sin KVM traduce código al vuelo (JIT): heredar MemoryDenyWriteExecute del servicio lo rompía
                 cmd = ["systemd-run", "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec",
-                       "-p", f"RuntimeMaxSec={segundos + 600}", "--", *cmd]
+                       *(FONDO if fondo else []), "-p", f"RuntimeMaxSec={segundos + 600}", "--", *cmd]
             entorno = "máquina virtual"
         else:
             cmd = sandbox_argv(home, workdir, wine if windows else f"/tmp/muestra/{name}", args, traza)
@@ -332,7 +332,7 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
                 for p in base.rglob("*"):
                     os.lchown(p, uid, gid if gid is not None else uid)
                 os.chown(base, uid, gid if gid is not None else uid)
-                cmd = como_usuario(cmd, uid, gid if gid is not None else uid, segundos + 5)
+                cmd = como_usuario(cmd, uid, gid if gid is not None else uid, segundos + 5, fondo)
             entorno = "sandbox"
         try:
             run(cmd, capture_output=True, timeout=segundos + (600 if vm else 5), start_new_session=True)
@@ -368,14 +368,20 @@ def se_ejecuto(traza: str, ruta: str, wine: bool = False) -> bool:
     return re.search(r'execve(at)?\([^"]*"' + re.escape(ruta) + r'".*\)\s*=\s*0\s*$', traza, re.M) is not None
 
 
-def como_usuario(cmd: list[str], uid: int, gid: int, segundos: int) -> list[str]:
+# Análisis de antemano (al terminar una descarga): nadie lo espera, así que cede la CPU y el disco a lo que el
+# usuario usa. Peso BAJO pero no «idle»: con idle, un equipo ocupado dejaría a la muestra sin CPU durante su
+# ventana de observación y saldría «limpia» sin haber hecho nada (una forma de evadir el análisis).
+FONDO = ["--slice=tisma-segundo-plano.slice", "-p", "CPUWeight=20", "-p", "IOWeight=20"]
+
+
+def como_usuario(cmd: list[str], uid: int, gid: int, segundos: int, fondo: bool = False) -> list[str]:
     """La muestra corre con la identidad del usuario. Bajo systemd (el servicio Escudo), en una unidad propia y
     temporal: así no hereda las restricciones del servicio. Heredar MemoryDenyWriteExecute rompía cualquier
     programa con JIT (Node, Java, .NET…), que se cerraba sin hacer nada y salía «limpio»: una forma de evadir el
     análisis. Y no hace falta que Escudo pueda cambiar de identidad (setpriv necesita CAP_SETUID)."""
     if os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
         return ["systemd-run", "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec",
-                f"--uid={uid}", f"--gid={gid}", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=",
+                *(FONDO if fondo else []), f"--uid={uid}", f"--gid={gid}", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=",
                 "-p", f"RuntimeMaxSec={segundos}", "--", *cmd]
     return ["setpriv", f"--reuid={uid}", f"--regid={gid}", "--clear-groups", "--", *cmd]
 

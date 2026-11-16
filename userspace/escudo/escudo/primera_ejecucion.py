@@ -93,6 +93,14 @@ def decide(path: str, external: bool, sha: str | None, allowlist: dict) -> str:
     return "denegar"
 
 
+def ocupado() -> bool:
+    """¿CPU casi llena? (carga de 1 min por encima del 70 % de los núcleos)."""
+    try:
+        return os.getloadavg()[0] > 0.7 * (os.cpu_count() or 1)
+    except OSError:
+        return False
+
+
 class Gate:
     def __init__(self, quarantine=None, alert=emit, segundos: int = 45, mounts: list[str] | None = None,
                  scanner=None):
@@ -297,8 +305,10 @@ class Gate:
                 path, sha, uid, gid = self._previos.get(timeout=300)
             except queue.Empty:
                 return
-            while not self._jobs.empty() and not self._stop.is_set():
-                time.sleep(1)                            # lo que el usuario intenta abrir va primero
+            espera = 0
+            while not self._stop.is_set() and (not self._jobs.empty() or (ocupado() and espera < 600)):
+                time.sleep(5)                            # lo que el usuario abre va primero; y con el equipo
+                espera += 5                              # saturado se espera (máx. 10 min) para observar bien
             try:
                 with self._uno:
                     self.analyze(path, sha, uid, gid, avisar_limpio=False)
@@ -337,7 +347,8 @@ class Gate:
             inf = detonar.Informe(veredicto="malicioso", motivos=[f"detectado: {d.name}" for d in estaticas][:3],
                                   entorno="firmas", sha256=sha)
         else:
-            inf = detonar.detonar(path, segundos=self.segundos, uid=uid, gid=gid, base_dir=DET_DIR)
+            inf = detonar.detonar(path, segundos=self.segundos, uid=uid, gid=gid, base_dir=DET_DIR,
+                                  fondo=not avisar_limpio)
             if estaticas and inf.veredicto == "limpio":          # medio en firmas: nunca sale «limpio»
                 inf.veredicto = "sospechoso"
                 inf.motivos = [f"detectado: {d.name}" for d in estaticas][:3] + inf.motivos

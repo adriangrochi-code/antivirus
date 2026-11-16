@@ -17,13 +17,14 @@ class Inf:
 def puerta(monkeypatch, tmp_path, veredicto="limpio"):
     guardados = {}
     monkeypatch.setattr(pe, "DET_DIR", tmp_path / "det")
+    monkeypatch.setattr(pe, "ocupado", lambda: False)
     monkeypatch.setattr(detonar, "cargar_permitidos", lambda: dict(guardados))
     monkeypatch.setattr(detonar, "guardar_veredicto",
                         lambda inf, path: guardados.__setitem__(detonar.sha256_file(path), {"veredicto": inf.veredicto}))
     monkeypatch.setattr(pe.informe, "guardar", lambda *a, **k: None)
     monkeypatch.setattr(pe.informe, "explicar", lambda d: {"grupos": []})
     llamadas = []
-    monkeypatch.setattr(detonar, "detonar", lambda path, **k: (llamadas.append(path), Inf(veredicto))[1])
+    monkeypatch.setattr(detonar, "detonar", lambda path, **k: (llamadas.append((path, k.get("fondo"))), Inf(veredicto))[1])
     alertas = []
     g = pe.Gate(alert=alertas.append)
     return g, alertas, llamadas
@@ -59,7 +60,7 @@ def test_limpio_en_silencio_y_queda_permitido(tmp_path, monkeypatch):
     p = descarga(tmp_path)
     assert g.precalentar(p)
     esperar(g)
-    assert llamadas == [p] and alertas == []
+    assert llamadas == [(p, True)] and alertas == []          # de antemano: con prioridad baja
     sha = detonar.sha256_file(p)
     assert pe.decide(p, True, sha, g.allow) == "permitir"           # el primer clic ya no espera
     assert not g.precalentar(p)                                     # no se analiza dos veces
@@ -118,3 +119,11 @@ def test_el_antivirus_lo_pasa_a_la_puerta_solo_si_no_es_malware(tmp_path):
     rtp.al_revisar = vistos.append
     rtp.check(str(f))
     assert vistos == [str(f)]                                  # malware conocido: ya avisado, no se detona
+
+
+def test_prioridad_baja_pero_no_idle(monkeypatch):
+    monkeypatch.setenv("INVOCATION_ID", "x")
+    monkeypatch.setattr(detonar.shutil, "which", lambda n: "/usr/bin/" + n)
+    c = detonar.como_usuario(["prog"], 1000, 1000, 50, fondo=True)
+    assert "--slice=tisma-segundo-plano.slice" in c and "CPUWeight=20" in c and "CPUWeight=idle" not in c
+    assert "--slice=tisma-segundo-plano.slice" not in detonar.como_usuario(["prog"], 1000, 1000, 50)
