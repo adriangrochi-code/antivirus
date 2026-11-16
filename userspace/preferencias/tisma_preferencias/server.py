@@ -46,7 +46,8 @@ PANTALLA = (5, 10, 15, 30, 0)                  # minutos; 0 = nunca
 TECLADOS = {"latam": "Español (Latinoamérica)", "es": "Español (España)", "us": "Inglés (EE. UU.)",
             "br": "Portugués (Brasil)"}
 AVANZADO = {"sistema": ["systemsettings"], "rendimiento": ["tisma-rendimiento"],
-            "seguridad": ["tisma-seguridad-panel"]}
+            "seguridad": ["tisma-seguridad-panel"],
+            "huella": ["systemsettings", "kcm_users"]}        # registro de huellas de KDE (Usuarios)
 
 
 def _ok(argv: list[str], timeout: int = 30) -> tuple[bool, str]:
@@ -244,12 +245,25 @@ def poner_teclado(t: str) -> dict:
     return {"ok": ok, "salida": out}
 
 
+def huella() -> dict:
+    """¿Hay lector de huellas y cuántas huellas tiene registradas esta persona? (fprintd)"""
+    if not shutil.which("fprintd-list"):
+        return {"lector": False, "registradas": 0}
+    try:
+        r = RUN(["fprintd-list", os.environ.get("USER") or ""], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"lector": False, "registradas": 0}
+    out = r.stdout or ""
+    lector = bool(re.search(r"found [1-9]\d* devices?", out))
+    return {"lector": lector, "registradas": len(re.findall(r"(?m)^\s*-\s*#\d+:", out)) if lector else 0}
+
+
 def estado() -> dict:
     from tisma_bienvenida.server import ACENTOS, read_conf
     b = read_conf()
     return {"tema": b.get("tema", "oscuro"), "acento": b.get("acento", "violeta"), "acentos": ACENTOS,
             "tamano": tamano_actual(), "energia": energia_actual(), "pantalla": pantalla_actual(),
-            "teclado": teclado_actual(), "teclados": TECLADOS, "fondos": fondos(),
+            "teclado": teclado_actual(), "teclados": TECLADOS, "fondos": fondos(), "huella": huella(),
             "bateria": any(Path(p, "type").read_text().strip() == "Battery"
                            for p in Path("/sys/class/power_supply").glob("*") if Path(p, "type").is_file())}
 

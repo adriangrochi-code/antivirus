@@ -4,6 +4,10 @@
 * USB: con la pantalla bloqueada, todo USB que se conecte queda BLOQUEADO (USBGuard, InsertedDevicePolicy=block).
   Al desbloquear vuelve a la política normal; lo conectado durante el bloqueo hay que reconectarlo. Así un
   dispositivo malicioso (teclado falso, «BadUSB», extractores de datos) no sirve con el equipo desatendido.
+  Excepción: los dispositivos de puertos INTERNOS (soldados a la placa: lector de huellas, cámara, Bluetooth,
+  with-connect-type «hardwired» según el firmware). Al despertar de la suspensión vuelven a aparecer y quedaban
+  bloqueados para siempre (no se pueden «reconectar»): sin huella para desbloquear, sin cámara ni Bluetooth.
+  Un dispositivo enchufado desde fuera no puede presentarse en un puerto interno.
 * Reinicio automático (opcional, /etc/tisma/reinicio-auto.conf, HORAS=0 = desactivado): si nadie desbloquea la
   sesión en ese tiempo, el equipo se reinicia. Tras reiniciar, el disco cifrado (LUKS) vuelve a estar cerrado y
   las claves salen de la RAM: un ladrón no puede extraerlas de un equipo que estaba bloqueado pero encendido.
@@ -65,6 +69,16 @@ class Guard:
             return
         self.run(["usbguard", "set-parameter", "InsertedDevicePolicy", "block" if block else "apply-policy"])
 
+    def permitir_internos(self) -> int:
+        """Los dispositivos de puertos internos bloqueados (por el bloqueo de pantalla) vuelven a funcionar."""
+        n = 0
+        for linea in self.run(["usbguard", "list-devices", "--blocked"]).splitlines():
+            ident, _, resto = linea.partition(":")
+            if ident.strip().isdigit() and 'with-connect-type "hardwired"' in resto:
+                self.run(["usbguard", "allow-device", ident.strip()])
+                n += 1
+        return n
+
     def step(self) -> str | None:
         sess = graphical_sessions(self.run)
         unlocked = any(s.get("LockedHint") == "no" and s.get("Active") == "yes" for s in sess)
@@ -72,6 +86,9 @@ class Guard:
         if unlocked:
             self.unlocked_since_boot = True
             self.last_unlocked = self.now()
+        if locked or locked != self.locked:
+            # Bloqueada (tras cada evento de logind, p. ej. al despertar) o recién desbloqueada
+            self.permitir_internos()
         if locked != self.locked:
             self.locked = locked
             self.usb(locked)

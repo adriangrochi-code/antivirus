@@ -97,6 +97,8 @@ intel-microcode amd64-microcode
 lxc python3-gbinder
 # --- Herramientas de seguridad ---
 clamav clamav-freshclam rkhunter chkrootkit lynis aide auditd usbguard
+# Huella dactilar (solo para desbloquear la pantalla; se registra en Preferencias)
+fprintd libpam-fprintd
 # Escudo: teclados falsos (USB que se hacen pasar por teclado) — leer y reenviar teclas (BSD)
 python3-evdev
 opensnitch python3-opensnitch-ui keepassxc nmap

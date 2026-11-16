@@ -226,6 +226,9 @@ for f in /usr/bin/chfn /usr/bin/chsh /usr/bin/chage /usr/bin/expiry /usr/bin/gpa
 done
 # - 10 contraseñas fallidas seguidas: cuenta bloqueada 10 min (pam_faillock, /etc/security/faillock.conf)
 in_chroot pam-auth-update --enable tisma-faillock-pre tisma-faillock-fallo tisma-faillock-ok
+# Huella: solo en la pantalla de bloqueo (su PAM propio, kde-fingerprint). Fuera de common-auth: para entrar,
+# administrar (sudo, polkit) o el disco sigue haciendo falta la contraseña (una huella se puede copiar).
+in_chroot pam-auth-update --disable fprintd 2>/dev/null || true
 # - su solo para administradores (grupo sudo); root sigue pudiendo (pam_rootok va antes)
 sed -i 's/^# auth       required   pam_wheel.so$/auth       required   pam_wheel.so group=sudo/' "$CHROOT/etc/pam.d/su"
 grep -q '^auth       required   pam_wheel.so group=sudo' "$CHROOT/etc/pam.d/su" || die "no se pudo restringir su"

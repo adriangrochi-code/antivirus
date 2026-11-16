@@ -71,3 +71,15 @@ def test_energia_solo_su_servicio(monkeypatch, tmp_path):
     s.poner_energia("silencioso")
     assert r.calls == [["systemctl", "start", "centinela-perfil@silencioso.service"]]
     assert json.loads((tmp_path / "p.json").read_text())["energia"] == "silencioso"
+
+
+def test_huella_solo_con_lector(monkeypatch):
+    monkeypatch.setattr(s.shutil, "which", lambda x: "/usr/bin/" + x)
+    monkeypatch.setattr(s, "RUN", Run("found 0 devices\n"))
+    assert s.huella() == {"lector": False, "registradas": 0}
+    monkeypatch.setattr(s, "RUN", Run("found 1 devices\nDevice at /net/reactivated/Fprint/Device/0\n"
+                                      "Using device /net/reactivated/Fprint/Device/0\n"
+                                      "Fingerprints for user ana on Synaptics (press):\n - #0: right-index-finger\n"
+                                      " - #1: left-index-finger\n"))
+    assert s.huella() == {"lector": True, "registradas": 2}
+    assert s.AVANZADO["huella"] == ["systemsettings", "kcm_users"]

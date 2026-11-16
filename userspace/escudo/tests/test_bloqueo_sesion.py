@@ -94,3 +94,23 @@ def test_network_tuning_shipped():
     frag = (ROOT / "kernel/fragments/70-red.config").read_text()
     assert "CONFIG_TCP_CONG_BBR=y" in frag and "CONFIG_NET_SCH_FQ=y" in frag
     assert "http3 = true" in (ROOT / "rootfs/etc/dnscrypt-proxy/dnscrypt-proxy.toml").read_text()
+
+
+def test_internos_no_quedan_bloqueados_al_despertar():
+    """Lector de huellas, cámara o Bluetooth (puertos internos) reaparecen al despertar: se permiten; los de
+    puertos externos conectados con la pantalla bloqueada siguen bloqueados."""
+    w = World()
+    bloqueados = ('5: block id 06cb:009a serial "" name "" via-port "1-3" with-interface ff:00:00 '
+                  'with-connect-type "hardwired"\n'
+                  '9: block id 0781:5567 serial "x" name "Cruzer" via-port "2-1" with-interface 08:06:50 '
+                  'with-connect-type "hotplug"\n')
+    orig = w.__call__
+    def run(argv):
+        if argv[:2] == ["usbguard", "list-devices"]:
+            w.calls.append(argv)
+            return bloqueados
+        return orig(argv)
+    g = mod.Guard(run=run, now=lambda: 0.0, hours=lambda: 0)
+    w.locked = "yes"
+    g.step()
+    assert ["usbguard", "allow-device", "5"] in w.calls and ["usbguard", "allow-device", "9"] not in w.calls

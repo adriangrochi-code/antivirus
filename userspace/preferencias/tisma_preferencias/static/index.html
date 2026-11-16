@@ -69,6 +69,10 @@ details summary::before{content:"▸ ";color:var(--dim)}details[open] summary::b
   <section class="card"><h2>Teclado</h2><p>Si las letras no salen donde deben (la ñ, los acentos), cámbialo aquí.</p>
     <div class="seg" id="teclado"></div></section>
 
+  <section class="card" id="huellaCard" hidden><h2>Huella dactilar</h2>
+    <p id="huellaTxt">Desbloquea la pantalla con el dedo. Para entrar al equipo y para cambios importantes se sigue pidiendo la contraseña.</p>
+    <div class="av"><button data-app="huella" id="huellaBtn">Registrar mi huella</button></div></section>
+
   <section class="card"><details><summary>Opciones avanzadas</summary>
     <p style="margin-top:10px">Para quien quiere tocar más cosas.</p>
     <div class="av">
@@ -111,6 +115,11 @@ async function cargar() {
   marcar("teclado", E.teclado);
   $("#fondos").innerHTML = E.fondos.map(f => `<button class="fondo" data-id="${esc(f.id)}" title="${esc(f.nombre)}"><img loading="lazy" alt="" src="/miniatura?id=${encodeURIComponent(f.id)}"><span>${esc(f.nombre)}</span></button>`).join("")
     + `<button class="fondo propio" id="propio">＋ Una foto tuya</button>`;
+  $("#huellaCard").hidden = !(E.huella && E.huella.lector);
+  if (E.huella && E.huella.registradas) {
+    $("#huellaBtn").textContent = "Cambiar mis huellas";
+    $("#huellaTxt").textContent = `Tienes ${E.huella.registradas} huella(s) registrada(s): úsala para desbloquear la pantalla. Para entrar al equipo y para cambios importantes se sigue pidiendo la contraseña.`;
+  }
   if (!E.bateria) $("#energiaNota").textContent = "Cuánta potencia usa el equipo (Eco también lo hace más silencioso).";
 }
 $("#tema").onclick = async e => { const v = e.target.closest("button")?.dataset.v; if (!v) return;
