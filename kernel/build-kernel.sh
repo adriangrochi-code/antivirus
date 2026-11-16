@@ -69,6 +69,9 @@ case "$KERNEL_PROFILE" in
     generic)
         [[ -f "${BASE_CONFIG:-}" ]] || die "Perfil generic requiere BASE_CONFIG (p. ej. /boot/config-* de Debian)"
         cp "$BASE_CONFIG" .config
+        # Debian compila con toda la información de depuración (la necesita BTF): comprimida ocupa ~3 veces menos
+        # en disco durante la compilación y en el paquete -dbg. No cambia el kernel que se ejecuta.
+        scripts/config --disable DEBUG_INFO_COMPRESSED_NONE --enable DEBUG_INFO_COMPRESSED_ZLIB
         ;;
     tailored)
         base="${BASE_CONFIG:-/boot/config-$(uname -r)}"
