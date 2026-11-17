@@ -25,3 +25,12 @@ def test_clasica_si_no_hay_rapida(tmp_path, monkeypatch):
     monkeypatch.setattr(detonar, "VM_DIR", tmp_path)
     a = detonar.vm_argv(Path("/w"), 30)
     assert "-initrd" in a and a[a.index("-m") + 1] == "1536" and "boot=live" in a[a.index("-append") + 1]
+
+
+def test_init_rapida_monta_zona_escribible_para_la_muestra():
+    """La raíz de la VM rápida es squashfs (solo lectura): /mnt tiene que ser tmpfs o la muestra no se monta."""
+    raiz = Path(__file__).resolve().parents[3] / "rootfs/usr/lib/tisma"
+    init = (raiz / "init-analisis").read_text()
+    zonas = next(l for l in init.splitlines() if l.startswith("for d in")).replace(";", " ").split()
+    assert "/mnt" in zonas
+    assert "/mnt/muestra" in (raiz / "detonar-invitado").read_text()

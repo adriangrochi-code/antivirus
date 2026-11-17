@@ -8,7 +8,7 @@ mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
 mkdir -p /dev/pts /dev/shm && mount -t devpts devpts /dev/pts && mount -t tmpfs -o mode=1777 tmpfs /dev/shm
 mount -t securityfs securityfs /sys/kernel/security 2>/dev/null
-for d in /run /tmp /var/tmp /var/lib /var/log /home /root; do
+for d in /run /tmp /var/tmp /var/lib /var/log /home /root /mnt; do
     mount -t tmpfs -o mode=0755 tmpfs "$d" 2>/dev/null
 done
 chmod 1777 /tmp /var/tmp
