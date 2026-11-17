@@ -296,8 +296,9 @@ def start_install(perfiles: list[str]) -> dict:
     if live_session():
         return {"ok": False, "error": "En la sesión live se perdería al apagar: instala TISMA OS en el disco y "
                                        "elige el perfil en el primer inicio"}
-    INSTALANDO.update(perfil=",".join(perfiles), inicio=time.time(), proc=POPEN(
-        ["pkexec", "tisma-perfil", "instalar", *combinar(perfiles)["listas"]],
+    listas = combinar(perfiles)["listas"]
+    INSTALANDO.update(perfil=",".join(perfiles), listas=listas, inicio=time.time(), proc=POPEN(
+        ["pkexec", "tisma-perfil", "instalar", *listas],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
     return {"ok": True}
 
@@ -308,15 +309,22 @@ def install_state() -> dict:
         return {"fase": "ninguna"}
     try:
         st = json.loads(PERFIL_ESTADO.read_text())
-        if st.get("inicio", 0) < INSTALANDO["inicio"] - 5:
-            st = {}                                 # de una instalación anterior
     except (OSError, ValueError):
         st = {}
+    # El estado es de la nuestra solo si es de estas listas y empezó después de pedirla; si no, es de otra (la del
+    # primer arranque, tisma-completar): si sigue en marcha, la nuestra espera su turno
+    nuestra = st.get("perfiles") == INSTALANDO.get("listas") and st.get("inicio", 0) >= INSTALANDO["inicio"] - 5
+    if not nuestra:
+        st = {"fase": "esperando otra"} if st.get("fase") not in ("listo", "error", None) else {}
     rc = proc.poll()
+    if rc is not None and not nuestra:
+        st = {}
     if rc is not None and not st.get("fase") in ("listo", "error"):
-        # pkexec: 126 = no autorizado / ventana cerrada, 127 = no se pudo autenticar
-        st = {"fase": "cancelado" if rc in (126, 127) else "error", "ok": False,
-              "mensaje": "" if rc in (126, 127) else f"terminó con código {rc}"}
+        # pkexec: 126 = no autorizado / ventana cerrada, 127 = no se pudo autenticar. 0 sin estado propio: lo
+        # escribió y otra instalación lo pisó después; terminó bien
+        st = ({"fase": "listo", "ok": True} if rc == 0 else
+              {"fase": "cancelado" if rc in (126, 127) else "error", "ok": False,
+               "mensaje": "" if rc in (126, 127) else f"terminó con código {rc}"})
     return {"perfil": INSTALANDO["perfil"], "fase": st.get("fase", "esperando permiso"), "ok": st.get("ok"),
             "paquetes": st.get("paquetes"), "mensaje": (st.get("mensaje") or "")[-300:], "activo": rc is None}
 

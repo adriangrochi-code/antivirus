@@ -281,7 +281,8 @@ async function instalarApps() {
     seguirInstalacion();
   } catch (e) { toast(e.message); }
 }
-const FASES = {"esperando permiso": "Esperando tu contraseña de administrador…", "preparando": "Preparando…",
+const FASES = {"esperando permiso": "Esperando tu contraseña de administrador…",
+  "esperando otra": "Esperando a que termine otra descarga (la de la base del sistema)…", "preparando": "Preparando…",
   "actualizando": "Leyendo los repositorios…", "instalando": "Descargando e instalando…"};
 async function seguirInstalacion() {
   clearTimeout(instT);

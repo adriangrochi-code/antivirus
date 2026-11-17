@@ -123,9 +123,20 @@ def test_profile_apps_install_with_pkexec_and_report_progress(srv, monkeypatch, 
     st = json.loads(req(port, "GET", "/api/instalacion")[1])
     assert st["fase"] == "esperando permiso" and st["activo"] is True
     import time as _t
-    estado.write_text(json.dumps({"fase": "instalando", "inicio": _t.time(), "paquetes": 17, "ok": None}))
+    # Otra instalación en marcha (la del primer arranque): la nuestra espera su turno, no muestra la ajena
+    estado.write_text(json.dumps({"perfiles": ["esenciales"], "fase": "instalando", "inicio": _t.time() - 60,
+                                  "paquetes": 9, "ok": None}))
+    assert json.loads(req(port, "GET", "/api/instalacion")[1])["fase"] == "esperando otra"
+    estado.write_text(json.dumps({"perfiles": ["juegos", "creacion"], "fase": "instalando", "inicio": _t.time(),
+                                  "paquetes": 17, "ok": None}))
     st = json.loads(req(port, "GET", "/api/instalacion")[1])
     assert st["fase"] == "instalando" and st["paquetes"] == 17
+    # La nuestra terminó bien y después empezó otra que pisó el estado: sigue siendo «listo», no «error»
+    estado.write_text(json.dumps({"perfiles": ["esenciales"], "fase": "preparando", "inicio": _t.time() + 1}))
+    proc.rc = 0
+    st = json.loads(req(port, "GET", "/api/instalacion")[1])
+    assert st["fase"] == "listo" and st["ok"] is True
+    proc.rc = None
     proc.rc = 126                                                        # cerró la ventana de contraseña
     estado.unlink()
     assert json.loads(req(port, "GET", "/api/instalacion")[1])["fase"] == "cancelado"
