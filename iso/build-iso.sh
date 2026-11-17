@@ -541,6 +541,17 @@ cp -a "$CHROOT/usr/lib/shim/." "$SBROOT/usr/lib/shim/"
 cp -a "$CHROOT/usr/lib/grub/x86_64-efi-signed" "$SBROOT/usr/lib/grub/"
 
 # ---------------------------------------------------------------- 5. ISO
+# Kernel por defecto del sistema INSTALADO fijado desde la imagen: el de Debian (firmado, arranca en cualquier
+# equipo). Así el menú que genera el instalador ya lo pone primero, aunque después falle algún paso: en la A275 la
+# preview 14 y la 15 quedaron en «Loading Linux …-centinela-minimal» (el kernel solo para máquinas virtuales,
+# de versión más alta, era el primero). tisma-secureboot elegir lo cambia luego si corresponde.
+if [[ "${TISMA_ISO_MINIMA:-0}" != 1 ]]; then
+    _deb=$(ls -1 "$CHROOT"/boot/vmlinuz-* 2>/dev/null | grep -v -e '-centinela-' -e '\.old$' | sort -V | tail -1)
+    [[ -n "$_deb" ]] || die "no hay kernel de Debian en la imagen"
+    printf '# Generado por build-iso (tisma-secureboot elegir lo actualiza)\nGRUB_TOP_LEVEL="%s"\n' "${_deb#"$CHROOT"}" \
+        > "$CHROOT/etc/default/grub.d/62-tisma-kernel.cfg"
+    log "Kernel por defecto del sistema instalado: ${_deb#"$CHROOT"/boot/}"
+fi
 log "Creando squashfs (${TISMA_COMPRESION:-xz})"
 rm -rf "$ISODIR" && mkdir -p "$ISODIR/live" "$ISODIR/boot/grub"
 # xz con filtro x86 (por defecto): ~8 % menos que zstd -19, para que la ISO quepa en una release de GitHub
