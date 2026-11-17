@@ -48,7 +48,8 @@ jobs:
       - name: Pruebas
         env:
           PYTHONUTF8: "1"
-        run: python -X utf8 -m pytest -q -rs tests
+        # Fuera de AppData: TISMA Code se niega (a propósito) a abrir proyectos ahí, donde viven perfiles y contraseñas
+        run: python -X utf8 -m pytest -q -rs tests --basetemp "$env:RUNNER_TEMP\\pytest"
 
   paquete:
     needs: pruebas
