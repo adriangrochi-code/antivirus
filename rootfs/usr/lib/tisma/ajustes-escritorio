@@ -13,6 +13,11 @@ aplicar() {   # aplicar <marca> <script.js>
     gdbus call --session --dest org.kde.plasmashell --object-path /PlasmaShell \
         --method org.kde.PlasmaShell.evaluateScript "$(cat "$2")" >/dev/null 2>&1 && touch "$MARCAS/$1"
 }
+# El acceso «Instalar TISMA OS» es solo de la sesión del USB: si llegó a una cuenta del sistema instalado (cuenta
+# creada a mano desde una copia de /etc/skel vieja, o restaurada), se quita
+if ! grep -qw "boot=live" /proc/cmdline; then
+    rm -f "$HOME/Escritorio/instalar-tisma.desktop" "$HOME/Desktop/instalar-tisma.desktop"
+fi
 aplicar bandeja-1 /usr/share/tisma/escritorio/bandeja.js
 aplicar logo-inicio-1 /usr/share/tisma/escritorio/logo-inicio.js
 # Favoritos del menú de cuentas que ya existían (se ven al volver a entrar)
