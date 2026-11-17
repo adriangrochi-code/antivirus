@@ -20,7 +20,16 @@ if [ -n "$ENV" ] && listo; then
     [ -e "$ENV" ] || grub-editenv "$ENV" create
     grub-editenv "$ENV" unset tisma_intentos
 fi
-[ "$MODO" = apagado ] && exit 0
+if [ "$MODO" = apagado ]; then
+    # Ajustes de rendimiento del equipo (centinela adapt): solo si de verdad se llegó a usar (alguien inició
+    # sesión en este arranque; se mira el registro porque al apagar las sesiones ya pueden estar cerradas). Una
+    # pantalla negra apagada con el botón no tiene que contar como arranque bueno.
+    if journalctl -b -q -o cat _SYSTEMD_UNIT=systemd-logind.service 2>/dev/null \
+            | grep "New session" | grep -v "of user sddm\.\?$" | grep -q "of user "; then
+        /usr/bin/centinela adapt arranque-ok >/dev/null 2>&1 || true
+    fi
+    exit 0
+fi
 if [ -r /run/tisma-volver-hecho ] && [ ! -e /run/tisma-volver-limpio ]; then
     read -r NOMBRE ANTES < /run/tisma-volver-hecho
     APARTE=/boot/tisma-apartados

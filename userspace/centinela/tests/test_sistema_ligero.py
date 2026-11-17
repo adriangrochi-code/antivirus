@@ -521,9 +521,10 @@ def test_apagar_normal_confirma_el_arranque():
     """Encender y apagar antes de 2 min no cuenta como arranque fallido (si no, a la 3.ª vez: modo seguro)."""
     c = ini(SD / "tisma-arranque-ok-apagado.service")
     txt = (SD / "tisma-arranque-ok-apagado.service").read_text()
-    assert "ExecStop=/usr/lib/tisma/arranque-ok apagado" in txt and c["Service"]["RemainAfterExit"] == "yes"
-    assert "ExecStop=-/usr/bin/centinela adapt arranque-ok" in txt          # perfil del equipo: mismo contador
+    assert "ExecStop=-/usr/lib/tisma/arranque-ok apagado" in txt and c["Service"]["RemainAfterExit"] == "yes"
     assert "display-manager.service" in c["Unit"]["After"] and "boot-efi.mount" in c["Unit"]["After"]
     assert "tisma-arranque-ok-apagado.service" in (ROOT.parent / "iso/build-iso.sh").read_text()
     s = (ROOT / "usr/lib/tisma/arranque-ok").read_text()
-    assert s.index('[ "$MODO" = apagado ] && exit 0') < s.index("tisma-volver-hecho ]")
+    i = s.index('if [ "$MODO" = apagado ]; then')
+    assert i < s.index("centinela adapt arranque-ok") < s.index("tisma-volver-hecho ]")
+    assert 'grep -v "of user sddm' in s[i:s.index("centinela adapt arranque-ok")]   # solo si alguien entró
