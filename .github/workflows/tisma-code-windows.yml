@@ -1,0 +1,167 @@
+# TISMA Code para Windows 10/11 x64: pruebas en Windows y una carpeta portable en un ZIP (artefacto, sin release).
+# - pruebas: la suite de TISMA Code en windows-latest (lo que depende de Linux se deja fuera; ver tests/conftest.py)
+#   y las pruebas con las API reales de Win32 (tests/test_windows.py).
+# - paquete: Python embebido + el paquete tisma_code + llama.cpp oficial (Vulkan y solo CPU) + lanzadores. Todo lo que
+#   se descarga tiene versión y SHA-256 fijados aquí; llama.cpp, la misma etiqueta que la ISO (iso/components/llama-cpp.sh).
+#   Antes de subirlo se comprueba que arranca: el servidor responde, el cálculo exacto corre en su Job Object y
+#   llama-server se ejecuta dentro del Job del motor.
+name: TISMA Code (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-8ab6bd04-4px8f0]
+    paths:
+      - "userspace/tisma-code/**"
+      - ".github/workflows/tisma-code-windows.yml"
+
+permissions:
+  contents: read
+
+env:
+  PY_VERSION: "3.12.10"
+  PY_EMBED_SHA256: "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"
+  LLAMA_TAG: "b12282"
+  LLAMA_COMMIT: "aa75ff3239f9cc675b081697deda9e1b112345c6"
+  LLAMA_VULKAN_SHA256: "53e8a3c81ca08aec32253c6b5cb71e66a566b34c9a4466500bb04e234a7c9b53"
+  LLAMA_CPU_SHA256: "582a5da726b30e0b9e801b4ebd1b85cbe023ca266bdebf6a9d55426c85e57463"
+  SYMPY_URL: "https://files.pythonhosted.org/packages/99/ff/c87e0622b1dadea79d2fb0b25ade9ed98954c9033722eb707053d310d4f3/sympy-1.13.3-py3-none-any.whl"
+  SYMPY_SHA256: "54612cf55a62755ee71824ce692986f23c88ffa77207b30c1368eda4a7060f73"
+  MPMATH_URL: "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl"
+  MPMATH_SHA256: "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c"
+
+jobs:
+  pruebas:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: userspace/tisma-code
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias
+        run: python -m pip install -q "pytest==8.3.5" "sympy==1.13.3" "mpmath==1.3.0"
+      - name: Pruebas
+        env:
+          PYTHONUTF8: "1"
+        run: python -X utf8 -m pytest -q -rs tests
+
+  paquete:
+    needs: pruebas
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Descargar y comprobar (SHA-256)
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force descargas | Out-Null
+          function Bajar($url, $archivo, $sha) {
+            $dest = "descargas/$archivo"
+            for ($i = 1; $i -le 4; $i++) {
+              try { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing; break }
+              catch { if ($i -eq 4) { throw }; Start-Sleep -Seconds (5 * $i) }
+            }
+            $h = (Get-FileHash -Algorithm SHA256 $dest).Hash.ToLower()
+            if ($h -ne $sha) { throw "SHA-256 de $archivo incorrecto: $h (esperado $sha)" }
+            Write-Host "OK $archivo $h"
+          }
+          $rel = "https://github.com/ggml-org/llama.cpp/releases/download/$env:LLAMA_TAG"
+          Bajar "https://www.python.org/ftp/python/$env:PY_VERSION/python-$env:PY_VERSION-embed-amd64.zip" "python.zip" $env:PY_EMBED_SHA256
+          Bajar "$rel/llama-$env:LLAMA_TAG-bin-win-vulkan-x64.zip" "llama-vulkan.zip" $env:LLAMA_VULKAN_SHA256
+          Bajar "$rel/llama-$env:LLAMA_TAG-bin-win-cpu-x64.zip" "llama-cpu.zip" $env:LLAMA_CPU_SHA256
+          Bajar $env:SYMPY_URL "sympy.whl" $env:SYMPY_SHA256
+          Bajar $env:MPMATH_URL "mpmath.whl" $env:MPMATH_SHA256
+          # Licencia de llama.cpp: del commit fijado (la etiqueta tiene que apuntar a él)
+          $tag = (git ls-remote https://github.com/ggml-org/llama.cpp.git "refs/tags/$env:LLAMA_TAG").Split()[0]
+          if ($tag -ne $env:LLAMA_COMMIT) { throw "La etiqueta $env:LLAMA_TAG apunta a $tag, no a $env:LLAMA_COMMIT" }
+          git init -q llama-src
+          git -C llama-src fetch -q --depth 1 https://github.com/ggml-org/llama.cpp.git $env:LLAMA_COMMIT
+          git -C llama-src show "FETCH_HEAD:LICENSE" | Set-Content -Encoding utf8 descargas/llama.cpp-LICENSE.txt
+
+      - name: Armar la carpeta portable
+        run: |
+          $ErrorActionPreference = "Stop"
+          $d = "dist/TISMA-Code"
+          New-Item -ItemType Directory -Force "$d/python", "$d/app", "$d/lib", "$d/llama/vulkan", "$d/llama/cpu", "$d/LICENCIAS" | Out-Null
+          Expand-Archive descargas/python.zip "$d/python"
+          Expand-Archive descargas/llama-vulkan.zip "$d/llama/vulkan"
+          Expand-Archive descargas/llama-cpu.zip "$d/llama/cpu"
+          python -I -c "import sys, zipfile; [zipfile.ZipFile(w).extractall(sys.argv[-1]) for w in sys.argv[1:-1]]" descargas/sympy.whl descargas/mpmath.whl "$d/lib"
+          # sys.path del Python embebido: su biblioteca, la app y sympy/mpmath; sin site ni la carpeta actual
+          Remove-Item "$d/python/python312._pth"
+          Set-Content -Encoding ascii "$d/python/python312._pth" "python312.zip`r`n.`r`n..\app`r`n..\lib"
+          Copy-Item -Recurse userspace/tisma-code/tisma_code "$d/app/tisma_code"
+          Get-ChildItem -Recurse -Directory -Filter __pycache__ "$d/app" | Remove-Item -Recurse -Force
+          foreach ($f in "TISMA Code.cmd", "TISMA Code (solo CPU).cmd", "TISMA Code.vbs", "LEEME.txt") {
+            $t = (Get-Content -Raw "userspace/tisma-code/windows/$f") -replace "`r?`n", "`r`n"
+            [IO.File]::WriteAllText((Join-Path (Resolve-Path $d) $f), $t)
+          }
+          Copy-Item LICENSE "$d/LICENCIAS/TISMA-Code-GPL-3.0.txt"
+          Copy-Item "$d/python/LICENSE.txt" "$d/LICENCIAS/Python.txt"
+          Copy-Item descargas/llama.cpp-LICENSE.txt "$d/LICENCIAS/llama.cpp.txt"
+          Copy-Item "$d/llama/cpu/LICENSE-LLVM-OpenMP" "$d/LICENCIAS/LLVM-OpenMP.txt"
+          Get-ChildItem -Recurse "$d/lib" -Filter "LICENSE*" | ForEach-Object { Copy-Item $_.FullName "$d/LICENCIAS/$($_.Directory.Name)-$($_.Name).txt" }
+          "TISMA Code $env:GITHUB_SHA`r`nPython $env:PY_VERSION (embebido) $env:PY_EMBED_SHA256`r`nllama.cpp $env:LLAMA_TAG $env:LLAMA_COMMIT`r`n  vulkan $env:LLAMA_VULKAN_SHA256`r`n  cpu $env:LLAMA_CPU_SHA256`r`nsympy 1.13.3 $env:SYMPY_SHA256`r`nmpmath 1.3.0 $env:MPMATH_SHA256" | Set-Content -Encoding ascii "$d/VERSION.txt"
+
+      - name: Comprobar que arranca (Python embebido, Job Objects, servidor)
+        run: |
+          $ErrorActionPreference = "Stop"
+          $d = Resolve-Path "dist/TISMA-Code"
+          $py = "$d/python/python.exe"
+          $env:PATH = "$d\llama\cpu;$env:PATH"
+          & "$d/llama/cpu/llama-server.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "llama-server (CPU) no arranca" }
+          & "$d/llama/vulkan/llama-server.exe" --version
+          if ($LASTEXITCODE -ne 0) { Write-Warning "llama-server (Vulkan) no arranca en el runner (sin Vulkan): se comprueba en un equipo real" }
+          $prueba = @'
+          import subprocess, tempfile
+          from pathlib import Path
+          from tisma_code import agent, exactas, plataforma as p, server
+          assert p.ES_WINDOWS and p.ram_total_mb() > 0
+          r = exactas.run(Path(tempfile.gettempdir()), "calcular", {"expresion": "1/3 + 1/6"})
+          assert r[1] and "1/2" in r[0], r
+          r = exactas.run(Path(tempfile.gettempdir()), "algebra", {"operacion": "factorizar", "expresion": "x^2 - 1"})
+          assert r[1] and "(x - 1)" in r[0], r      # sympy: solo dentro del Job restringido
+          m = p.lanzar_motor(["llama-server", "--version"])   # el motor, dentro de su Job (un proceso, memoria acotada)
+          assert m.wait(60) == 0, m.returncode
+          p.cerrar_job(m)
+          print("OK")
+          '@
+          Set-Content -Encoding utf8 prueba.py $prueba
+          & $py -X utf8 -I prueba.py
+          if ($LASTEXITCODE -ne 0) { throw "La prueba con el Python embebido falló" }
+          # El servidor: arranca, sirve la página con el token de un solo uso y se cierra
+          $log = Join-Path $env:RUNNER_TEMP "tisma.log"
+          $p = Start-Process -FilePath $py -ArgumentList "-X", "utf8", "-I", "-m", "tisma_code", "--no-browser" -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -WindowStyle Hidden
+          $url = $null
+          for ($i = 0; $i -lt 60 -and -not $url; $i++) {
+            Start-Sleep -Seconds 1
+            if (Test-Path $log) { $url = (Select-String -Path $log -Pattern "^http://127\.0\.0\.1:\d+/\?t=" | Select-Object -First 1).Line }
+          }
+          if (-not $url) { Get-Content "$log.err" -ErrorAction SilentlyContinue; throw "El servidor no arrancó" }
+          $r = Invoke-WebRequest -Uri $url -UseBasicParsing
+          if ($r.StatusCode -ne 200 -or $r.Content -notmatch "TISMA") { throw "La página no se sirvió" }
+          try { Invoke-WebRequest -Uri $url -UseBasicParsing | Out-Null; throw "El token de un solo uso sirvió dos veces" }
+          catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw } }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Servidor OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # Se descarga como tisma-code-windows-x64.zip, con la carpeta TISMA-Code dentro
+          name: tisma-code-windows-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
