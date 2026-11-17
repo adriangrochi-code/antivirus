@@ -118,3 +118,8 @@ def test_progreso_de_reducir_llega_al_final(tmp_path, monkeypatch):
     r = red.reducir(str(src), "auto", run=run, progreso=lambda i, n, t: pasos.append((i, n)))
     assert pasos[-1][0] == pasos[-1][1] and [i for i, _ in pasos] == sorted(i for i, _ in pasos)
     assert Path(r["archivo"]).exists()
+
+
+def test_tamano_legible():
+    from tisma_code.server import tamano_legible
+    assert tamano_legible(612_000_000) == "612 MB" and tamano_legible(1_840_000_000) == "1,84 GB"

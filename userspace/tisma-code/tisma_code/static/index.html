@@ -317,7 +317,8 @@ function progreso(ev) {
   b.el.querySelector("b").textContent = ev.titulo;
   b.el.querySelector(".pt").textContent = pct + " %";
   b.el.querySelector("i").style.width = pct + "%";
-  if (ev.paso >= ev.total) { clearInterval(b.tick); b.el.querySelector("small").textContent = "Listo"; delete barras[ev.id]; }
+  if (ev.paso >= ev.total) { clearInterval(b.tick);
+    b.el.querySelector("small").textContent = ev.texto && ev.texto !== "Listo" ? ev.texto : "Listo"; delete barras[ev.id]; }
 }
 
 function onEvent(ev) {

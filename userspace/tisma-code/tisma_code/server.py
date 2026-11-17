@@ -322,15 +322,22 @@ class App:
             self.push({"type": "info", "message": f"Reduciendo {Path(path).name}. Tarda un rato; puedes "
                        "seguir usando el equipo. El original no se toca."})
             r = reducir.reducir(path, nivel, capas, avisar=lambda m: None,
-                                progreso=lambda i, n, t: self.push({"type": "progreso", "id": "reducir",
-                                                                    "titulo": "Reduciendo el modelo",
-                                                                    "paso": i, "total": n, "texto": t}))
+                                # el final lo marca el resumen con los tamaños (abajo), en la misma barra
+                                progreso=lambda i, n, t: i < n and self.push({"type": "progreso", "id": "reducir",
+                                                                              "titulo": "Reduciendo el modelo",
+                                                                              "paso": i, "total": n, "texto": t}))
             capas = (f", sin {len(r['capas_quitadas'])} de {r['capas']} capas" if r["capas_quitadas"] else "")
-            self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {r['antes'] / 1e9:.2f} GB → "
-                       f"{r['despues'] / 1e9:.2f} GB{capas}. Conserva un {r['calidad']:.0f} % de la calidad medida. "
+            ahorro = round(100 * (1 - r["despues"] / r["antes"])) if r["antes"] else 0
+            resumen = (f"{tamano_legible(r['antes'])} → {tamano_legible(r['despues'])} ({ahorro} % más chico, "
+                       f"{r['tipo']}{capas}) · conserva un {r['calidad']:.0f} % de la calidad")
+            self.push({"type": "progreso", "id": "reducir", "titulo": "Modelo reducido", "paso": 1, "total": 1,
+                       "texto": resumen})                  # cierra la barra al 100 % con el tamaño final
+            self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {resumen}. "
                        "Queda como el modelo de siempre; ahora se busca su configuración más rápida."})
             self.optimize(r["archivo"])            # mide y guarda su mejor configuración, y lo deja en uso
         except Exception as e:  # noqa: BLE001 — se informa en el chat; el original queda intacto
+            self.push({"type": "progreso", "id": "reducir", "titulo": "No se pudo reducir", "paso": 1, "total": 1,
+                       "texto": "el original quedó intacto"})
             self.push({"type": "error", "message": f"No se pudo reducir: {e}"})
         finally:
             self._reduciendo.release()
@@ -359,6 +366,8 @@ class App:
                                                                      "titulo": "Optimizando el motor",
                                                                      "paso": i, "total": n, "texto": t}))
         except Exception as e:  # noqa: BLE001 (GGUF raro, motor que no arranca…): se avisa y se restaura
+            self.push({"type": "progreso", "id": "optimizar", "titulo": "No se pudo optimizar", "paso": 1, "total": 1,
+                       "texto": "se sigue con la configuración anterior"})
             self.push({"type": "error", "message": f"No se pudo optimizar: {e}"})
             rec = {}
         try:
@@ -702,6 +711,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})
 
+
+
+def tamano_legible(n: int) -> str:
+    """«612 MB» o «1,84 GB» (los modelos chicos pesan menos de 1 GB: «0,61 GB» se leía mal)."""
+    if n < 1e9:
+        return f"{n / 1e6:.0f} MB"
+    return f"{n / 1e9:.2f} GB".replace(".", ",")
 
 
 def abrir(url: str, tamano, httpd) -> None:
