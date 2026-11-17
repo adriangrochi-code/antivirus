@@ -3,6 +3,13 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 21
+
+- **El sistema instalado arranca** (A275: «VFS: Unable to mount root fs … unknown-block(0,0)»): el menú de
+  arranque quedaba sin el initramfs, la pieza con la que el kernel abre el disco. Ahora se crea el que falte, el menú
+  se rehace siempre que la entrada principal no lo cargue, y al final de la instalación se comprueba: si el equipo
+  no fuera a arrancar, el instalador lo dice en vez de terminar «bien».
+
 ## Novedades de la preview 20
 
 - **Instalar ya no depende del USB**: «Instalar TISMA OS» carga el sistema en la memoria antes de empezar (si el

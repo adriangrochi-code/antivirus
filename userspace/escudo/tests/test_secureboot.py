@@ -1,4 +1,5 @@
 """tisma-secureboot: qué kernel arranca según Secure Boot, la clave TISMA y la firma."""
+import pytest
 import importlib.machinery
 import importlib.util
 import os
@@ -75,8 +76,12 @@ def _entorno(tmp_path, monkeypatch, menu_primero: str, cfg_previa: str | None):
     if cfg_previa is not None:
         cfg.write_text(cfg_previa.format(deb=deb))
     menu = tmp_path / "grub.cfg"
-    menu.write_text(f"menuentry 'TISMA' {{\n\tlinux\t/{menu_primero} root=UUID=x ro quiet\n}}\n")
+    version = menu_primero.replace("vmlinuz-", "")
+    (boot / f"initrd.img-{version}").write_text("i")
+    menu.write_text(f"menuentry 'TISMA' {{\n\tlinux\t/{menu_primero} root=UUID=x ro quiet\n"
+                    f"\tinitrd\t/initrd.img-{version}\n}}\n")
     monkeypatch.setattr(mod, "BOOT", str(boot))
+    monkeypatch.setattr(mod, "MODULES", str(tmp_path / "sin-modulos"))
     monkeypatch.setattr(mod, "GRUB_CFG", str(cfg))
     monkeypatch.setattr(mod, "GRUB_MENU", str(menu))
     monkeypatch.setattr(mod, "tisma_kernels", lambda: [str(boot / "vmlinuz-7.3.4-centinela-minimal")])
@@ -168,6 +173,7 @@ def test_elegir_rehace_el_menu_si_la_entrada_no_carga_su_initramfs(tmp_path, mon
     previa = '# Generado por tisma-secureboot elegir\nGRUB_TOP_LEVEL="{deb}"\n'
     run, ordenes = _entorno(tmp_path, monkeypatch, "vmlinuz-7.2.12+deb13-amd64", previa)
     (tmp_path / "boot" / "initrd.img-7.2.12+deb13-amd64").write_text("x")      # el initramfs ya existe
+    (tmp_path / "grub.cfg").write_text("menuentry 'TISMA' {\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64 ro\n}\n")  # sin initrd
     mod.elegir(run)
     assert ["/usr/sbin/update-grub"] in ordenes
     # con la línea initrd en el menú, ya no se toca
@@ -176,3 +182,28 @@ def test_elegir_rehace_el_menu_si_la_entrada_no_carga_su_initramfs(tmp_path, mon
     ordenes.clear()
     mod.elegir(run)
     assert ["/usr/sbin/update-grub"] not in ordenes
+
+
+
+def test_crea_el_initramfs_que_falta_y_rehace_el_menu(tmp_path, monkeypatch):
+    """A275 (preview 19): «VFS: Unable to mount root fs … unknown-block(0,0)»: el menú no cargaba initramfs y, si /boot
+    no tenía NINGUNO, se daba por bueno. Ahora se crea el que falte y una entrada sin initrd rehace el menú."""
+    boot, mods = tmp_path / "boot", tmp_path / "modules"
+    boot.mkdir()
+    (mods / "7.2.12+deb13-amd64").mkdir(parents=True)
+    (boot / "vmlinuz-7.2.12+deb13-amd64").write_text("x")
+    hechos = []
+
+    def run(argv, inp=None):
+        hechos.append(argv)
+        if argv[0] == mod.UPDATE_INITRAMFS:
+            (boot / f"initrd.img-{argv[-1]}").write_text("i")
+        return 0, ""
+    assert mod.asegurar_initrd(run, str(boot), str(mods)) == ["7.2.12+deb13-amd64"]
+    assert mod.asegurar_initrd(run, str(boot), str(mods)) == []                 # ya está: no se rehace
+    menu = tmp_path / "grub.cfg"
+    menu.write_text("menuentry 'Debian' {\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64 root=/dev/sda3 ro quiet\n}\n")
+    assert mod.primer_con_initrd(str(menu), str(tmp_path / "boot-vacio")) is False   # sin initrd: no arrancaría
+    with pytest.raises(RuntimeError):
+        mod.asegurar_initrd(lambda a, i=None: (1, "sin espacio"), str(tmp_path / "b2"), str(mods)) if \
+            (tmp_path / "b2").mkdir() or (tmp_path / "b2" / "vmlinuz-7.2.12+deb13-amd64").write_text("x") else None

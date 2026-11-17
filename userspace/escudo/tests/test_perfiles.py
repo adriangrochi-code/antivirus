@@ -116,7 +116,8 @@ def test_installer_downloads_base_extras_after_final_sources():
     assert sp["script"][1] == "-/usr/lib/tisma/crypttab-discard"                 # TRIM del SSD con disco cifrado
     assert sp["script"][2:4] == ["-/usr/bin/tisma-secureboot quitar-minimal", "-/usr/bin/tisma-secureboot elegir"]
     assert "grub-editenv /boot/efi/tisma/grubenv create" in sp["script"][4]     # arranque a prueba de fallos
-    assert sp["script"][5:] == ["-/usr/bin/env TISMA_LIMITE_DESCARGA=1200 /usr/bin/tisma-perfil completar"]
+    assert sp["script"][5:] == ["-/usr/bin/env TISMA_LIMITE_DESCARGA=1200 /usr/bin/tisma-perfil completar",
+                                "/usr/bin/tisma-secureboot verificar"]      # sin «-»: si no arrancaría, lo dice
     assert sp["timeout"] >= 1800   # «-»: sin red no falla
     assert "update-initramfs -c" in sp["script"][0]          # red de seguridad: la ISO no trae los de /boot
     unit = (ROOT / "rootfs/etc/systemd/system/tisma-completar.service").read_text()
