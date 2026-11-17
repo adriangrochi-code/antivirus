@@ -24,7 +24,8 @@ while IFS= read -r linea || [ -n "$linea" ]; do
 done < "$F" > "$tmp"
 if [ "$cambio" = 1 ]; then
     cat "$tmp" > "$F"
-    PATH=/usr/sbin:/usr/bin:/sbin:/bin update-initramfs -u -k all >/dev/null 2>&1 || true
+    # TISMA_SIN_INITRAMFS=1: quien lo llama rehace el initramfs después (el actualizador desde el USB)
+    [ "${TISMA_SIN_INITRAMFS:-}" = 1 ] || PATH=/usr/sbin:/usr/bin:/sbin:/bin update-initramfs -u -k all >/dev/null 2>&1 || true
 fi
 rm -f "$tmp"
 exit 0

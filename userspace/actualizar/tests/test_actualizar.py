@@ -190,3 +190,13 @@ def test_arranque_nunca_con_el_kernel_minimal(tmp_path):
     assert '"-minimal" in primero and not es_maquina_virtual()' in fuente
     # Lo mismo que hace el instalador
     assert "tisma-secureboot quitar-minimal" in (ROOT / "rootfs/etc/calamares/modules/shellprocess-tisma.conf").read_text()
+
+
+def test_actualizar_agrega_discard_a_crypttab_viejos():
+    """Equipos instalados antes de la preview 16: su crypttab (que se conserva) no tenía «discard»."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "tisma_actualizar/motor.py").read_text()
+    i = src.index("/usr/lib/tisma/crypttab-discard")
+    assert "TISMA_SIN_INITRAMFS" in src[i:i + 200] and i < src.index('"update-initramfs", accion')
+    script = (Path(__file__).resolve().parents[3] / "rootfs/usr/lib/tisma/crypttab-discard").read_text()
+    assert '"${TISMA_SIN_INITRAMFS:-}" = 1 ] || ' in script

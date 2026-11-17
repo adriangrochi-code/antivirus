@@ -488,6 +488,11 @@ class Actualizacion:
         self.avisar("arranque", "Preparando idiomas…", 84)
         subprocess.run(["chroot", raiz, "locale-gen"], capture_output=True, env=entorno)
         self.avisar("arranque", "Preparando el arranque…", 88)
+        if self.d["cifrado"]:
+            # Se conserva el crypttab del equipo: los instalados antes de la preview 16 no tenían «discard» (TRIM
+            # del SSD a través del cifrado). Se agrega aquí; el initramfs se rehace justo después.
+            subprocess.run(["chroot", raiz, "/usr/lib/tisma/crypttab-discard"], capture_output=True,
+                           env={**entorno, "TISMA_SIN_INITRAMFS": "1"})
         for version in sorted(modulos):
             accion = "-u" if os.path.exists(os.path.join(boot, f"initrd.img-{version}")) else "-c"
             self.run(["update-initramfs", accion, "-k", version], raiz=raiz, env=entorno)
