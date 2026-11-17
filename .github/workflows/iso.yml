@@ -24,13 +24,14 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: iso
-  cancel-in-progress: false
-
 jobs:
   iso:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[iso')
+    # Cola a nivel del TRABAJO, no del workflow: a nivel del workflow cada push (aunque no pidiera ISO y su trabajo
+    # se saltara) entraba en la cola y cancelaba la ISO que estaba esperando (así se perdió la preview 17)
+    concurrency:
+      group: iso
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     steps:

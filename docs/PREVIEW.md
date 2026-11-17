@@ -11,6 +11,10 @@ ni para equipos con datos importantes sin copia.**
 - **Sin avisos de «iniciando…»** al entrar y menú sin terminales (Drivers, SolidCraft, Revisar el otro sistema).
 - **TISMA Code**: n-gramas en la gráfica y caché de n-gramas guardada que mejora con el uso; barra de progreso que
   avanza también dentro de cada etapa al reducir.
+- **TISMA Code**: el primer mensaje en ~4 s en vez de ~50 s (recupera del disco lo ya procesado); nunca quedan motores
+  de IA huérfanos ocupando memoria al cerrar; medición de n-gramas realista.
+- **Instalación**: sin copia del sistema a medio instalar; el instalador no queda en el sistema instalado; TRIM del
+  SSD con disco cifrado.
 - (La preview 16 no se recomienda: le faltan estos arreglos de instalación.)
 
 ## Novedades de la preview 16
