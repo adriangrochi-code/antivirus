@@ -352,6 +352,11 @@ class Gate:
             if estaticas and inf.veredicto == "limpio":          # medio en firmas: nunca sale «limpio»
                 inf.veredicto = "sospechoso"
                 inf.motivos = [f"detectado: {d.name}" for d in estaticas][:3] + inf.motivos
+        if not avisar_limpio and inf.veredicto == "sospechoso" and not inf.motivos and inf.nota:
+            # Análisis DE ANTEMANO que no llegó a observar el programa (equipo ocupado, aislamiento que no
+            # arrancó…): no se guarda un «sospechoso» que lo bloquearía para siempre; se analiza al abrirlo
+            log.info("Análisis previo sin conclusión (%s): %s", inf.nota, path)
+            return inf
         detonar.guardar_veredicto(inf, path)
         try:
             informe.guardar(inf.to_dict(), path, uid)        # para «Programas revisados» en TISMA Seguridad
@@ -367,8 +372,9 @@ class Gate:
             self.alert(Alert("primera_ejecucion", "low", f"{name}: sin comportamiento malicioso ({inf.entorno}, "
                              f"{inf.segundos:.0f} s).", None, path, "Ya puedes abrirlo con normalidad."))
         elif inf.veredicto == "sospechoso":
-            self.alert(Alert("primera_ejecucion", "medium", f"{name}: hizo cosas raras. " +
-                             " ".join(simples[:2]), None, path,
+            que = (f"hizo cosas raras. {' '.join(simples[:2])}" if simples or inf.motivos else
+                   "no se pudo comprobar qué hace (el análisis no llegó a ejecutarlo).")
+            self.alert(Alert("primera_ejecucion", "medium", f"{name}: {que}", None, path,
                              "No lo abras si no confías en quién te lo dio. Si confías, pulsa «Permitir».",
                              boton="permitir"))
         else:
