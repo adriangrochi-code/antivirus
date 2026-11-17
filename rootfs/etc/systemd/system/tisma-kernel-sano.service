@@ -9,6 +9,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Slice=tisma-segundo-plano.slice
+# Equipos instalados con las previews hasta la 17: el código de TISMA quedó a nombre del uid 1001 (el SEGUNDO
+# usuario del equipo podía modificar código que corre como root). Se corrige en cada arranque (instantáneo).
+ExecStart=-/bin/chown -R root:root /usr/lib/centinela
 ExecStart=-/usr/bin/tisma-secureboot quitar-minimal
 ExecStart=/usr/bin/tisma-secureboot elegir
 

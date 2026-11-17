@@ -235,27 +235,27 @@ grep -q '^auth       required   pam_wheel.so group=sudo' "$CHROOT/etc/pam.d/su" 
 
 LIB="$CHROOT/usr/lib/centinela"
 mkdir -p "$LIB/python" "$LIB/kernel"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/seguridad/tisma_seguridad_panel" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/guia/tisma_guia" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/preferencias/tisma_preferencias" "$LIB/python/"
-rsync -a --delete --exclude __pycache__ "$REPO/userspace/actualizar/tisma_actualizar" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/centinela/centinela" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/escudo/escudo" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/tisma-code/tisma_code" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/asistente/tisma_asistente" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/rendimiento/tisma_rendimiento" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/seguridad/tisma_seguridad_panel" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/guia/tisma_guia" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/bienvenida/tisma_bienvenida" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/preferencias/tisma_preferencias" "$LIB/python/"
+rsync -a --chown=root:root --delete --exclude __pycache__ "$REPO/userspace/actualizar/tisma_actualizar" "$LIB/python/"
 # Kit de endurecimiento para Windows XP–8.1 (escudo windows --kit lo copia a C:\TISMA-Kit)
 python3 "$REPO/windows/construir-kit.py" "$CHROOT/usr/share/tisma/windows-kit" >/dev/null
 # Antes que cualquier apt de la build: su gancho (80-tisma-instantanea) llama a tisma-copias
-rsync -a --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
-rsync -a --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
-rsync -a "$REPO/kernel/" "$LIB/kernel/"
+rsync -a --chown=root:root --exclude __pycache__ "$REPO/userspace/sandbox/tisma_sandbox" "$LIB/python/"
+rsync -a --chown=root:root --exclude __pycache__ "$REPO/userspace/copias/tisma_copias" "$LIB/python/"
+rsync -a --chown=root:root "$REPO/kernel/" "$LIB/kernel/"
 # Herramientas y estrategias de Hope (repositorio público, commit fijado en fetch-hope.sh): HOPE_SRC = ruta local o URL
 if [[ "${TISMA_ISO_MINIMA:-0}" == 1 ]]; then
     log "Imagen mínima: sin Hope ni componentes pesados"
 elif "$REPO/userspace/tisma-code/fetch-hope.sh" "${HOPE_SRC:-https://github.com/adriangrochi-code/hope-0.1}"; then
-    rsync -a --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
+    rsync -a --chown=root:root --delete "$REPO/userspace/tisma-code/vendor/" "$LIB/python/vendor/"
     # Lo que importan sus herramientas (iso/hope-paquetes.list: sympy, scipy, matplotlib, statsmodels, z3, cvc5…,
     # cientos de MB) NO va en la ISO: se suma a «esenciales» y se descarga al instalar en el disco junto con
     # LibreOffice (o en el primer arranque con red, tisma-completar). El código de Hope (~1,6 MB) sí va: sus
@@ -540,6 +540,16 @@ rm -rf "$SBROOT" && mkdir -p "$SBROOT/usr/lib/shim" "$SBROOT/usr/lib/grub"
 cp -a "$CHROOT/usr/lib/shim/." "$SBROOT/usr/lib/shim/"
 cp -a "$CHROOT/usr/lib/grub/x86_64-efi-signed" "$SBROOT/usr/lib/grub/"
 
+# Ningún archivo del sistema puede quedar a nombre de un usuario normal (uid 1000-59999): lo copiado del repositorio
+# conservaba el dueño de la máquina que construye (en GitHub, uid 1001) y en el equipo instalado ese número es el del
+# SEGUNDO usuario, que habría podido cambiar código que corre como root (escalada de privilegios). Se corrige y avisa.
+_ajenos=$(find "$CHROOT" -xdev \( -uid +999 -a -uid -60000 -o -gid +999 -a -gid -60000 \) \
+          -not -path "$CHROOT/home/*" -not -path "$CHROOT/tmp/*" -print 2>/dev/null | wc -l)
+if [[ "$_ajenos" -gt 0 ]]; then
+    log "AVISO: $_ajenos archivo(s) del sistema eran de un usuario normal: pasan a root"
+    find "$CHROOT" -xdev \( -uid +999 -a -uid -60000 -o -gid +999 -a -gid -60000 \) \
+         -not -path "$CHROOT/home/*" -not -path "$CHROOT/tmp/*" -exec chown -h root:root {} +
+fi
 # ---------------------------------------------------------------- 5. ISO
 # Kernel por defecto del sistema INSTALADO fijado desde la imagen: el de Debian (firmado, arranca en cualquier
 # equipo). Así el menú que genera el instalador ya lo pone primero, aunque después falle algún paso: en la A275 la
