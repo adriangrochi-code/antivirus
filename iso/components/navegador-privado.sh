@@ -41,7 +41,11 @@ Unattended-Upgrade::Origins-Pattern { "origin=repository.mullvad.net,codename=st
 UU
 if [[ "$R" == "/" ]]; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get -q -o Acquire::Retries=3 -o DPkg::Lock::Timeout=900 update
+    # Solo la lista del repositorio de Mullvad: si otro repositorio del sistema fallaba (uno caído o sin red a
+    # medias), «apt-get update» devolvía error y la instalación se cortaba entera
+    apt-get -q -o Acquire::Retries=3 -o DPkg::Lock::Timeout=900 \
+        -o Dir::Etc::sourcelist=sources.list.d/tisma-mullvad.list -o Dir::Etc::sourceparts=- \
+        -o APT::Get::List-Cleanup=0 update
     apt-get -y -q -o DPkg::Lock::Timeout=900 install --no-install-recommends mullvad-browser
 fi
 # Ajustes de TISMA: SOLO los que ningún sitio puede ver (el anti-rastreo de Mullvad/Tor funciona porque todos los
