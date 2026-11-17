@@ -515,3 +515,13 @@ def test_bluetooth_temprano_solo_con_emparejados():
     assert c["Install"]["WantedBy"] == "multi-user.target" and c["Service"]["Type"] == "oneshot"
     assert "/var/lib/bluetooth/*/*/info" in c["Service"]["ExecStart"] and "--no-block" in c["Service"]["ExecStart"]
     assert "tisma-bluetooth-emparejado" in (ROOT.parent / "iso/build-iso.sh").read_text()
+
+
+def test_apagar_normal_confirma_el_arranque():
+    """Encender y apagar antes de 2 min no cuenta como arranque fallido (si no, a la 3.ª vez: modo seguro)."""
+    c = ini(SD / "tisma-arranque-ok-apagado.service")
+    assert c["Service"]["ExecStop"] == "/usr/lib/tisma/arranque-ok apagado" and c["Service"]["RemainAfterExit"] == "yes"
+    assert "display-manager.service" in c["Unit"]["After"] and "boot-efi.mount" in c["Unit"]["After"]
+    assert "tisma-arranque-ok-apagado.service" in (ROOT.parent / "iso/build-iso.sh").read_text()
+    s = (ROOT / "usr/lib/tisma/arranque-ok").read_text()
+    assert s.index('[ "$MODO" = apagado ] && exit 0') < s.index("tisma-volver-hecho ]")

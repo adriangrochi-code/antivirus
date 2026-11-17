@@ -1,0 +1,21 @@
+# Apagar o reiniciar normalmente después de llegar al inicio de sesión también confirma el arranque (pone a cero
+# el contador de /etc/grub.d/06_tisma_fallos aunque no hayan pasado los 2 minutos de tisma-arranque-ok.timer).
+# Ordenado después de la pantalla de inicio de sesión y de la partición EFI: al apagar se detiene ANTES que
+# ellas (con la pantalla todavía activa y /boot/efi todavía montada).
+[Unit]
+Description=TISMA: confirmar el arranque al apagar
+ConditionPathExists=!/run/live
+After=display-manager.service local-fs.target boot-efi.mount
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/lib/tisma/arranque-ok apagado
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=graphical.target

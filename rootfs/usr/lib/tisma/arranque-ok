@@ -2,7 +2,11 @@
 # TISMA: arranque a prueba de fallos (/etc/grub.d/06_tisma_fallos). A los 2 minutos, si ya hay pantalla de inicio
 # de sesión o escritorio, el contador de intentos de GRUB vuelve a cero. Si este arranque fue una «vuelta atrás»
 # (initramfs tisma-volver), aparta los kernels de /boot que ya no tienen módulos, regenera el menú y avisa.
+# «arranque-ok apagado» (tisma-arranque-ok-apagado.service): al apagar o reiniciar normalmente antes de esos
+# 2 minutos también vale: si no, encender y apagar enseguida contaba como arranque fallido y a la tercera vez
+# aparecía el modo seguro sin motivo.
 set -u
+MODO=${1:-}
 ENV=""
 for d in /boot/efi /efi /boot; do
     if mountpoint -q "$d" 2>/dev/null; then ENV="$d/tisma/grubenv"; break; fi
@@ -16,6 +20,7 @@ if [ -n "$ENV" ] && listo; then
     [ -e "$ENV" ] || grub-editenv "$ENV" create
     grub-editenv "$ENV" unset tisma_intentos
 fi
+[ "$MODO" = apagado ] && exit 0
 if [ -r /run/tisma-volver-hecho ] && [ ! -e /run/tisma-volver-limpio ]; then
     read -r NOMBRE ANTES < /run/tisma-volver-hecho
     APARTE=/boot/tisma-apartados
