@@ -486,7 +486,7 @@ async function openModels() {
     const d = put(`<b>Reducir este modelo</b> (se crea uno nuevo; el original no se toca)<br>` +
       `<button class="chip" data-r="auto">Automático</button> un escalón más liviano que ahora<br>` +
       `<div style="margin:6px 0"><button class="chip" data-r="calidad">Buscar el más chico</button> que conserve al menos ` +
-      `<input type="range" class="cal" min="50" max="99" value="90" style="vertical-align:middle;width:140px"> ` +
+      `<input type="range" class="cal" min="50" max="99" value="90" style="vertical-align:middle;width:140px;accent-color:var(--accent)"> ` +
       `<b class="calv">90 %</b> de la calidad <small>(prueba varios formatos y mide cada uno: tarda más)</small></div>` +
       info.niveles.map(n => `<button class="chip" data-r="${n}">${NOMBRE[n][0]}</button> ${NOMBRE[n][1]}<br>`).join("") +
       (info.manuales && info.manuales.length ? `<details style="margin:6px 0"><summary>Avanzado: elegir el formato (cuantización)</summary>` +
