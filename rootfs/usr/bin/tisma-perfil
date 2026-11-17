@@ -23,6 +23,11 @@ import subprocess
 import sys
 import time
 
+# El instalador (Calamares) ejecuta esto con un PATH sin /usr/sbin: update-grub no encontraba grub-mkconfig, apt no
+# podía correr los avisos de los paquetes del kernel y el error quedaba oculto (paso «-»). Resultado en la A275:
+# el kernel minimal seguía primero en el menú y sin initramfs («Loading Linux …-centinela-minimal»).
+os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 DIR = os.environ.get("TISMA_PERFILES", "/usr/share/tisma/perfiles")
 ESTADO = os.environ.get("TISMA_PERFIL_ESTADO", "/run/tisma-perfil/estado.json")
 COMPONENTES = os.environ.get("TISMA_COMPONENTES", "/usr/lib/tisma/componentes")

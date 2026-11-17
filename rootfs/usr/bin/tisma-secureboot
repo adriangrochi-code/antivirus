@@ -26,6 +26,11 @@ import subprocess
 import sys
 import tempfile
 
+# El instalador (Calamares) ejecuta esto con un PATH sin /usr/sbin: update-grub no encontraba grub-mkconfig, apt no
+# podía correr los avisos de los paquetes del kernel y el error quedaba oculto (paso «-»). Resultado en la A275:
+# el kernel minimal seguía primero en el menú y sin initramfs («Loading Linux …-centinela-minimal»).
+os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 CERT = "/usr/share/tisma/secureboot/tisma-mok.der"
 GRUB_CFG = "/etc/default/grub.d/62-tisma-kernel.cfg"
 BOOT = "/boot"
