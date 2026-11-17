@@ -597,7 +597,8 @@ SEC="$SEC ia32_emulation=0 vdso32=0"
 # (marca /tisma-instalado en su partición de arranque: el USB se quedó puesto tras instalar), arranca el sistema
 # instalado. Esc durante los 3 s muestra las opciones (probar sin instalar, gráficos básicos, diagnóstico…).
 # El arranque silencioso ya viene en SEC (50-centinela.cfg); el modo diagnóstico lo quita para ver los mensajes
-SILENCIO="loglevel=3 rd.udev.log_level=3 systemd.show_status=false vt.global_cursor_default=0"
+# drm.panic_screen=kmsg: si el kernel falla, la pantalla muestra el texto del error (no un código QR ilegible en una foto)
+SILENCIO="loglevel=3 rd.udev.log_level=3 systemd.show_status=false vt.global_cursor_default=0 drm.panic_screen=kmsg"
 [[ "$SEC" == *"$SILENCIO"* ]] || die "50-centinela.cfg ya no trae los parámetros de arranque silencioso"
 DIAG="${LIVE/ quiet splash/} ${SEC/$SILENCIO /}"
 cat > "$ISODIR/boot/grub/grub.cfg" <<FINMENU
