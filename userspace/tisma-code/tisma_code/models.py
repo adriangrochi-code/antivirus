@@ -26,8 +26,9 @@ _FILE = re.compile(r"^[\w./ -]+\.gguf$")
 _SPLIT = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$")
 
 
-def _get_json(url: str, timeout: int = 30):
-    req = urllib.request.Request(url, headers={"User-Agent": "tisma-code/0.1"})
+def _get_json(url: str, timeout: int = 30, api_key: str | None = None):
+    hdr = {"User-Agent": "tisma-code/0.1", **({"Authorization": f"Bearer {api_key}"} if api_key else {})}
+    req = urllib.request.Request(url, headers=hdr)
     with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
         return json.load(r)
 
@@ -268,9 +269,11 @@ def local_models() -> list[dict]:
     return out
 
 
-def endpoint_models(endpoint: str) -> list[str]:
+def endpoint_models(endpoint: str, api_key: str = "local") -> list[str]:
+    """Modelos que sirve el motor. Con la clave: el llama-server propio arranca con --api-key y sin ella responde
+    401 (antes eso se leía como «motor apagado» y se podía volver a arrancar un motor que ya andaba)."""
     try:
-        data = _get_json(endpoint.rstrip("/") + "/models", timeout=3)
+        data = _get_json(endpoint.rstrip("/") + "/models", timeout=3, api_key=api_key)
         return [m["id"] for m in data.get("data", [])]
     except Exception:  # noqa: BLE001
         return []

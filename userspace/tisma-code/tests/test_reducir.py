@@ -130,3 +130,45 @@ def test_avance_dentro_de_cada_etapa():
     assert fraccion(["llama-imatrix", "--chunks", "24"], "computing...[1]5.1,[2]4.9,[6]4.7,") == 0.25
     assert fraccion(["llama-quantize", "a", "b"], "[  10/ 200] blk.0\n[ 100/ 200] blk.9") == 0.5
     assert fraccion(["llama-perplexity", "--chunks", "8"], "cargando") is None
+
+
+def test_buscar_por_calidad_elige_el_mas_chico_que_llega():
+    calidad = {"Q8_0": 99.5, "Q6_K": 99, "Q5_K_M": 98, "Q4_K_M": 95, "IQ4_XS": 93, "Q3_K_M": 89, "IQ3_M": 86,
+               "IQ3_XXS": 80, "IQ2_M": 70, "Q2_K": 65}
+    tipos = list(calidad)
+    medidos = []
+    elegido, m = r.buscar_por_calidad(tipos, lambda t: medidos.append(t) or calidad[t], 90)
+    assert elegido == "IQ4_XS" and len(medidos) <= 4                     # 4 mediciones en vez de 10
+    assert r.buscar_por_calidad(tipos, lambda t: calidad[t], 99.9)[0] is None   # ninguno llega
+    assert r.buscar_por_calidad(tipos, lambda t: calidad[t], 50)[0] == "Q2_K"
+
+
+def test_reducir_con_calidad_minima_de_punta_a_punta(tmp_path, monkeypatch):
+    """«Acepto conservar al menos 90 %»: deja solo el formato más chico que lo cumple (medido)."""
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path / "models")
+    d = tmp_path / "models" / "qwen"
+    d.mkdir(parents=True)
+    src = d / "qwen-1.5b-f16.gguf"
+    src.write_bytes(b"x" * 1000)
+    monkeypatch.setattr("tisma_code.motor.gguf_info", lambda p: {"capas": 28, "tipo_archivo": 1})
+    calidad = {"Q8_0": 99.5, "Q6_K": 99, "Q5_K_M": 98, "Q4_K_M": 95, "IQ4_XS": 93, "Q3_K_M": 89, "IQ3_M": 86,
+               "IQ3_XXS": 80, "IQ2_M": 70, "Q2_K": 65}
+    hechos = {}
+
+    def run(argv, trabajo):
+        if argv[0] == "llama-quantize":
+            hechos[argv[-3]] = argv[-2]
+            Path(argv[-3]).write_bytes(b"y" * 100)
+            return ""
+        if argv[0] == "llama-perplexity":
+            t = hechos.get(argv[2])
+            return f"Final estimate: PPL = {10.0 if t is None else 10.0 * 100 / calidad[t]:.4f}"
+        return ""
+    res = r.reducir(str(src), "calidad:90", run=run, trabajo_base=tmp_path / "trabajo")
+    assert res["tipo"] == "IQ4_XS" and 90 <= res["calidad"] < 95 and res["objetivo"] == 90
+    assert Path(res["archivo"]).name == "qwen-1.5b-f16-reducido-iq4_xs.gguf" and src.exists()
+    assert list((tmp_path / "trabajo").iterdir()) == []                    # las pruebas no quedan
+    res = r.reducir(str(src), "calidad:99", run=run, trabajo_base=tmp_path / "trabajo")
+    assert res["tipo"] == "Q6_K"
+    with pytest.raises(r.ReducirError):
+        r.reducir(str(src), "calidad:30", run=run, trabajo_base=tmp_path / "trabajo")

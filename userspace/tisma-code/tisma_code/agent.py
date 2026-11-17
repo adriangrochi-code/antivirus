@@ -168,6 +168,7 @@ def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: lis
 
 
 RECONEXION_S = 120
+MAX_TOKENS_RESPUESTA = 8192
 
 
 def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
@@ -175,6 +176,9 @@ def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: li
     _check_local_owner(endpoint)
     body = {"model": model, "messages": messages, "temperature": 0.2, "top_p": 0.9}
     body.update(extra or {})       # p. ej. sin «pensamiento» para resúmenes (Strata y llama.cpp con --jinja)
+    # Tope por respuesta: un modelo chico que entra en bucle seguía escribiendo hasta llenar el contexto (minutos
+    # con la app en «Escribiendo la respuesta…»). 8192 alcanza para escribir un archivo entero.
+    body.setdefault("max_tokens", MAX_TOKENS_RESPUESTA)
     if tool_schemas:
         body["tools"] = tool_schemas
         body["tool_choice"] = "auto"

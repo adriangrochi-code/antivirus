@@ -146,8 +146,12 @@ class App:
         import functools
 
         from .agent import chat_completion
+        return functools.partial(chat_completion, api_key=self.clave())
+
+    def clave(self) -> str:
+        """La clave de llama-server si el endpoint es el servidor propio; si no, la de siempre."""
         own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
-        return functools.partial(chat_completion, api_key=self.server.api_key if own else "local")
+        return self.server.api_key if own else "local"
 
     def motor_brief(self) -> dict:
         """Qué motor sirve ahora a TISMA Code y con qué configuración."""
@@ -179,7 +183,13 @@ class App:
     def preferido(self) -> dict | None:
         """El modelo elegido (a mano, al optimizarlo o al reducirlo), si sigue descargado."""
         p = self.config.get("preferido")
-        return next((m for m in models.local_models() if p and str(Path(m["path"]).resolve()) == p), None)
+        m = next((m for m in models.local_models() if p and str(Path(m["path"]).resolve()) == p), None)
+        if p and not m:
+            # Borrado (o movido): se olvida, y la barra deja de mostrar el nombre de un modelo que ya no está
+            self.config.pop("preferido", None)
+            if self.config.get("model") == Path(p).name:
+                self.config["model"] = ""
+        return m
 
     def auto_motor(self) -> None:
         """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado (salvo que se
@@ -193,7 +203,7 @@ class App:
 
     def _auto_motor(self) -> None:
         from . import motor
-        if models.endpoint_models(self.config["endpoint"]):
+        if models.endpoint_models(self.config["endpoint"], self.clave()):
             return
         strata_alive = bool(models.endpoint_models(DEFAULT_ENDPOINT))
         eng = motor.choose_engine(self.hw, strata_alive)
@@ -335,6 +345,8 @@ class App:
                        f"{r['tipo']}{capas}) · conserva un {r['calidad']:.0f} % de la calidad")
             self.push({"type": "progreso", "id": "reducir", "titulo": "Modelo reducido", "paso": 1, "total": 1,
                        "texto": resumen})                  # cierra la barra al 100 % con el tamaño final
+            if r.get("aviso"):
+                self.push({"type": "info", "message": r["aviso"]})
             self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {resumen}. "
                        "Queda como el modelo de siempre; ahora se busca su configuración más rápida."})
             self.optimize(r["archivo"])            # mide y guarda su mejor configuración, y lo deja en uso
@@ -376,7 +388,7 @@ class App:
         try:
             if rec.get("gen"):
                 self.usar_modelo(path)    # optimizado: queda en uso y como el de siempre, con lo medido
-            elif was_serving or not models.endpoint_models(self.config["endpoint"]):
+            elif was_serving or not models.endpoint_models(self.config["endpoint"], self.clave()):
                 self.config["endpoint"] = self.server.start(path, self.hw)
                 if self.session:
                     self.session.endpoint = self.config["endpoint"]
@@ -394,8 +406,7 @@ class App:
 
     def context(self, wanted: int) -> int:
         """La ventana que de verdad tiene el motor (si la publica); nunca más que esa."""
-        own = self.server.proc and self.config["endpoint"].endswith(f":{self.server.port}/v1")
-        real = models.server_context(self.config["endpoint"], self.server.api_key if own else "local")
+        real = models.server_context(self.config["endpoint"], self.clave())
         return min(wanted, real) if real else wanted
 
     def save_config(self) -> None:
@@ -549,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "estadisticas": pool.stats if pool else {}})
             if url.path == "/api/models/local":
                 return self._send(200, {"downloaded": models.local_models(),
-                                        "endpoint": models.endpoint_models(APP.config["endpoint"]),
+                                        "endpoint": models.endpoint_models(APP.config["endpoint"], APP.clave()),
                                         "strata": models.strata_status(APP.hw), "motor": APP.motor_brief()})
             if url.path == "/api/componentes":
                 return self._send(200, APP.componentes())
@@ -689,6 +700,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
                 from . import reducir as red
                 nivel = b.get("nivel") if b.get("nivel") in ("auto", *red.NIVELES, *red.MANUALES) else "auto"
+                if isinstance(b.get("calidad"), int) and 50 <= b["calidad"] <= 99:
+                    nivel = f"calidad:{b['calidad']}"      # «acepto conservar al menos X %»: busca el más chico
                 threading.Thread(target=APP.reducir, args=(path, nivel, b.get("capas") is True), daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/sin-apuro":
@@ -742,6 +755,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args(argv)
     APP = App()
+    APP.preferido()                    # si el modelo de siempre se borró, la barra no muestra su nombre al abrir
     threading.Thread(target=APP.auto_motor, daemon=True).start()
     threading.Thread(target=APP.vigilar_reposo, daemon=True).start()
     # El agente (con Hope y numpy) tarda en cargar en equipos lentos: la ventana se abre primero y él se carga

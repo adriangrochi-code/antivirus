@@ -79,7 +79,40 @@ def manuales_posibles(origen: str | None) -> list[str]:
     return [t for t, (b, _) in MANUALES.items() if bits and b < bits - 0.15]
 
 
+def objetivo_calidad(nivel: str) -> int | None:
+    """«calidad:90» → 90 (lo mínimo que se acepta conservar, en %). Fuera de 50–99 no vale."""
+    m = re.fullmatch(r"calidad:(\d{1,3})", nivel or "")
+    if not m:
+        return None
+    v = int(m.group(1))
+    if not 50 <= v <= 99:
+        raise ReducirError("La calidad mínima tiene que estar entre 50 % y 99 %.")
+    return v
+
+
+def buscar_por_calidad(tipos: list[str], medir, objetivo: float) -> tuple[str | None, dict[str, float]]:
+    """El formato MÁS CHICO que conserva al menos `objetivo` % de calidad, midiendo lo menos posible.
+
+    tipos: de más a menos bits; medir(tipo) → % de calidad medido. La calidad baja (casi siempre) con los bits, así
+    que se busca por mitades: con 10 formatos, unas 4 mediciones en vez de 10. Devuelve (tipo o None si ninguno
+    llega, {tipo: calidad medida})."""
+    medidas: dict[str, float] = {}
+    lo, hi, mejor = 0, len(tipos) - 1, None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        q = medidas[tipos[mid]] = medir(tipos[mid])
+        if q >= objetivo:
+            mejor, lo = tipos[mid], mid + 1          # llega: probar uno más chico
+        else:
+            hi = mid - 1                             # no llega: probar uno más grande
+    return mejor, medidas
+
+
 def tipo_destino(origen: str | None, nivel: str) -> str:
+    if objetivo_calidad(nivel) is not None:
+        if not manuales_posibles(origen):
+            raise ReducirError("No sé en qué precisión está este modelo, o ya es de los más chicos.")
+        return "por-calidad"
     if nivel in MANUALES:
         if nivel not in manuales_posibles(origen):
             raise ReducirError(f"{nivel} no achica este modelo: elige un formato con menos bits.")
@@ -221,12 +254,17 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
     info = gguf_info(str(src))
     origen = precision(src, info.get("tipo_archivo"))
     tipo = tipo_destino(origen, nivel)
+    objetivo = objetivo_calidad(nivel)
+    if objetivo is not None:
+        quitar_capas = False                      # con objetivo de calidad, solo el formato (cada prueba ya cuesta)
     base_dir = trabajo_base or models.MODELS_DIR.parent / "reducir"
     trabajo = base_dir / secrets.token_hex(6)
     trabajo.mkdir(parents=True, mode=0o700)
     # Etapas: importancia, calidad del original, [cada capa candidata + la referencia], versión reducida, su calidad
     n_cand = len(candidatas(info.get("capas", 0))) if quitar_capas else 0
     total = 4 + (n_cand + 1 if quitar_capas else 0)
+    if objetivo is not None:                  # importancia, original y unas log2(n)+1 pruebas
+        total = 2 + max(1, len(manuales_posibles(origen))).bit_length()
     hecho = [0]
     aviso_base = avisar
 
@@ -281,12 +319,41 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
             ref = ppl(sin_quitar)                         # la referencia es la misma precisión, sin quitar capas
             sin_quitar.unlink(missing_ok=True)
             quitar = elegir_capas(ref, medidas)
-        avisar("Creando la versión reducida…")
-        nombre = f"{src.stem}-reducido-{tipo.lower()}" + (f"-{len(quitar)}capas" if quitar else "") + ".gguf"
-        tmp = trabajo / nombre
-        cuantizar(tmp, quitar)
-        avisar("Midiendo la calidad de la versión reducida…")
-        final = ppl(tmp)
+        aviso_objetivo = ""
+        if objetivo is not None:
+            tipos = manuales_posibles(origen)
+            probados: dict[str, tuple[Path, float]] = {}
+
+            def medir(t: str) -> float:
+                nonlocal tipo
+                tipo = t
+                avisar(f"Probando {t} (¿conserva al menos {objetivo} %?)…")
+                f = trabajo / f"prueba-{t.lower()}.gguf"
+                cuantizar(f, [])
+                p = ppl(f)
+                q = max(0.0, min(100.0, 100 * base / p)) if p else 0.0
+                probados[t] = (f, p)
+                return q
+            elegido, medidas = buscar_por_calidad(tipos, medir, objetivo)
+            if elegido is None:                       # ninguno llega: el de más calidad de los probados
+                elegido = max(medidas, key=medidas.get)
+                aviso_objetivo = (f"Ningún formato más chico llega al {objetivo} %: se dejó el que más conserva "
+                                  f"({elegido}, {medidas[elegido]:.0f} %).")
+            for t, (f, _) in probados.items():        # solo queda el elegido
+                if t != elegido:
+                    f.unlink(missing_ok=True)
+            tipo = elegido
+            nombre = f"{src.stem}-reducido-{tipo.lower()}.gguf"
+            tmp = trabajo / nombre
+            probados[tipo][0].rename(tmp)
+            final = probados[tipo][1]
+        else:
+            avisar("Creando la versión reducida…")
+            nombre = f"{src.stem}-reducido-{tipo.lower()}" + (f"-{len(quitar)}capas" if quitar else "") + ".gguf"
+            tmp = trabajo / nombre
+            cuantizar(tmp, quitar)
+            avisar("Midiendo la calidad de la versión reducida…")
+            final = ppl(tmp)
         if quitar and final / base - 1 > PERDIDA_MAX_TOTAL * 1.5:   # juntas empeoraron de más: sin quitar capas
             avisar("Quitar capas empeoraba demasiado: se conservan todas.")
             quitar = []
@@ -302,6 +369,7 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
         calidad = max(0.0, min(100.0, 100 * base / final)) if final else 0.0
         return {"archivo": str(destino), "antes": total_size(src), "despues": destino.stat().st_size,
                 "tipo": tipo, "capas_quitadas": quitar, "capas": info.get("capas", 0),
-                "ppl_original": round(base, 3), "ppl_reducido": round(final, 3), "calidad": round(calidad, 1)}
+                "ppl_original": round(base, 3), "ppl_reducido": round(final, 3), "calidad": round(calidad, 1),
+                **({"objetivo": objetivo, "aviso": aviso_objetivo} if objetivo is not None else {})}
     finally:
         shutil.rmtree(trabajo, ignore_errors=True)

@@ -112,6 +112,9 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
 .pop .it:hover { background: var(--ctl); }
 .pop .it small { margin-left: auto; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
 .pop .it.sel { color: var(--accent-2); }
+/* Nombres largos (p. ej. «…-reducido-iq3_m.gguf»): se recortan con «…» y los botones no se aprietan */
+.pop .it .nom { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop .it small.hilos { flex: none; }
 .pop .it small.hilos { margin-left: 6px; max-width: none; color: var(--blue-2); }
 .pop .it small.hilos:hover { color: var(--accent-2); }
 .pop .path { font-family: var(--mono); font-size: 12px; color: var(--blue-2); padding: 6px 8px; word-break: break-all;
@@ -318,7 +321,8 @@ function progreso(ev) {
   b.el.querySelector(".pt").textContent = pct + " %";
   b.el.querySelector("i").style.width = pct + "%";
   if (ev.paso >= ev.total) { clearInterval(b.tick);
-    b.el.querySelector("small").textContent = ev.texto && ev.texto !== "Listo" ? ev.texto : "Listo"; delete barras[ev.id]; }
+    b.el.querySelector("small").textContent = ev.texto && ev.texto !== "Listo" ? ev.texto : "Listo"; delete barras[ev.id];
+    refreshEngine(); }                              // el modelo en uso pudo cambiar: la barra lo muestra ya
 }
 
 function onEvent(ev) {
@@ -435,10 +439,10 @@ async function openModels() {
   try { comps = await api("/api/componentes"); } catch (e) {}
   const cur = state.config.model;
   $("#modelPop").innerHTML = `<div class="tt">En el motor local</div>` +
-    (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}">${x === cur ? "✓" : "○"} ${esc(x)}</div>`).join("") ||
+    (m.endpoint.map(x => `<div class="it ${x === cur ? "sel" : ""}" data-m="${esc(x)}" title="${esc(x)}">${x === cur ? "✓" : "○"} <span class="nom">${esc(x.split("/").pop())}</span></div>`).join("") ||
      `<div class="it" style="cursor:default;color:var(--faint)">${m.strata && !m.strata.ok ? esc(m.strata.motivo) : "Motor apagado: abre Strata o usa un modelo descargado"}</div>`) +
     (m.downloaded.length ? `<hr><div class="tt">Descargados (se sirven con llama.cpp)</div>` +
-      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}">⬇ ${esc(x.name.split("/").pop())}<small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small><small class="hilos" data-reducir="${esc(x.path)}" title="Crear una versión más chica y rápida quitando lo que menos aporta (el original no se toca)">✂ reducir</small></div>`).join("") : "") +
+      m.downloaded.map(x => `<div class="it" data-serve="${esc(x.path)}" title="${esc(x.name.split("/").pop())}">⬇ <span class="nom">${esc(x.name.split("/").pop())}</span><small>${gb(x.size)}</small><small class="hilos" data-hilos="${esc(x.path)}" title="Medir la configuración más rápida de este modelo en este equipo (dispositivo, reparto de expertos, hilos, borrador)">⚙ optimizar</small><small class="hilos" data-reducir="${esc(x.path)}" title="Crear una versión más chica y rápida quitando lo que menos aporta (el original no se toca)">✂ reducir</small></div>`).join("") : "") +
     (Object.keys(comps).length ? `<hr><div class="tt">Componentes</div>` + Object.entries(comps).map(([k, c]) =>
       `<div class="it" ${c.estado === "no" || c.estado === "error" ? `data-comp="${esc(k)}"` : 'style="cursor:default"'}>` +
       `${c.estado === "instalado" ? "✓" : c.estado === "instalando" ? "⏳" : "＋"} ${esc(c.nombre)}<small>${
@@ -481,6 +485,9 @@ async function openModels() {
                     muy_liviano: ["Muy liviano", "para equipos muy lentos: pierde bastante calidad"]};
     const d = put(`<b>Reducir este modelo</b> (se crea uno nuevo; el original no se toca)<br>` +
       `<button class="chip" data-r="auto">Automático</button> un escalón más liviano que ahora<br>` +
+      `<div style="margin:6px 0"><button class="chip" data-r="calidad">Buscar el más chico</button> que conserve al menos ` +
+      `<input type="range" class="cal" min="50" max="99" value="90" style="vertical-align:middle;width:140px"> ` +
+      `<b class="calv">90 %</b> de la calidad <small>(prueba varios formatos y mide cada uno: tarda más)</small></div>` +
       info.niveles.map(n => `<button class="chip" data-r="${n}">${NOMBRE[n][0]}</button> ${NOMBRE[n][1]}<br>`).join("") +
       (info.manuales && info.manuales.length ? `<details style="margin:6px 0"><summary>Avanzado: elegir el formato (cuantización)</summary>` +
         `<small>Ahora: ${esc((info.origen || "?").toUpperCase())}. Menos bits = más chico y rápido, pero responde peor.</small><br>` +
@@ -488,10 +495,13 @@ async function openModels() {
         `</details>` : "") +
       `<label style="display:inline-flex;gap:6px;margin:6px 0"><input type="checkbox" class="capas"> Quitar también capas que casi no aportan (más rápido; tarda más en prepararse)</label><br>` +
       `<button class="chip" data-r="">Cancelar</button>`, "note");
+    d.querySelector(".cal").oninput = e => d.querySelector(".calv").textContent = e.target.value + " %";
     d.querySelectorAll("[data-r]").forEach(b => b.onclick = async () => {
       d.querySelectorAll("button, input").forEach(x => x.disabled = true);
       if (!b.dataset.r) return;
-      try { await api("/api/models/reducir", {path: el.dataset.reducir, nivel: b.dataset.r, capas: d.querySelector(".capas").checked}); }
+      const cal = b.dataset.r === "calidad" ? {calidad: +d.querySelector(".cal").value} : {};
+      try { await api("/api/models/reducir", {path: el.dataset.reducir, nivel: b.dataset.r === "calidad" ? "auto" : b.dataset.r,
+                                              capas: d.querySelector(".capas").checked, ...cal}); }
       catch (e) { put(esc(e.message), "err"); }
     });
   });
@@ -711,6 +721,11 @@ async function refreshEngine() {
     const mo = m.motor || {};
     $("#engine").textContent = m.endpoint.length ? `${mo.nombre || "motor"}${mo.gen ? " · " + mo.gen + " tok/s" : ""}` : "motor apagado";
     $("#engine").title = [mo.modelo, mo.detalle, mo.contexto ? `contexto ${Math.round(mo.contexto / 1024)}k` : ""].filter(Boolean).join(" · ");
+    // El modelo puede cambiar sin tocar la barra (al terminar de reducir u optimizar, o el motor TISMA al abrir)
+    const st = await api("/api/state");
+    if (st.config.model !== state.config.model || st.config.endpoint !== state.config.endpoint) {
+      state.config = st.config; showChips();
+    }
     if (!state.config.model && m.endpoint.length) await setModel(state.config.endpoint, m.endpoint[0]);
   } catch (e) {}
 }

@@ -285,7 +285,7 @@ def test_modelo_optimizado_o_reducido_queda_como_el_de_siempre(monkeypatch, tmp_
     servidos = []
 
     class S:
-        ctx = 4096
+        ctx, proc, port, api_key = 4096, None, 2, "k"
 
         def restaurar_prefijo(self):
             pass
@@ -297,7 +297,7 @@ def test_modelo_optimizado_o_reducido_queda_como_el_de_siempre(monkeypatch, tmp_
     assert app.preferido() is None
     app.usar_modelo(str(b))
     assert app.preferido()["path"] == str(b) and servidos == [str(b)]
-    monkeypatch.setattr(models, "endpoint_models", lambda ep: [])
+    monkeypatch.setattr(models, "endpoint_models", lambda ep, clave="local": [])
     monkeypatch.setattr("tisma_code.motor.choose_engine", lambda hw, alive: {"motor": "llama.cpp", "motivo": ""})
     monkeypatch.setattr("tisma_code.motor.choose_model", lambda local, hw: {"path": str(a), "size": 10})
     app.push = lambda ev: None
@@ -367,3 +367,12 @@ def test_lanzador_unico_para_los_motores():
     t.start(); t.join()
     nombres.append(models.LANZADOR.lanzar(lambda: threading.current_thread().name))
     assert nombres == ["lanzador-motores", "lanzador-motores"]
+
+
+def test_el_motor_propio_se_consulta_con_su_clave(monkeypatch):
+    """llama-server arranca con --api-key: sin la clave, /v1/models da 401 y la app decía «motor apagado»."""
+    from tisma_code import models
+    vistos = []
+    monkeypatch.setattr(models, "_get_json", lambda url, timeout=30, api_key=None: vistos.append(api_key) or
+                        {"data": [{"id": "m"}]})
+    assert models.endpoint_models("http://127.0.0.1:5/v1", "secreta") == ["m"] and vistos == ["secreta"]
