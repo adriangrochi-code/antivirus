@@ -1,5 +1,5 @@
 # Descarga lo de la base que no va en la ISO (LibreOffice, fuentes CJK: perfil «esenciales») si al instalar
-# no había conexión. Reintenta cada 15 min hasta lograrlo; después no vuelve a ejecutarse (marca en /var/lib).
+# no había conexión. Reintenta (de 15 min a 6 h) hasta lograrlo; después no vuelve a ejecutarse (marca en /var/lib).
 [Unit]
 Description=TISMA: descargar las aplicaciones de la base que no van en la ISO
 Wants=network-online.target
@@ -13,6 +13,9 @@ Type=oneshot
 ExecStart=/usr/bin/tisma-perfil completar
 Restart=on-failure
 RestartSec=15min
+# Espera creciente: 15 min, … hasta 6 h (si algo falla siempre, no gasta datos cada 15 min para siempre)
+RestartSteps=5
+RestartMaxDelaySec=6h
 Nice=10
 IOSchedulingClass=idle
 ProtectHome=yes
