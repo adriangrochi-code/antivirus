@@ -118,6 +118,9 @@ def turno(ruta: str | None = None):
 
 def instalar(nombres: list[str], run=None) -> int:
     run = run or subprocess.run
+    # TISMA_LIMITE_DESCARGA=<s>: tiempo máximo de descarga (lo pone el instalador; sin él, sin límite)
+    seg = os.environ.get("TISMA_LIMITE_DESCARGA", "")
+    limite = time.time() + int(seg) if seg.isdigit() and int(seg) > 0 else 0
     _turno = turno()  # noqa: F841 — se libera al terminar
     disp = perfiles()
     malos = [n for n in nombres if n not in disp]
@@ -153,16 +156,30 @@ def instalar(nombres: list[str], run=None) -> int:
         run([*APT, "update"], env=env)
         run([*APT, "-f", "install"], env=env, capture_output=True)
         guardar({**estado, "fase": "instalando"})
-        r = run([*APT, "install", "--no-install-recommends", *pend], env=env, capture_output=True, text=True)
-        if r.returncode != 0:
-            errores.append((r.stderr or r.stdout)[-600:])
-    for c in comps:
+        if limite:
+            # Desde el instalador: primero SOLO descargar, con tiempo límite. Si no llega, se deja para el primer
+            # arranque (tisma-completar sigue desde lo ya descargado) en vez de cortar dpkg a mitad de instalar.
+            try:
+                run([*APT, "install", "--download-only", "--no-install-recommends", *pend], env=env,
+                    capture_output=True, text=True, timeout=max(1, limite - time.time()))
+            except subprocess.TimeoutExpired:
+                errores.append("La conexión es lenta: el resto se descarga solo en el primer arranque.")
+        if not errores:
+            r = run([*APT, "install", "--no-install-recommends", *pend], env=env, capture_output=True, text=True)
+            if r.returncode != 0:
+                errores.append((r.stderr or r.stdout)[-600:])
+    for c in (comps if not errores or not limite else []):
         guardar({**estado, "fase": f"descargando {c}"})
         script = os.path.join(COMPONENTES, f"{c}.sh")
         if not os.access(script, os.X_OK):
             errores.append(f"falta el componente {c}")
             continue
-        r = run([script, "/"], capture_output=True, text=True)
+        try:
+            r = run([script, "/"], capture_output=True, text=True,
+                    **({"timeout": max(1, limite - time.time())} if limite else {}))
+        except subprocess.TimeoutExpired:
+            errores.append(f"{c}: la conexión es lenta, se descarga en el primer arranque")
+            break
         if r.returncode != 0:
             errores.append(f"{c}: " + (r.stderr or r.stdout)[-300:])
     ok = not errores

@@ -116,7 +116,8 @@ def test_installer_downloads_base_extras_after_final_sources():
     assert sp["script"][1] == "-/usr/lib/tisma/crypttab-discard"                 # TRIM del SSD con disco cifrado
     assert sp["script"][2:4] == ["-/usr/bin/tisma-secureboot quitar-minimal", "-/usr/bin/tisma-secureboot elegir"]
     assert "grub-editenv /boot/efi/tisma/grubenv create" in sp["script"][4]     # arranque a prueba de fallos
-    assert sp["script"][5:] == ["-/usr/bin/tisma-perfil completar"] and sp["timeout"] >= 1800   # «-»: sin red no falla
+    assert sp["script"][5:] == ["-/usr/bin/env TISMA_LIMITE_DESCARGA=1200 /usr/bin/tisma-perfil completar"]
+    assert sp["timeout"] >= 1800   # «-»: sin red no falla
     assert "update-initramfs -c" in sp["script"][0]          # red de seguridad: la ISO no trae los de /boot
     unit = (ROOT / "rootfs/etc/systemd/system/tisma-completar.service").read_text()
     assert "ConditionPathExists=!/var/lib/tisma/completar-hecho" in unit and "!boot=live" in unit
@@ -191,3 +192,28 @@ def test_usos_elegidos_al_instalar_se_suman(tmp_path, monkeypatch):
     assert qml.exists()
     # Las tarjetas de la página son exactamente los usos (casillas, un clic marca o desmarca)
     assert set(re.findall(r'id: "(\w+)", nombre:', qml.read_text())) == set(m.PERFILES)
+
+
+def test_desde_el_instalador_la_descarga_tiene_limite(tmp_path, monkeypatch):
+    """Internet lento al instalar: no se queda una hora ni corta dpkg a mitad; lo termina el primer arranque."""
+    (tmp_path / "p.list").write_text("# Prueba\nlibreoffice-writer @comp\n")
+    monkeypatch.setattr(mod, "DIR", str(tmp_path))
+    monkeypatch.setattr(mod, "COMPONENTES", str(tmp_path))
+    monkeypatch.setattr(mod, "ESTADO", str(tmp_path / "run/estado.json"))
+    monkeypatch.setenv("TISMA_LIMITE_DESCARGA", "1200")
+    calls = []
+    base = _fake_run([], calls)
+
+    def run(cmd, **kw):
+        if "--download-only" in cmd:
+            assert 0 < kw["timeout"] <= 1200
+            calls.append(cmd)
+            raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+        return base(cmd, **kw)
+    assert mod.instalar(["p"], run) == 1                                       # sin marca de hecho: se reintenta
+    assert not any("install" in c and "--download-only" not in c and "-f" not in c for c in calls)  # no instala a medias
+    assert "primer arranque" in json.loads((tmp_path / "run/estado.json").read_text())["mensaje"]
+    monkeypatch.delenv("TISMA_LIMITE_DESCARGA")
+    calls.clear()
+    mod.instalar(["p"], base)
+    assert not any("--download-only" in c for c in calls)                     # fuera del instalador: sin límite
