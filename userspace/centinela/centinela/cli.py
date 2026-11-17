@@ -196,6 +196,8 @@ def cmd_adapt(args) -> int:
         print(f"Arranques sin confirmar: {n}")
     elif args.accion == "arranque-ok":
         adapt.arranque_ok()
+    elif args.accion == "avisar":
+        adapt.avisar_suspendido()
     elif args.accion == "reanudar":
         adapt.reanudar_perfil()
         print("Se volverá a usar el perfil del equipo (si hay uno firmado y válido)")
@@ -660,7 +662,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--clave", default="", help="clave privada Ed25519 (PEM) para firmar")
     s.set_defaults(func=cmd_perfil)
     s = sub.add_parser("adapt", help="tisma-adapt: estado de la política por carga y modo; arranques fallidos")
-    s.add_argument("accion", choices=["estado", "arranque-inicio", "arranque-ok", "reanudar"], nargs="?",
+    s.add_argument("accion", choices=["estado", "arranque-inicio", "arranque-ok", "avisar", "reanudar"], nargs="?",
                    default="estado")
     s.set_defaults(func=cmd_adapt)
     s = sub.add_parser("automodo", help="cambio de modo automático: batería baja → Eco, al enchufar vuelve")

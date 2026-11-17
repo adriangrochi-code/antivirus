@@ -5,8 +5,10 @@ ConditionPathExists=!/run/live
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/centinela adapt arranque-ok
+# Si el perfil quedó suspendido, un aviso (una vez) con botón para volver a usarlo
+ExecStartPost=-/usr/bin/centinela adapt avisar
 ProtectHome=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes
-ReadWritePaths=/var/lib/centinela
+ReadWritePaths=/var/lib/centinela -/run/escudo
 ProtectSystem=strict

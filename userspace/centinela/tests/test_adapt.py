@@ -101,3 +101,19 @@ def test_dos_arranques_fallidos_suspenden_el_perfil(equipo):
     assert adapt.perfil_activo() is None
     adapt.reanudar_perfil()
     assert not json.loads(adapt.ARRANQUES.read_text()).get("suspendido")
+
+
+def test_perfil_suspendido_avisa_una_vez_con_boton(equipo, tmp_path):
+    import json
+    al = tmp_path / "escudo" / "alertas.jsonl"
+    assert adapt.avisar_suspendido(str(al)) is False                 # nada suspendido: sin aviso
+    adapt.arranque_inicio()
+    adapt.arranque_inicio()                                          # suspendido
+    assert adapt.avisar_suspendido(str(al)) is True
+    a = json.loads(al.read_text())
+    assert a["boton"] == "reanudar_perfil" and a["kind"] == "sistema"
+    assert adapt.avisar_suspendido(str(al)) is False                 # una sola vez
+    adapt.reanudar_perfil()
+    assert not adapt._leer_json(adapt.ARRANQUES).get("suspendido")
+    src = (Path(__file__).resolve().parents[3] / "rootfs/usr/bin/escudo-notificador").read_text()
+    assert '"reanudar_perfil": ("Volver a usarlos", lambda a: ["pkexec", "/usr/bin/centinela", "adapt", "reanudar"]' in src

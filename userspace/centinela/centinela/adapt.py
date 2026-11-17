@@ -272,6 +272,30 @@ def arranque_ok() -> None:
     _guardar_json(ARRANQUES, d)
 
 
+ALERTAS = os.environ.get("ESCUDO_ALERTAS", "/run/escudo/alertas.jsonl")
+
+
+def avisar_suspendido(alertas: str | None = None) -> bool:
+    """Si el perfil del equipo quedó suspendido (dos arranques seguidos sin confirmar), avisa UNA vez, con botón
+    para volver a intentarlo. Antes pasaba en silencio y el equipo seguía para siempre con los valores de Debian."""
+    d = _leer_json(ARRANQUES)
+    if not d.get("suspendido") or d.get("avisado") == d["suspendido"]:
+        return False
+    try:
+        os.makedirs(os.path.dirname(alertas or ALERTAS), exist_ok=True)
+        with open(alertas or ALERTAS, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"t": time.time(), "kind": "sistema", "severity": "low", "boton": "reanudar_perfil",
+                                 "detail": "El equipo no terminó de arrancar dos veces seguidas, así que se dejaron de "
+                                           "usar los ajustes de rendimiento de este equipo (por si eran la causa).",
+                                 "action": "Si fue un apagón o lo apagaste tú, puedes volver a usarlos."},
+                                ensure_ascii=False) + "\n")
+    except OSError:
+        return False
+    d["avisado"] = d["suspendido"]
+    _guardar_json(ARRANQUES, d)
+    return True
+
+
 def reanudar_perfil() -> None:
     """Tras publicar un perfil nuevo (o a mano): se vuelve a intentar."""
     _guardar_json(ARRANQUES, {"pendientes": 0})
