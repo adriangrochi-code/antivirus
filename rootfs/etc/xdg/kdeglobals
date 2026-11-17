@@ -8,6 +8,10 @@ menuFont=Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 toolBarFont=Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 smallestReadableFont=Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 fixed=JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+# Texto nítido en pantallas de poca resolución (igual que /etc/fonts/local.conf)
+XftAntialias=true
+XftHintStyle=hintslight
+XftSubPixel=rgb
 
 [KDE]
 # Animaciones a la mitad de duración: el escritorio responde antes (y en GPU integradas gasta menos)
