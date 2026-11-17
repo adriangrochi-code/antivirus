@@ -158,6 +158,9 @@ def chat_completion(endpoint: str, model: str, messages: list, tool_schemas: lis
         return _chat_completion(endpoint, model, messages, tool_schemas, api_key, timeout, extra)
 
 
+RECONEXION_S = 120
+
+
 def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: list | None,
                      api_key: str = "local", timeout: int = 900, extra: dict | None = None) -> tuple[dict, dict]:
     _check_local_owner(endpoint)
@@ -171,13 +174,29 @@ def _chat_completion(endpoint: str, model: str, messages: list, tool_schemas: li
         headers["X-Hope-Session"] = body["user"]       # caché de conversación de Hope
     req = urllib.request.Request(endpoint.rstrip("/") + "/chat/completions",
                                  data=json.dumps(body).encode(), method="POST", headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (localhost)
-            data = json.load(r)
-    except urllib.error.HTTPError as e:
-        raise LLMError(f"El motor respondió {e.code}: {e.read()[:500].decode(errors='replace')}")
-    except (urllib.error.URLError, OSError) as e:
-        raise LLMError(f"No se pudo conectar con el motor en {endpoint}: {e}")
+    # Motor local recién lanzado: puede estar cargando el modelo (503) o reiniciándose (si la gráfica no admite la
+    # caché comprimida, se relanza sin ella y la primera conexión se corta: «Remote end closed connection», visto
+    # en la A275). Pedir una respuesta no cambia nada, así que se reintenta un rato antes de dar error.
+    fin = time.monotonic() + (RECONEXION_S if _es_local(endpoint) else 0)
+    espera = 1.0
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (localhost)
+                data = json.load(r)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 503 and time.monotonic() < fin:
+                time.sleep(espera)
+                espera = min(espera * 2, 8)
+                continue
+            raise LLMError(f"El motor respondió {e.code}: {e.read()[:500].decode(errors='replace')}")
+        except (urllib.error.URLError, OSError) as e:
+            corte = not isinstance(getattr(e, "reason", e), TimeoutError) and not isinstance(e, TimeoutError)
+            if corte and time.monotonic() < fin:
+                time.sleep(espera)
+                espera = min(espera * 2, 8)
+                continue
+            raise LLMError(f"No se pudo conectar con el motor en {endpoint}: {e}")
     try:
         return data["choices"][0]["message"], data.get("usage") or {}
     except (KeyError, IndexError):
