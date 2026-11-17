@@ -139,6 +139,7 @@ def borrar(nombre: str, runner=run, snapdir: Path = SNAPDIR) -> None:
     (snapdir / f"{nombre}.json").unlink(missing_ok=True)
 
 
+PODA_ESPACIO_CADA_S = 6 * 3600
 POCO_ESPACIO = 0.10                         # menos de un 10 % libre: se borran las instantáneas más viejas
 
 
@@ -159,13 +160,25 @@ def podar(runner=run, snapdir: Path = SNAPDIR, uso=shutil.disk_usage) -> list[st
         poco = u.total and u.free / u.total < POCO_ESPACIO
     except OSError:
         poco = False
-    if poco:
-        todas = instantaneas(snapdir)
+    marca = snapdir / ".poda-por-espacio"
+    try:
+        reciente = _now().timestamp() - marca.stat().st_mtime < PODA_ESPACIO_CADA_S
+    except OSError:
+        reciente = False
+    if poco and not reciente:
+        # Una vez cada 6 h como mucho: el gancho de apt poda en cada dpkg y btrfs libera después, así que seguidas
+        # se llevaban todo. Las manuales y las de antes de restaurar las decide la persona: no se tocan.
+        todas = [s for s in instantaneas(snapdir) if s["motivo"] in ("diaria", "actualizacion")]
         ultimas = set({s["motivo"]: s["nombre"] for s in todas}.values())        # la más nueva de cada tipo
         resto = [s["nombre"] for s in todas if s["nombre"] not in ultimas]     # de la más vieja a la más nueva
         for name in resto[: (len(resto) + 1) // 2]:
             borrar(name, runner, snapdir)
             borradas.append(name)
+        try:
+            marca.touch()
+            os.utime(marca, (_now().timestamp(), _now().timestamp()))
+        except OSError:
+            pass
     return borradas
 
 

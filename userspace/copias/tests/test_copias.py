@@ -228,8 +228,9 @@ def test_con_poco_espacio_borra_las_mas_viejas(tmp_path, monkeypatch):
     assert core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 50, 50)) == []        # espacio de sobra
     gone = core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 95, 5))
     assert gone == ["20261101-030000-diaria", "20261102-030000-diaria", "20261103-030000-diaria"]
-    quedan = {s["nombre"] for s in core.instantaneas(tmp_path)}
-    assert {"20261106-030000-diaria", "20261109-030000-manual"} <= quedan
-    for _ in range(5):
+    # Enseguida otra vez (apt poda en cada dpkg; btrfs aún no liberó): no sigue borrando
+    assert core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 99, 1)) == []
+    for h in (7, 14, 21):
+        monkeypatch.setattr(core, "_now", lambda h=h: dt.datetime(2026, 11, 9, 3, 0, 0) + dt.timedelta(hours=h))
         core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 99, 1))
     assert {s["nombre"] for s in core.instantaneas(tmp_path)} == {"20261106-030000-diaria", "20261109-030000-manual"}
