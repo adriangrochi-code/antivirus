@@ -6,6 +6,8 @@ entonces, esto evita que el modelo calcule «de memoria» en la ISO pública.
 Todo se ejecuta en exactas_worker.py dentro de bubblewrap: sin red, sistema de solo lectura, el proyecto solo
 de lectura (para leer CSV o calcular huellas de archivos), $HOME oculto, sin capacidades, con límite de memoria,
 CPU y tiempo. Sin bubblewrap no se ejecuta (falla cerrado).
+
+En Windows (sin bubblewrap) corre en un Job Object: ver plataforma.ejecutar_trabajador.
 """
 from __future__ import annotations
 
@@ -14,6 +16,8 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+
+from . import plataforma
 
 WORKER = Path(__file__).with_name("exactas_worker.py")
 TIEMPO = 60
@@ -140,8 +144,14 @@ def run(raiz: Path, nombre: str, args: dict) -> tuple[str, bool]:
         args = {**args, "archivo": str(p)}
     pedido = json.dumps({"herramienta": nombre, "args": args}, ensure_ascii=False)
     try:
-        r = subprocess.run(argv(raiz), input=pedido, capture_output=True, text=True, timeout=TIEMPO + 10,
-                           preexec_fn=_limites, cwd=str(raiz), env={"PATH": os.environ.get("PATH", "/usr/bin")})
+        if plataforma.ES_WINDOWS:            # sin bubblewrap: Job Object (ver plataforma.ejecutar_trabajador)
+            try:
+                r = plataforma.ejecutar_trabajador(WORKER, raiz, pedido, TIEMPO)
+            except OSError as e:
+                return f"No se pudo lanzar el cálculo: {e}", False
+        else:
+            r = subprocess.run(argv(raiz), input=pedido, capture_output=True, text=True, timeout=TIEMPO + 10,
+                               preexec_fn=_limites, cwd=str(raiz), env={"PATH": os.environ.get("PATH", "/usr/bin")})
     except subprocess.TimeoutExpired:
         return f"Tiempo agotado ({TIEMPO} s): simplifica el problema o pide menos cifras", False
     try:

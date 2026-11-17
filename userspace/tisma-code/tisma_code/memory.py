@@ -22,7 +22,9 @@ import sqlite3
 import time
 from pathlib import Path
 
-DATA = Path.home() / ".local/share/tisma-code"
+from .plataforma import DIR_DATOS
+
+DATA = DIR_DATOS
 RESPALDADO, INFERIDO = "respaldado", "inferido"
 
 

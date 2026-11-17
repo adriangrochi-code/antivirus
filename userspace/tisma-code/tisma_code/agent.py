@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from . import contexto, exactas, harness, kits, memory, review, tools
+from . import contexto, exactas, harness, kits, memory, plataforma, review, tools
 from . import devtools
 from .docs import DocSpace
 
@@ -394,6 +394,7 @@ class Session:
             return False
         ev, info = item
         info["allow"] = allow
+        always = always and not plataforma.aprobar_cada_vez(info["tool"])   # sin jaula: permiso cada vez
         if allow and always:
             self.always_allow.add(info["tool"])
         if allow and always and info["tool"] == "verify":
@@ -410,9 +411,15 @@ class Session:
         return self._trust_file.exists()
 
     def _ask(self, tool: str, args: dict, preview: str) -> bool:
-        if tool == "verify" and self.trusted():
+        cada_vez = plataforma.aprobar_cada_vez(tool)
+        if cada_vez:
+            # Sin jaula: solo vale el permiso dado AHORA; desactivados, se ejecuta sin preguntar y devuelve el aviso
+            self.ws.aprobado = False
+            if not self.ws.sin_aislar:
+                return True
+        elif tool == "verify" and self.trusted():
             return True
-        if tool not in tools.NEEDS_APPROVAL or tool in self.always_allow:
+        elif tool not in tools.NEEDS_APPROVAL or tool in self.always_allow:
             return True
         aid = uuid.uuid4().hex[:12]
         ev = threading.Event()
@@ -423,6 +430,8 @@ class Session:
             if self._cancel.is_set():
                 break
         self._pending.pop(aid, None)
+        if cada_vez:
+            self.ws.aprobado = bool(info["allow"])
         return bool(info["allow"])
 
     def cancel(self) -> None:

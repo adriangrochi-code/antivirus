@@ -225,9 +225,12 @@ def mlock_args(model_mb: float, hw: dict) -> list[str]:
     """Pesos fijos en RAM (--mlock) si el modelo ocupa como mucho el 40 % y el límite del usuario lo permite: con
     el navegador abierto, el kernel podía expulsar páginas del modelo y releerlas del SSD (la velocidad se
     hundía). Con modelos más grandes no: bloquearían demasiada memoria al resto del sistema."""
-    import resource
     if model_mb > hw.get("ram_mb", 0) * 0.4:
         return []
+    from .plataforma import ES_WINDOWS
+    if ES_WINDOWS:                       # sin RLIMIT_MEMLOCK (fijar páginas pide un privilegio que no se tiene)
+        return []
+    import resource
     try:
         soft, _ = resource.getrlimit(resource.RLIMIT_MEMLOCK)
     except (OSError, ValueError):

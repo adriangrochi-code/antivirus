@@ -12,7 +12,10 @@ en cada palabra. Es lento (minutos u horas), así que:
 """
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl
+except ImportError:              # Windows: sin modo sin apuro (plataforma.capacidades)
+    fcntl = None
 import json
 import os
 import re
@@ -27,6 +30,7 @@ import urllib.request
 from pathlib import Path
 
 from . import models
+from .plataforma import DIR_CONFIG
 
 DIR = models.MODELS_DIR.parent / "sin-apuro"
 COLA = DIR / "tareas.json"
@@ -382,7 +386,7 @@ def trabajar(hw: dict | None = None, pensar: bool = False, espera=time.sleep) ->
 
 def main() -> int:
     try:
-        cfg = json.loads((Path.home() / ".config/tisma-code/config.json").read_text())
+        cfg = json.loads((DIR_CONFIG / "config.json").read_text())
     except (OSError, ValueError):
         cfg = {}
     trabajar(pensar=cfg.get("pensar") == "si")

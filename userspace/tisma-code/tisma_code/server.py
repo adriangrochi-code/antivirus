@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from typing import TYPE_CHECKING
 
-from . import models
+from . import models, plataforma
 from .base import ToolError
 
 if TYPE_CHECKING:
@@ -26,12 +26,14 @@ if TYPE_CHECKING:
 STATIC = Path(__file__).parent / "static"
 STATIC_FILES = {"/static/logo.svg": ("logo.svg", "image/svg+xml")}
 MAX_LOG = 5000
-CONFIG = Path.home() / ".config/tisma-code/config.json"
+CONFIG = plataforma.DIR_CONFIG / "config.json"
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1"   # Strata
 
 
 def enchufado(base: str = "/sys/class/power_supply") -> bool:
     """¿Corriente? Sin batería (equipo de escritorio) cuenta como enchufado."""
+    if plataforma.ES_WINDOWS:
+        return plataforma.enchufado()
     try:
         fuentes = os.listdir(base)
     except OSError:
@@ -63,6 +65,7 @@ class App:
         self.server = models.LocalServer()
         self.hw = models.hardware()
         self.ultimo_uso = time.monotonic()
+        self.ultimo_contacto = time.monotonic()      # última petición de la página (ver vigilar_ventana)
         self.config = {"endpoint": DEFAULT_ENDPOINT, "model": "", "recent": [], "network": False}
         try:
             self.config.update(json.loads(CONFIG.read_text()))
@@ -95,6 +98,8 @@ class App:
         return lineas[-1][:160] if lineas else ""
 
     def componentes(self) -> dict:
+        if plataforma.ES_WINDOWS:
+            return {}                    # se instalan con pkexec y paquetes de TISMA OS: no existen en este equipo
         out = {}
         for k, (nombre, desc, marca) in self.COMPONENTES.items():
             proc = self.instalando.get(k)
@@ -123,7 +128,16 @@ class App:
                 "liberar_memoria": self.config.get("liberar_memoria", True) is not False,
                 "pensar": self.config.get("pensar", "auto"),
                 "esfuerzo": self.config.get("esfuerzo", "medio"),
-                "pensar_efectivo": self.session.pensar_activo() if self.session else None}
+                "pensar_efectivo": self.session.pensar_activo() if self.session else None,
+                "comandos_sin_aislar": self.config.get("comandos_sin_aislar") is True,
+                "equipo": plataforma.capacidades()}
+
+    def aplicar_comandos(self, s) -> None:
+        """Donde no hay jaula, los comandos del proyecto solo con el interruptor de Ajustes (y permiso cada vez); sin él
+        tampoco se ofrece verificar solo al terminar (pediría permiso para algo que no se va a ejecutar)."""
+        if plataforma.ES_WINDOWS:
+            s.ws.sin_aislar = self.config.get("comandos_sin_aislar") is True
+            s.auto_verify = s.ws.sin_aislar
 
     def pensar(self) -> bool | None:
         return {"si": True, "no": False}.get(self.config.get("pensar", "auto"))
@@ -131,6 +145,8 @@ class App:
     def instalar_componente(self, k: str) -> dict:
         if k not in self.COMPONENTES:
             return {"ok": False, "error": "componente desconocido"}
+        if plataforma.ES_WINDOWS:
+            return {"ok": False, "error": plataforma.MSG_NO_DISPONIBLE}
         proc = self.instalando.get(k)
         if proc and proc.poll() is None:
             return {"ok": True, "estado": "instalando"}
@@ -519,13 +535,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (STATIC / name).read_bytes(), ctype)
         if not self._authorized():
             return self._send(403, {"error": "no autorizado"})
+        APP.ultimo_contacto = time.monotonic()
         try:
             if url.path == "/api/state":
                 s = APP.session
                 return self._send(200, {"config": APP.config, "hardware": APP.hw,
                                         "workspace": str(s.ws.root) if s else None,
                                         "git": git_branch(s.ws.root) if s else None,
-                                        "seq": APP.base + len(APP.log), "server_model": APP.server.model})
+                                        "seq": APP.base + len(APP.log), "server_model": APP.server.model,
+                                        "equipo": plataforma.capacidades()})
             if url.path == "/api/dirs":
                 base = Path(q.get("path") or Path.home()).expanduser().resolve()
                 dirs = sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
@@ -576,6 +594,8 @@ class Handler(BaseHTTPRequestHandler):
                                                      for t in red.manuales_posibles(origen)]})
             if url.path == "/api/ajustes":
                 return self._send(200, APP.ajustes())
+            if url.path == "/api/sin-apuro" and not plataforma.capacidades()["sin_apuro"]:
+                return self._send(200, {"tareas": [], "modelos": [], "no_disponible": plataforma.MSG_NO_DISPONIBLE})
             if url.path == "/api/sin-apuro":
                 from . import sin_apuro as sa
                 modelos = []
@@ -606,6 +626,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         if not self._authorized():
             return self._send(403, {"error": "no autorizado"})
+        APP.ultimo_contacto = time.monotonic()
         url = urlparse(self.path)
         try:
             b = self._body()
@@ -619,6 +640,7 @@ class Handler(BaseHTTPRequestHandler):
                 s = Session(ws, APP.config["endpoint"], APP.config["model"] or "local",
                             llm=APP.llm(), context_tokens=APP.context(int(b.get("context", 32768))))
                 s.ws.allow_network = bool(b.get("network", False))
+                APP.aplicar_comandos(s)
                 if APP.config.get("trazas_hope") is True:      # opt-in: archivo local, nunca se envía
                     from .trazas import Trazas
                     s.trazas = Trazas(s.ws.root)
@@ -636,6 +658,10 @@ class Handler(BaseHTTPRequestHandler):
                 for k in ("trazas_hope", "auto_motor", "liberar_memoria"):
                     if isinstance(b.get(k), bool):
                         APP.config[k] = b[k]
+                if isinstance(b.get("comandos_sin_aislar"), bool):       # solo cuenta donde no hay jaula
+                    APP.config["comandos_sin_aislar"] = b["comandos_sin_aislar"]
+                    if APP.session:
+                        APP.aplicar_comandos(APP.session)
                 if b.get("esfuerzo") in ("bajo", "medio", "alto", "maximo"):
                     APP.config["esfuerzo"] = b["esfuerzo"]
                     if APP.session:
@@ -704,6 +730,8 @@ class Handler(BaseHTTPRequestHandler):
                     nivel = f"calidad:{b['calidad']}"      # «acepto conservar al menos X %»: busca el más chico
                 threading.Thread(target=APP.reducir, args=(path, nivel, b.get("capas") is True), daemon=True).start()
                 return self._send(200, {"ok": True})
+            if url.path.startswith("/api/sin-apuro") and not plataforma.capacidades()["sin_apuro"]:
+                return self._send(400, {"error": plataforma.MSG_NO_DISPONIBLE})
             if url.path == "/api/sin-apuro":
                 from . import sin_apuro as sa
                 adjunto, nombre = "", ""
@@ -738,6 +766,8 @@ def tamano_legible(n: int) -> str:
 
 def abrir(url: str, tamano, httpd) -> None:
     """Ventana propia de la app (sin pestañas ni barra de direcciones); al cerrarla, la app termina."""
+    if plataforma.ES_WINDOWS:
+        return abrir_windows(url, httpd)
     try:
         import sys
         sys.path.insert(0, "/usr/lib/centinela/python")
@@ -748,6 +778,41 @@ def abrir(url: str, tamano, httpd) -> None:
     abrir_ventana(url, "tisma-code", tamano,
                   al_cerrar=lambda: threading.Thread(target=httpd.shutdown, daemon=True).start())
 
+def abrir_windows(url: str, httpd, vigilar: bool = True):
+    """Edge o Chrome en modo app con un perfil propio: ese proceso vive mientras la ventana está abierta y, al cerrarla,
+    la app termina (como la ventana de centinela en Linux). Si el navegador le pasó la ventana a otro proceso (salió
+    enseguida) o se usó el predeterminado, se cierra tras VENTANA_SIN_CONTACTO_S sin que la página pregunte nada."""
+    proc = plataforma.abrir_ventana_app(url, plataforma.DIR_DATOS / "ventana")
+    if not vigilar:
+        return proc
+
+    def esperar():
+        t0 = time.monotonic()
+        if proc is not None:
+            proc.wait()
+            if time.monotonic() - t0 > 5:
+                threading.Thread(target=httpd.shutdown, daemon=True).start()
+                return
+        vigilar_ventana(httpd)
+    threading.Thread(target=esperar, daemon=True).start()
+    return proc
+
+
+VENTANA_SIN_CONTACTO_S = 10 * 60
+
+
+def vigilar_ventana(httpd, espera=time.sleep, reloj=time.monotonic, una_vez: bool = False) -> bool:
+    """La página pregunta por eventos sin parar (y por el motor cada 15 s): tanto tiempo sin noticias es que se cerró.
+    Sin esto, en Windows la app seguiría viva (oculta) con el motor ocupando gigas."""
+    while True:
+        if APP.boot_used.is_set() and reloj() - APP.ultimo_contacto > VENTANA_SIN_CONTACTO_S:
+            threading.Thread(target=httpd.shutdown, daemon=True).start()
+            return True
+        if una_vez:
+            return False
+        espera(30)
+
+
 def main(argv: list[str] | None = None) -> int:
     global APP
     ap = argparse.ArgumentParser(prog="tisma-code", description="Agente de programación con IA local")
@@ -755,6 +820,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args(argv)
     APP = App()
+    if plataforma.ES_WINDOWS:
+        APP.config.setdefault("comandos_sin_aislar", False)      # desactivados hasta que el usuario los active
     APP.preferido()                    # si el modelo de siempre se borró, la barra no muestra su nombre al abrir
     threading.Thread(target=APP.auto_motor, daemon=True).start()
     threading.Thread(target=APP.vigilar_reposo, daemon=True).start()
@@ -762,7 +829,7 @@ def main(argv: list[str] | None = None) -> int:
     # mientras tanto, listo para cuando se elija la carpeta
     threading.Thread(target=lambda: __import__("tisma_code.agent"), daemon=True).start()
     from . import sin_apuro
-    if sin_apuro.siguiente():              # quedaron tareas (p. ej. se apagó el equipo): se retoman
+    if plataforma.capacidades()["sin_apuro"] and sin_apuro.siguiente():   # quedaron tareas: se retoman
         sin_apuro.lanzar_trabajador()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     # Al cerrar la sesión (SIGTERM/SIGHUP) el motor quedaba vivo ocupando gigas de memoria: la señal ahora detiene
@@ -771,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _salir(*_):
         threading.Thread(target=httpd.shutdown, daemon=True).start()
-    for sig in (signal.SIGTERM, signal.SIGHUP):
+    for sig in plataforma.SENALES_SALIDA:
         signal.signal(sig, _salir)
     url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.boot}"
     print(f"TISMA Code en el puerto {httpd.server_port}", flush=True)     # la URL no va al registro

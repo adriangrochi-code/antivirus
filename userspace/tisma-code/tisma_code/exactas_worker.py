@@ -32,6 +32,38 @@ def _opcional(nombre: str):
         return None
 
 
+ES_WINDOWS = sys.platform == "win32"
+
+
+def jail_activo() -> bool:
+    """Windows (no hay bubblewrap): ¿este proceso está en el Job restringido que crea TISMA Code (muere con la app,
+    un único proceso, memoria limitada)? Lo comprueba el propio proceso con QueryInformationJobObject(NULL), que
+    consulta el Job inmediato del que llama: no depende de lo que diga quien lo lanzó."""
+    try:
+        import ctypes
+
+        class Basica(ctypes.Structure):
+            _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64), ("flags", ctypes.c_uint32),
+                        ("c", ctypes.c_size_t), ("d", ctypes.c_size_t), ("procesos", ctypes.c_uint32),
+                        ("e", ctypes.c_size_t), ("f", ctypes.c_uint32), ("g", ctypes.c_uint32)]
+
+        class Extendida(ctypes.Structure):
+            _fields_ = [("basica", Basica), ("io", ctypes.c_uint64 * 6), ("mem_proceso", ctypes.c_size_t),
+                        ("mem_job", ctypes.c_size_t), ("pico_p", ctypes.c_size_t), ("pico_j", ctypes.c_size_t)]
+
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        f = k.QueryInformationJobObject
+        f.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+        f.restype = ctypes.c_int
+        info = Extendida()
+        if not f(None, 9, ctypes.byref(info), ctypes.sizeof(info), None):   # 9: JobObjectExtendedLimitInformation
+            return False
+        fl = info.basica.flags
+        return bool(fl & 0x2000 and fl & 0x8 and fl & 0x100 and info.basica.procesos == 1 and info.mem_proceso)
+    except Exception:  # noqa: BLE001 — ante la duda, no aislado
+        return False
+
+
 def falta(paquete: str) -> Fallo:
     return Fallo(f"Esta herramienta necesita {paquete}, que todavía no está instalado. Viene con la base del sistema "
                  "(se descarga sola en cuanto hay Internet) o con el uso Ingeniería de la Bienvenida.")
@@ -498,6 +530,9 @@ _PELIGRO = re.compile(r"__|\bimport\b|\blambda\b|\bexec\b|\beval\b|\bopen\b|\bgl
 def _sympy_expr(texto: str, sympy, locales: dict | None = None):
     from sympy.parsing.sympy_parser import (convert_xor, implicit_multiplication_application,
                                             parse_expr, standard_transformations)
+    if ES_WINDOWS and not jail_activo():
+        raise Fallo("En este equipo el cálculo simbólico solo se ejecuta aislado y ahora no se pudo aislar: usa "
+                    "calcular o numerico con números, o vuelve a intentarlo")
     t = preparar(texto)
     if _PELIGRO.search(t):
         raise Fallo("La expresión tiene caracteres o palabras no permitidos (solo matemática: números, "
