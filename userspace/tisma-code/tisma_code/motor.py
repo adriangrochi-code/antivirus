@@ -336,9 +336,16 @@ def compatible_draft(main: str, info: dict, local: list[dict]) -> str | None:
 
 
 # ---------------------------------------------------------------- medición
-BENCH_PROMPT = ("Reescribe esta función en Python con tipos y una docstring, sin cambiar su comportamiento:\n"
+# Pedido de prueba realista y SIN repeticiones: antes era el mismo fragmento repetido 4 veces y los n-gramas (que
+# adivinan copiando lo ya escrito) salían 6 veces más rápidos de lo que rinden en un uso normal
+BENCH_PROMPT = ("Explica en dos frases qué hace este código y luego reescribe solo la función media con tipos y una "
+                "docstring, sin cambiar su comportamiento.\n\n"
+                "import csv\n\n"
+                "def leer(ruta):\n    with open(ruta, newline='') as f:\n        return [float(r[1]) for r in csv.reader(f) if r]\n\n"
                 "def media(xs):\n    t = 0\n    n = 0\n    for x in xs:\n        t = t + x\n        n = n + 1\n"
-                "    return t / n if n else 0\n") * 4
+                "    return t / n if n else 0\n\n"
+                "def informe(ruta):\n    datos = leer(ruta)\n    print('valores:', len(datos))\n"
+                "    print('media:', round(media(datos), 2))\n    print('máximo:', max(datos, default=None))\n")
 
 
 def hw_key(hw: dict) -> str:
@@ -434,7 +441,8 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
     results = []
     threads = thread_options()
     lista = candidates(info, size, hw, base, draft, path)
-    total = len(lista) + (1 if len(threads) > 1 else 0) + 5        # + la etapa de mejoras (estimada; se ajusta)
+    gpu = any(c.get("dispositivo") in ("gpu", "igpu", "mixto") for c in lista)
+    total = len(lista) + (1 if len(threads) > 1 else 0) + (5 if gpu else 3)   # + mejoras (estimado; se ajusta)
     for i, c in enumerate(lista):
         if progreso:
             progreso(i, total, f"Probando «{c['nombre']}» ({i + 1} de {total})")
@@ -445,7 +453,7 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
     best = min(results, key=step_seconds)
     if best["gen"] > 0 and len(threads) > 1 and best["dispositivo"] in ("cpu", "mixto"):
         if progreso:
-            progreso(total - 1, total, f"Probando con {threads[1][0]} hilos ({total} de {total})")
+            progreso(len(lista), total, f"Probando con {threads[1][0]} hilos")
         g, pp = run(path, hw, best["args"], best["ctx"], threads[1])
         if on_step:
             on_step(f"{best['nombre']} con {threads[1][0]} hilos: {g:.1f} tokens/s")

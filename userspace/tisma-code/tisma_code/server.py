@@ -748,6 +748,14 @@ def main(argv: list[str] | None = None) -> int:
     if sin_apuro.siguiente():              # quedaron tareas (p. ej. se apagó el equipo): se retoman
         sin_apuro.lanzar_trabajador()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    # Al cerrar la sesión (SIGTERM/SIGHUP) el motor quedaba vivo ocupando gigas de memoria: la señal ahora detiene
+    # el servidor y pasa por el «finally» que apaga el motor (guardando su caché de n-gramas)
+    import signal
+
+    def _salir(*_):
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _salir)
     url = f"http://127.0.0.1:{httpd.server_port}/?t={APP.boot}"
     print(f"TISMA Code en el puerto {httpd.server_port}", flush=True)     # la URL no va al registro
     if args.no_browser:
@@ -760,6 +768,8 @@ def main(argv: list[str] | None = None) -> int:
         pass
     finally:
         APP.server.stop()
+        if APP.session:
+            APP.session.close()          # sus servidores MCP y especialistas
     return 0
 
 
