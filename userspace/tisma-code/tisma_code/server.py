@@ -161,6 +161,23 @@ class App:
             return {"nombre": "Strata", "modelo": self.config.get("model", ""), "detalle": "", "medido": False}
         return {"nombre": "externo", "modelo": self.config.get("model", ""), "detalle": ep, "medido": False}
 
+    def usar_modelo(self, path: str) -> str:
+        """Sirve este modelo (con lo medido para él, si se optimizó) y lo deja como el de siempre: al volver a
+        abrir TISMA Code arranca este, no el que elegiría el motor."""
+        ep = self.server.start(path, self.hw)
+        self.config.update({"endpoint": ep, "model": Path(path).name, "preferido": str(Path(path).resolve())})
+        self.save_config()
+        if self.session:
+            self.session.endpoint, self.session.model = ep, self.config["model"]
+            self.session.llm = self.llm()
+            self.session.context_tokens = self.context(self.server.ctx)
+        return ep
+
+    def preferido(self) -> dict | None:
+        """El modelo elegido (a mano, al optimizarlo o al reducirlo), si sigue descargado."""
+        p = self.config.get("preferido")
+        return next((m for m in models.local_models() if p and str(Path(m["path"]).resolve()) == p), None)
+
     def auto_motor(self) -> None:
         """Al abrir TISMA Code: si no hay motor en marcha, el motor TISMA elige y arranca el adecuado (salvo que se
         haya apagado en Ajustes)."""
@@ -181,7 +198,7 @@ class App:
             self.config["endpoint"] = DEFAULT_ENDPOINT
             self.push({"type": "info", "message": eng["motivo"]})
             return
-        rec = motor.choose_model(models.local_models(), self.hw)
+        rec = self.preferido() or motor.choose_model(models.local_models(), self.hw)
         if not rec:
             self.push({"type": "info", "message": f"{eng['motivo']}. Descarga un modelo (＋ Añadir modelo) y el motor "
                        "TISMA lo configurará para este equipo."})
@@ -308,7 +325,8 @@ class App:
             capas = (f", sin {len(r['capas_quitadas'])} de {r['capas']} capas" if r["capas_quitadas"] else "")
             self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {r['antes'] / 1e9:.2f} GB → "
                        f"{r['despues'] / 1e9:.2f} GB{capas}. Conserva un {r['calidad']:.0f} % de la calidad medida. "
-                       "Elígelo en el selector de modelo."})
+                       "Queda como el modelo de siempre; ahora se busca su configuración más rápida."})
+            self.optimize(r["archivo"])            # mide y guarda su mejor configuración, y lo deja en uso
         except Exception as e:  # noqa: BLE001 — se informa en el chat; el original queda intacto
             self.push({"type": "error", "message": f"No se pudo reducir: {e}"})
         finally:
@@ -337,21 +355,24 @@ class App:
         except Exception as e:  # noqa: BLE001 (GGUF raro, motor que no arranca…): se avisa y se restaura
             self.push({"type": "error", "message": f"No se pudo optimizar: {e}"})
             rec = {}
-        if was_serving or not models.endpoint_models(self.config["endpoint"]):
-            try:
+        try:
+            if rec.get("gen"):
+                self.usar_modelo(path)    # optimizado: queda en uso y como el de siempre, con lo medido
+            elif was_serving or not models.endpoint_models(self.config["endpoint"]):
                 self.config["endpoint"] = self.server.start(path, self.hw)
                 if self.session:
                     self.session.endpoint = self.config["endpoint"]
                     self.session.context_tokens = self.context(self.server.ctx)
-            except (OSError, RuntimeError, ValueError) as e:
-                self.push({"type": "error", "message": f"No se pudo volver a arrancar el modelo: {e}"})
+        except (OSError, RuntimeError, ValueError) as e:
+            self.push({"type": "error", "message": f"No se pudo volver a arrancar el modelo: {e}"})
         if not rec:
             return
         if not rec.get("gen"):
             self.push({"type": "error", "message": "Ninguna configuración arrancó: revisa que el modelo no esté dañado"})
             return
         self.push({"type": "info", "message": f"Mejor configuración: {rec['nombre']} — {rec['gen']} tokens/s generando, "
-                   f"{rec['prompt']:.0f} tokens/s leyendo, contexto {rec['ctx'] // 1024}k ({rec['motivo']})."})
+                   f"{rec['prompt']:.0f} tokens/s leyendo, contexto {rec['ctx'] // 1024}k ({rec['motivo']}). "
+                   "Queda guardada: este modelo arranca siempre así en este equipo."})
 
     def context(self, wanted: int) -> int:
         """La ventana que de verdad tiene el motor (si la publica); nunca más que esa."""
@@ -670,14 +691,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = sa.cancelar if url.path.endswith("cancelar") else sa.borrar
                 return self._send(200, {"ok": f(str(b.get("id") or ""))})
             if url.path == "/api/models/serve":
-                ep = APP.server.start(b["path"], APP.hw)
-                APP.config.update({"endpoint": ep, "model": Path(b["path"]).name})
-                APP.save_config()
-                if APP.session:
-                    APP.session.endpoint, APP.session.model = ep, APP.config["model"]
-                    APP.session.llm = APP.llm()
-                    APP.session.context_tokens = APP.context(APP.server.ctx)
-                return self._send(200, {"endpoint": ep})
+                return self._send(200, {"endpoint": APP.usar_modelo(b["path"])})
         except (KeyError, ValueError, OSError, RuntimeError, ToolError) as e:  # SpecialistError es RuntimeError
             return self._send(400, {"error": str(e)})
         return self._send(404, {"error": "no encontrado"})

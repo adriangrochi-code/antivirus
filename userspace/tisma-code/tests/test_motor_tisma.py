@@ -267,3 +267,33 @@ def test_motor_en_pausa_tras_reposo_y_vuelve_solo():
     hechos.clear()
     app.vigilar_reposo(reloj=lambda: 99999.0, una_vez=True)
     assert hechos == []                                                 # apagado en Ajustes
+
+
+def test_modelo_optimizado_o_reducido_queda_como_el_de_siempre(monkeypatch, tmp_path):
+    from tisma_code import models, server
+    a, b = tmp_path / "a.gguf", tmp_path / "b-reducido-iq3_m.gguf"
+    a.write_bytes(b"x" * 10)
+    b.write_bytes(b"x" * 5)
+    monkeypatch.setattr(models, "local_models", lambda: [{"path": str(a), "size": 10}, {"path": str(b), "size": 5}])
+    app = server.App.__new__(server.App)
+    app.config, app.session, app.hw = {"endpoint": "http://127.0.0.1:1/v1", "model": ""}, None, {}
+    app.save_config = lambda: None
+    servidos = []
+
+    class S:
+        ctx = 4096
+        def start(self, path, hw):
+            servidos.append(path)
+            return "http://127.0.0.1:2/v1"
+    app.server = S()
+    assert app.preferido() is None
+    app.usar_modelo(str(b))
+    assert app.preferido()["path"] == str(b) and servidos == [str(b)]
+    monkeypatch.setattr(models, "endpoint_models", lambda ep: [])
+    monkeypatch.setattr("tisma_code.motor.choose_engine", lambda hw, alive: {"motor": "llama.cpp", "motivo": ""})
+    monkeypatch.setattr("tisma_code.motor.choose_model", lambda local, hw: {"path": str(a), "size": 10})
+    app.push = lambda ev: None
+    app.server.restaurar_prefijo = lambda: None
+    app.server.config = {}
+    app._auto_motor()
+    assert servidos[-1] == str(b)                    # al reabrir, el elegido; no el que elegiría el motor
