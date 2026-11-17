@@ -144,6 +144,51 @@ def ident(path: str):
         return None
 
 
+# Hasta dónde se avisó, por persona y por arranque (las alertas viven en /run: se vacían al reiniciar). Antes se
+# empezaba por el final al entrar y se perdía lo ocurrido entre el arranque y el inicio de sesión (p. ej. «el
+# equipo volvió a la versión anterior» o «se dejaron de usar los ajustes del equipo»).
+ESTADO = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "escudo",
+                      "notificador.json")
+PREVIAS_MAX = 5                                         # de antes de entrar, como mucho las 5 últimas
+
+
+def boot_id() -> str:
+    try:
+        return open("/proc/sys/kernel/random/boot_id").read().strip()
+    except OSError:
+        return ""
+
+
+def posicion_inicial(file_id, estado: str = ESTADO) -> int:
+    """Lo ya avisado en ESTE arranque (otra sesión anterior): se sigue desde ahí. Si no, desde el principio del
+    archivo pero solo las últimas PREVIAS_MAX alertas (las de antes de entrar)."""
+    if not file_id:
+        return 0
+    try:
+        d = json.load(open(estado, encoding="utf-8"))
+        if d.get("boot") == boot_id() and d.get("archivo") == list(file_id):
+            return min(int(d.get("pos", 0)), os.path.getsize(PATH))
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        datos = open(PATH, "rb").read()
+    except OSError:
+        return 0
+    lineas = datos.split(b"\n")[:-1]                     # solo líneas completas
+    return len(b"".join(l + b"\n" for l in lineas[:max(0, len(lineas) - PREVIAS_MAX)]))
+
+
+def guardar_posicion(file_id, pos: int, estado: str = ESTADO) -> None:
+    try:
+        os.makedirs(os.path.dirname(estado), exist_ok=True)
+        tmp = estado + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"boot": boot_id(), "archivo": list(file_id) if file_id else None, "pos": pos}, fh)
+        os.replace(tmp, estado)
+    except OSError:
+        pass
+
+
 def main():
     if not shutil.which("notify-send"):
         return
@@ -151,7 +196,7 @@ def main():
         time.sleep(30)                                  # Escudo aún no ha arrancado
     fd, dir_id = inotify(DIR), ident(DIR)
     file_id = ident(PATH)
-    pos = os.path.getsize(PATH) if file_id else 0       # solo lo nuevo desde que se abre la sesión
+    pos = posicion_inicial(file_id)
     while True:
         # Carpeta recreada (reinicio de Escudo): la vigilancia anterior ya no avisa → se vuelve a crear
         if ident(DIR) != dir_id and os.path.isdir(DIR):
@@ -175,6 +220,7 @@ def main():
                         break                           # línea a medio escribir: se lee en el próximo aviso
                     notify(raw.decode("utf-8", "replace"))
                     pos += len(raw)
+            guardar_posicion(file_id, pos)
         if fd is None:
             time.sleep(2)
             fd = inotify(DIR) if os.path.isdir(DIR) else None

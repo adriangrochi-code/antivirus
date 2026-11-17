@@ -103,3 +103,20 @@ def test_boton_ver_informe_sin_administrador():
         return R("ver_informe")
     n._con_boton({"boton": "ver_informe"}, ["notify-send"], "t", "b", run=run)
     assert llamadas[-1] == ["/usr/bin/tisma-seguridad-panel"]           # sin un segundo aviso después
+
+
+def test_avisa_lo_ocurrido_antes_de_entrar_una_sola_vez(tmp_path, monkeypatch):
+    """Alertas del arranque escritas antes de iniciar sesión: se muestran (las últimas 5) y no se repiten en la
+    próxima sesión del mismo arranque."""
+    n = cargar()
+    al = tmp_path / "alertas.jsonl"
+    al.write_text("".join(json.dumps({"n": i}) + "\n" for i in range(8)))
+    monkeypatch.setattr(n, "PATH", str(al))
+    est = str(tmp_path / "cache" / "notificador.json")
+    fid = n.ident(str(al))
+    pos = n.posicion_inicial(fid, est)
+    assert al.read_bytes()[pos:].count(b"\n") == 5                       # las 5 últimas
+    n.guardar_posicion(fid, al.stat().st_size, est)
+    assert n.posicion_inicial(fid, est) == al.stat().st_size            # otra sesión, mismo arranque: nada repetido
+    monkeypatch.setattr(n, "boot_id", lambda: "otro-arranque")
+    assert n.posicion_inicial(fid, est) == pos                           # otro arranque: archivo nuevo

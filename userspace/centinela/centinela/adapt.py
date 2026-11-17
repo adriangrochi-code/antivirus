@@ -272,7 +272,7 @@ def arranque_ok() -> None:
     _guardar_json(ARRANQUES, d)
 
 
-ALERTAS = os.environ.get("ESCUDO_ALERTAS", "/run/escudo/alertas.jsonl")
+ALERTAS = os.environ.get("ESCUDO_ALERTS", "/run/escudo/alertas.jsonl")
 
 
 def avisar_suspendido(alertas: str | None = None) -> bool:
