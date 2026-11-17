@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import threading
@@ -78,6 +79,21 @@ class App:
                    "solidcraft": ("SolidCraft", "CAD paramétrico 3D", "/var/lib/dpkg/info/solidcraft.list"),
                    "simulacion": ("Simulación", "OpenFOAM, FEniCSx, Netgen y ParaView (~1 GB)", "/usr/bin/paraview")}
 
+    def _registro_comp(self, k: str) -> Path:
+        d = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "tisma-code"
+        d.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return d / f"componente-{k}.log"
+
+    def _ultima_linea(self, k: str) -> str:
+        """Lo último que dijo la instalación (sin colores ni barras de progreso a medias), para mostrarlo."""
+        try:
+            texto = self._registro_comp(k).read_bytes()[-4000:].decode(errors="replace")
+        except OSError:
+            return ""
+        lineas = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", x).strip() for x in re.split(r"[\r\n]+", texto)]
+        lineas = [x for x in lineas if x and not re.fullmatch(r"[#=\-\s.%0-9]+", x)]
+        return lineas[-1][:160] if lineas else ""
+
     def componentes(self) -> dict:
         out = {}
         for k, (nombre, desc, marca) in self.COMPONENTES.items():
@@ -85,7 +101,16 @@ class App:
             estado = ("instalando" if proc and proc.poll() is None else
                       "instalado" if Path(marca).exists() else
                       "error" if proc and proc.returncode not in (0, None) else "no")
-            out[k] = {"nombre": nombre, "desc": desc, "estado": estado}
+            c = {"nombre": nombre, "desc": desc, "estado": estado}
+            if estado == "instalando":
+                c["detalle"] = self._ultima_linea(k) or "Esperando la contraseña de administrador o empezando…"
+            elif estado == "error":
+                # pkexec: 126 = ventana de contraseña cerrada, 127 = sin permiso
+                c["detalle"] = ("Se canceló: hace falta la contraseña de administrador." if proc.returncode in (126, 127)
+                                else "No se pudo instalar: " + (self._ultima_linea(k) or "revisa la conexión a internet"))
+            if k == "strata" and estado != "instalado" and not models.strata_status(self.hw).get("ok"):
+                c["no_recomendado"] = "No hace falta en este equipo: llama.cpp ya es el motor adecuado."
+            out[k] = c
         return out
 
     def ajustes(self) -> dict:
@@ -109,8 +134,10 @@ class App:
         if proc and proc.poll() is None:
             return {"ok": True, "estado": "instalando"}
         # pkexec muestra la ventana de contraseña del sistema; la orden es fija (lista de arriba)
-        self.instalando[k] = subprocess.Popen(["pkexec", "/usr/bin/centinela-apps", k], stdout=subprocess.DEVNULL,
-                                              stderr=subprocess.DEVNULL, start_new_session=True)
+        log = open(self._registro_comp(k), "wb")      # el progreso se ve en Ajustes (y el motivo si falla)
+        self.instalando[k] = subprocess.Popen(["pkexec", "/usr/bin/centinela-apps", k], stdout=log,
+                                              stderr=subprocess.STDOUT, start_new_session=True)
+        log.close()
         return {"ok": True, "estado": "instalando"}
 
     def llm(self):

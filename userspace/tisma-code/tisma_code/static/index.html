@@ -609,18 +609,34 @@ function pintarDescargas(ds) {
       <div class="pbar"><i style="width:${d.total ? (100 * d.done / d.total).toFixed(1) : (d.status === "completo" ? 100 : 0)}%"></i></div></div>`).join("")
     : `<div class="ajrow"><small>No hay descargas. Elige un modelo abajo, en el selector de modelo.</small></div>`;
 }
+let compTimer = null;
+function pintarComponentes(comps) {
+  $("#aj-comp").innerHTML = Object.entries(comps).map(([k, c]) => `<div class="ajrow">${esc(c.nombre)}
+      <small>${esc(c.desc)}</small>${c.no_recomendado ? `<small>${esc(c.no_recomendado)}</small>` : ""}${
+      c.estado === "instalado" ? "<small>✓ Instalado</small>" :
+      c.estado === "instalando" ? `<small>⏳ Instalando: ${esc(c.detalle || "")}</small>` :
+      `${c.estado === "error" ? `<small style="color:var(--bad,#e5484d)">${esc(c.detalle || "No se pudo instalar")}</small>` : ""}
+       <button class="ajbtn" data-comp="${esc(k)}" style="margin:6px 0 0">${c.estado === "error" ? "Reintentar" : "Instalar"}</button>`}</div>`).join("");
+  $("#aj-comp").querySelectorAll("[data-comp]").forEach(b => b.onclick = async () => {
+    b.disabled = true; b.textContent = "Instalando…";
+    try { await api("/api/componentes/instalar", {nombre: b.dataset.comp}); vigilarComponentes(); } catch (e) { b.textContent = e.message; }
+  });
+  if (Object.values(comps).some(c => c.estado === "instalando")) vigilarComponentes();
+}
+function vigilarComponentes() {        // mientras algo se instala, el progreso se actualiza solo
+  if (compTimer) return;
+  compTimer = setInterval(async () => {
+    if ($("#ajustes").hidden) { clearInterval(compTimer); compTimer = null; return; }
+    try { const c = await api("/api/componentes"); pintarComponentes(c);
+      if (!Object.values(c).some(x => x.estado === "instalando")) { clearInterval(compTimer); compTimer = null; } } catch (e) {}
+  }, 2000);
+}
 async function abrirAjustes() {
   const a = await api("/api/ajustes");
   pintarDescargas(a.descargas);
   const mo = a.motor || {};
   $("#aj-motor").innerHTML = `<div class="ajrow">${esc(mo.nombre || "Apagado")}<small>${esc([mo.modelo, mo.detalle].filter(Boolean).join(" · ") || "Sin modelo en marcha")}</small></div>`;
-  $("#aj-comp").innerHTML = Object.entries(a.componentes).map(([k, c]) => `<div class="ajrow">${esc(c.nombre)}
-      <small>${esc(c.desc)}</small>${c.estado === "instalado" ? "<small>✓ Instalado</small>" : c.estado === "instalando"
-      ? "<small>Instalando…</small>" : `<button class="ajbtn" data-comp="${esc(k)}" style="margin:6px 0 0">Instalar</button>`}</div>`).join("");
-  $("#aj-comp").querySelectorAll("[data-comp]").forEach(b => b.onclick = async () => {
-    b.disabled = true; b.textContent = "Instalando…";
-    try { await api("/api/componentes/instalar", {nombre: b.dataset.comp}); } catch (e) { b.textContent = e.message; }
-  });
+  pintarComponentes(a.componentes);
   $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-liberar").checked = a.liberar_memoria; $("#aj-pensar").value = a.pensar || "auto";
   $("#ajustes").hidden = false;
 }

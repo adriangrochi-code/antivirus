@@ -170,7 +170,7 @@ def test_docs_subdir_symlink_is_refused(tmp_path):
     assert list(outside.iterdir()) == []
 
 
-def test_componentes_con_un_boton_y_solo_de_la_lista(monkeypatch):
+def test_componentes_con_un_boton_y_solo_de_la_lista(monkeypatch, tmp_path):
     """Instalar Strata, REA, Craft… con un clic: orden fija con pkexec, nunca algo que mande la página."""
     from tisma_code import server
     lanzados = []
@@ -183,13 +183,24 @@ def test_componentes_con_un_boton_y_solo_de_la_lista(monkeypatch):
         def poll(self):
             return None
     monkeypatch.setattr(server.subprocess, "Popen", P)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     app = server.App.__new__(server.App)
     app.instalando = {}
+    app.hw = {"ram_mb": 16000, "gpus": [], "vram_mb": 0}
     assert app.instalar_componente("rea") == {"ok": True, "estado": "instalando"}
     assert lanzados == [["pkexec", "/usr/bin/centinela-apps", "rea"]]
     assert app.instalar_componente("rea; rm -rf /")["ok"] is False and len(lanzados) == 1
     assert app.instalar_componente("rea")["estado"] == "instalando" and len(lanzados) == 1   # no lo lanza dos veces
     assert app.componentes()["rea"]["estado"] == "instalando"
+    # Se ve qué está haciendo (la última línea de la instalación), y por qué falló
+    (tmp_path / "tisma-code" / "componente-rea.log").write_text("[rea] Descargando rea-agents\n#####   45%\r")
+    c = app.componentes()["rea"]
+    assert c["detalle"] == "[rea] Descargando rea-agents"
+    app.instalando["rea"].poll = lambda: 1
+    app.instalando["rea"].returncode = 126
+    c = app.componentes()["rea"]
+    assert c["estado"] == "error" and "contraseña" in c["detalle"]
+    assert "No hace falta" in app.componentes()["strata"]["no_recomendado"]      # sin GPU dedicada
 
 
 def test_ningun_mensaje_pide_la_terminal():
