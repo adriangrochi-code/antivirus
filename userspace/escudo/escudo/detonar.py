@@ -261,6 +261,14 @@ def pedir_vm(run=subprocess.run) -> bool:
         return False
 
 
+def vm_monto(base: Path) -> bool:
+    """¿La VM llegó a montar la carpeta compartida? (atributo de 9p con security_model=mapped-xattr)."""
+    try:
+        return any(k.startswith("user.virtfs.") for k in os.listxattr(base))
+    except OSError:
+        return False
+
+
 def vm_argv(workdir: Path, segundos: int, kvm: bool = True, rapida: bool | None = None) -> list[str]:
     accel = ["-enable-kvm", "-cpu", "host"] if kvm else []        # sin KVM (pruebas): emulado, muy lento
     if rapida if rapida is not None else vm_rapida():
@@ -338,10 +346,12 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
             run(cmd, capture_output=True, timeout=segundos + (600 if vm else 5), start_new_session=True)
         except subprocess.TimeoutExpired:
             pass                                     # el tiempo de observación terminó: es lo normal
-        if vm and usar_vm is None and not traza.exists():
-            # La VM ni siquiera montó la carpeta compartida (detonar-invitado crea traza.txt ANTES de ejecutar la
-            # muestra, así que la muestra no puede provocar esto): falla de la VM, no de la muestra. Se repite en
-            # el aislamiento normal en vez de marcar «sospechoso» todo lo nuevo (preview 16: /mnt de solo lectura)
+        if vm and usar_vm is None and not traza.exists() and not vm_monto(base):
+            # La VM ni siquiera montó la carpeta compartida (al montarla, detonar-invitado le cambia los permisos y
+            # 9p lo guarda en un atributo user.virtfs.* que el invitado no puede borrar; eso pasa ANTES de ejecutar
+            # la muestra): falla de la VM, no de la muestra. Se repite en el aislamiento normal en vez de marcar
+            # «sospechoso» todo lo nuevo (preview 16: /mnt de solo lectura). Si la montó y la traza no está, la
+            # muestra pudo borrarla: eso sigue siendo «sospechoso».
             inf = detonar(path, args, segundos, uid, gid, usar_vm=False, run=run, base_dir=base_dir, fondo=fondo)
             inf.nota = "; ".join(x for x in (inf.nota, "la máquina virtual de análisis no arrancó: se usó el "
                                              "aislamiento normal") if x)
@@ -358,7 +368,7 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
         if not texto:
             inf.nota = "no se pudo observar la ejecución (sin traza)"
             inf.veredicto = "sospechoso" if inf.veredicto == "limpio" else inf.veredicto
-        elif not vm and not se_ejecuto(texto, f"/tmp/muestra/{name}", wine=windows):
+        elif not se_ejecuto(texto, f"/tmp/muestra/{name}", wine=windows):
             # Fallar CERRADO: si el aislamiento no llegó a arrancar la muestra (p. ej. bubblewrap no pudo montar
             # /proc dentro de un servicio con ProtectKernelTunables), la traza solo tiene el fallo del
             # aislamiento y la muestra «no hizo nada»: antes eso salía «limpio» y se le dejaba ejecutarse.

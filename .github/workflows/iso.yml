@@ -79,7 +79,7 @@ jobs:
           # la preview 16 no podía montar la muestra y todo salía «sin traza»). Sin KVM se emula: tarda más.
           command -v qemu-system-x86_64 >/dev/null || sudo apt-get install -y -q --no-install-recommends qemu-system-x86
           mkdir -p "$RUNNER_TEMP/prueba-vm" && printf '#!/bin/sh\necho hola\n' > "$RUNNER_TEMP/prueba-vm/hola"
-          ver=$(cd userspace/escudo && ESCUDO_VM_DIR="$GITHUB_WORKSPACE/build/vm" timeout 900 python3 -c \
+          ver=$(cd userspace/escudo && env -u INVOCATION_ID ESCUDO_VM_DIR="$GITHUB_WORKSPACE/build/vm" timeout 900 python3 -c \
             "from escudo import detonar; i = detonar.detonar('$RUNNER_TEMP/prueba-vm/hola', segundos=20, usar_vm=True); print(i.veredicto, '|', i.nota)")
           echo "Prueba de la VM de análisis: $ver"
           [[ "$ver" == limpio* ]] || { echo "La VM de análisis no funciona: no se publica (la ISO sale sin ella)"; exit 1; }

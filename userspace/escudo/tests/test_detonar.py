@@ -180,3 +180,30 @@ def test_vm_que_no_arranca_repite_en_el_aislamiento_normal(tmp_path, monkeypatch
     # Pedida la VM a propósito (usar_vm=True): sin repetir, falla cerrado
     assert detonar.detonar(str(f), segundos=15, base_dir=tmp_path, run=run, usar_vm=True).veredicto == "sospechoso"
     assert not list(tmp_path.glob("escudo-detonar-*"))
+
+
+@needs_tools
+def test_si_la_vm_monto_la_carpeta_y_falta_la_traza_es_sospechoso(tmp_path, monkeypatch):
+    """La VM montó la carpeta (atributo user.virtfs.*) pero la traza desapareció: la muestra pudo borrarla. No se
+    repite en el aislamiento normal (sería darle una segunda oportunidad): «sospechoso»."""
+    import re
+    import subprocess
+    try:
+        os.setxattr(tmp_path, "user.prueba", b"1")
+    except OSError:
+        pytest.skip("el sistema de archivos no admite atributos user.*")
+    monkeypatch.setattr(detonar, "vm_disponible", lambda: True)
+    llamadas = []
+
+    def run(cmd, **kw):
+        llamadas.append(cmd)
+        if "qemu-system-x86_64" in cmd:
+            base = re.search(r"local,(?:id=muestra,)?path=([^,]+)", " ".join(cmd)).group(1)
+            os.setxattr(base, "user.virtfs.mode", b"\xedA\x00\x00")        # lo que deja el invitado al montarla
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+        return subprocess.run(cmd, **kw)
+    f = tmp_path / "prog.sh"
+    f.write_text(BUENO)
+    inf = detonar.detonar(str(f), segundos=15, base_dir=tmp_path, run=run)
+    assert inf.veredicto == "sospechoso" and inf.entorno == "máquina virtual"
+    assert not any("bwrap" in " ".join(c) for c in llamadas)
