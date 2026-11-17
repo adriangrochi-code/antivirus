@@ -1,5 +1,7 @@
 # Apagar o reiniciar normalmente después de llegar al inicio de sesión también confirma el arranque (pone a cero
-# el contador de /etc/grub.d/06_tisma_fallos aunque no hayan pasado los 2 minutos de tisma-arranque-ok.timer).
+# el contador de /etc/grub.d/06_tisma_fallos aunque no hayan pasado los 2 minutos de tisma-arranque-ok.timer, y el
+# de centinela adapt: antes, un encendido corto hacía que el siguiente arranque suspendiera el perfil del equipo).
+# Un cuelgue de verdad no llega a apagar normalmente: sigue contando como fallo.
 # Ordenado después de la pantalla de inicio de sesión y de la partición EFI: al apagar se detiene ANTES que
 # ellas (con la pantalla todavía activa y /boot/efi todavía montada).
 [Unit]
@@ -13,6 +15,7 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
 ExecStop=/usr/lib/tisma/arranque-ok apagado
+ExecStop=-/usr/bin/centinela adapt arranque-ok
 NoNewPrivileges=yes
 PrivateNetwork=yes
 ProtectHome=yes

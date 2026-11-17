@@ -520,7 +520,9 @@ def test_bluetooth_temprano_solo_con_emparejados():
 def test_apagar_normal_confirma_el_arranque():
     """Encender y apagar antes de 2 min no cuenta como arranque fallido (si no, a la 3.ª vez: modo seguro)."""
     c = ini(SD / "tisma-arranque-ok-apagado.service")
-    assert c["Service"]["ExecStop"] == "/usr/lib/tisma/arranque-ok apagado" and c["Service"]["RemainAfterExit"] == "yes"
+    txt = (SD / "tisma-arranque-ok-apagado.service").read_text()
+    assert "ExecStop=/usr/lib/tisma/arranque-ok apagado" in txt and c["Service"]["RemainAfterExit"] == "yes"
+    assert "ExecStop=-/usr/bin/centinela adapt arranque-ok" in txt          # perfil del equipo: mismo contador
     assert "display-manager.service" in c["Unit"]["After"] and "boot-efi.mount" in c["Unit"]["After"]
     assert "tisma-arranque-ok-apagado.service" in (ROOT.parent / "iso/build-iso.sh").read_text()
     s = (ROOT / "usr/lib/tisma/arranque-ok").read_text()
