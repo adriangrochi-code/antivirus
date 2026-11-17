@@ -139,12 +139,31 @@ def borrar(nombre: str, runner=run, snapdir: Path = SNAPDIR) -> None:
     (snapdir / f"{nombre}.json").unlink(missing_ok=True)
 
 
-def podar(runner=run, snapdir: Path = SNAPDIR) -> list[str]:
-    """Aplica la retención por tipo; nunca borra la más reciente de cada tipo."""
+POCO_ESPACIO = 0.10                         # menos de un 10 % libre: se borran las instantáneas más viejas
+
+
+def podar(runner=run, snapdir: Path = SNAPDIR, uso=shutil.disk_usage) -> list[str]:
+    """Aplica la retención por tipo; nunca borra la más reciente de cada tipo.
+
+    Con poco espacio libre, además borra la mitad más vieja de las demás: las instantáneas (también de /home)
+    retienen lo que se borró durante días y en un disco pequeño lo llenaban sin que se viera por qué. btrfs libera
+    el espacio en segundo plano (no se puede medir enseguida): por eso la mitad por vez, en cada poda."""
     borradas = []
     for motivo, keep in RETENCION.items():
         snaps = [s["nombre"] for s in instantaneas(snapdir) if s["motivo"] == motivo]
         for name in snaps[: max(0, len(snaps) - keep)]:
+            borrar(name, runner, snapdir)
+            borradas.append(name)
+    try:
+        u = uso("/")
+        poco = u.total and u.free / u.total < POCO_ESPACIO
+    except OSError:
+        poco = False
+    if poco:
+        todas = instantaneas(snapdir)
+        ultimas = set({s["motivo"]: s["nombre"] for s in todas}.values())        # la más nueva de cada tipo
+        resto = [s["nombre"] for s in todas if s["nombre"] not in ultimas]     # de la más vieja a la más nueva
+        for name in resto[: (len(resto) + 1) // 2]:
             borrar(name, runner, snapdir)
             borradas.append(name)
     return borradas

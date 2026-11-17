@@ -14,6 +14,11 @@ from tisma_copias import core  # noqa: E402
 ROOT = Path(__file__).resolve().parents[3]
 
 
+class _Uso:
+    def __init__(self, total, used, free):
+        self.total, self.used, self.free = total, used, free
+
+
 class Fake:
     def __init__(self, fstype="btrfs", root_subvol="/@", home_subvol="/@home"):
         self.calls = []
@@ -48,7 +53,7 @@ def test_create_list_and_prune(tmp_path, monkeypatch):
     assert len(snaps) == 9 and all(s["home"] for s in snaps)
     ro = [c[0] for c in fake.calls if c[0][:3] == ["btrfs", "subvolume", "snapshot"]]
     assert all("-r" in c for c in ro)                       # siempre de solo lectura
-    gone = core.podar(runner=fake, snapdir=tmp_path)
+    gone = core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: _Uso(100, 10, 90))
     assert len(gone) == 2 and gone[0].startswith("20261101")
     assert len(core.instantaneas(tmp_path)) == 7
 
@@ -208,3 +213,23 @@ def test_sin_instantanea_de_actualizacion_durante_la_instalacion(tmp_path, monke
     (proc / "root").unlink()
     (proc / "root").symlink_to(tmp_path)
     assert core.en_instalacion(str(tmp_path / "proc")) is True         # otra raíz: chroot
+
+
+def test_con_poco_espacio_borra_las_mas_viejas(tmp_path, monkeypatch):
+    """Disco pequeño: las instantáneas no lo llenan (se borran las más viejas, nunca la última de cada tipo)."""
+    from collections import namedtuple
+    U = namedtuple("U", "total used free")
+    fake = Fake()
+    for i in range(6):
+        monkeypatch.setattr(core, "_now", lambda i=i: dt.datetime(2026, 11, 1 + i, 3, 0, 0))
+        core.crear("diaria", runner=fake, snapdir=tmp_path)
+    monkeypatch.setattr(core, "_now", lambda: dt.datetime(2026, 11, 9, 3, 0, 0))
+    core.crear("manual", runner=fake, snapdir=tmp_path)
+    assert core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 50, 50)) == []        # espacio de sobra
+    gone = core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 95, 5))
+    assert gone == ["20261101-030000-diaria", "20261102-030000-diaria", "20261103-030000-diaria"]
+    quedan = {s["nombre"] for s in core.instantaneas(tmp_path)}
+    assert {"20261106-030000-diaria", "20261109-030000-manual"} <= quedan
+    for _ in range(5):
+        core.podar(runner=fake, snapdir=tmp_path, uso=lambda p: U(100, 99, 1))
+    assert {s["nombre"] for s in core.instantaneas(tmp_path)} == {"20261106-030000-diaria", "20261109-030000-manual"}
