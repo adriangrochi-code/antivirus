@@ -227,8 +227,8 @@ class MotorLento(models.LocalServer):
     @staticmethod
     def _spawn(argv: list[str]) -> subprocess.Popen:
         pre = ["nice", "-n", "19"] + (["ionice", "-c", "3"] if shutil.which("ionice") else [])
-        return subprocess.Popen(pre + models.jail_engine(argv), stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
+        return models.LANZADOR.lanzar(lambda: subprocess.Popen(pre + models.jail_engine(argv),
+                                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
 
 def argumentos(path: str, hw: dict, ctx: int) -> list[str]:

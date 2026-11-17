@@ -358,6 +358,45 @@ def descendientes(pid: int) -> list[int]:
     return out
 
 
+class _Lanzador:
+    """Un único hilo, que vive tanto como la app, lanza todos los motores. bubblewrap (--die-with-parent) ata la jaula
+    al HILO que la creó: lanzado desde un hilo de vida corta (el arranque automático, el que atiende un pedido de la
+    página, el relanzamiento), al terminar ese hilo moría la jaula exterior y el motor seguía vivo por su cuenta,
+    fuera del alcance de TISMA Code (visto en una prueba de punta a punta: motores huérfanos y puertos ocupados)."""
+
+    def __init__(self):
+        import queue
+        self.cola: "queue.Queue" = queue.Queue()
+        self.hilo: threading.Thread | None = None
+        self._c = threading.Lock()
+
+    def _bucle(self):
+        while True:
+            fn, listo, res = self.cola.get()
+            try:
+                res["ok"] = fn()
+            except BaseException as e:  # noqa: BLE001 — se devuelve al que pidió el lanzamiento
+                res["error"] = e
+            listo.set()
+
+    def lanzar(self, fn):
+        with self._c:
+            if self.hilo is None or not self.hilo.is_alive():
+                self.hilo = threading.Thread(target=self._bucle, daemon=True, name="lanzador-motores")
+                self.hilo.start()
+        if threading.current_thread() is self.hilo:
+            return fn()
+        listo, res = threading.Event(), {}
+        self.cola.put((fn, listo, res))
+        listo.wait()
+        if "error" in res:
+            raise res["error"]
+        return res["ok"]
+
+
+LANZADOR = _Lanzador()
+
+
 def cerrar_ordenado(proc: subprocess.Popen, espera: float = 15) -> None:
     """Cierra el motor dejándolo terminar bien: así guarda lo aprendido (la caché de n-gramas de ese modelo). A
     través de bubblewrap, un SIGTERM a la jaula mataba al motor de golpe (--die-with-parent) y no guardaba nada:
@@ -373,14 +412,54 @@ def cerrar_ordenado(proc: subprocess.Popen, espera: float = 15) -> None:
             pass
     if not motor:
         proc.terminate()
-    try:
-        proc.wait(espera)
-    except subprocess.TimeoutExpired:
-        proc.terminate()
+    import time as _t
+    fin = _t.monotonic() + espera
+    # Se espera al MOTOR (no solo a la jaula exterior, que puede irse antes): así el puerto queda libre
+    while _t.monotonic() < fin and (proc.poll() is None or any(_vivo(p) for p in motor)):
+        _t.sleep(0.1)
+    for p in [*descendientes(proc.pid), *motor]:      # lo que quede de la jaula o del motor
+        try:
+            os.kill(p, 9)
+        except OSError:
+            pass
+    if proc.poll() is None:
+        proc.kill()
         try:
             proc.wait(5)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            pass
+
+
+def cerrar_motores_hijos(espera: float = 15) -> int:
+    """Al salir de TISMA Code: todo motor que haya lanzado (el principal, especialistas, uno que quedó de un arranque
+    que se pisó con otro) se cierra en orden (guarda su caché) y después las jaulas que queden. Devuelve cuántos."""
+    import signal
+    import time as _t
+    hijos = descendientes(os.getpid())
+    motores = [p for p in hijos if _nombre(p) in ("llama-server", "tisma-engine")]
+    for p in motores:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
+    fin = _t.monotonic() + espera
+    while _t.monotonic() < fin and any(Path(f"/proc/{p}").exists() and _nombre(p) for p in motores):
+        _t.sleep(0.2)
+    for p in descendientes(os.getpid()):          # lo que quede (jaulas, motores colgados)
+        if _nombre(p) in ("bwrap", "llama-server", "tisma-engine", "nice"):
+            try:
+                os.kill(p, signal.SIGKILL)
+            except OSError:
+                pass
+    return len(motores)
+
+
+def _vivo(pid: int) -> bool:
+    try:
+        estado = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+        return estado != "Z"
+    except (OSError, IndexError):
+        return False
 
 
 def _nombre(pid: int) -> str:
@@ -474,10 +553,19 @@ class LocalServer:
         self.ctx = 0
         self.config: dict = {}
         self.prefijo_guardado = False
+        # Arrancar y parar, de a uno: al abrir TISMA Code el motor arranca solo y, si a la vez se elegía un modelo,
+        # nacían dos llama-server y uno quedaba huérfano ocupando memoria (visto en una prueba de punta a punta)
+        self._cerrojo = threading.RLock()
+        self._gen = 0                       # sube con cada arranque y cada parada (ver _fallback)
 
     def start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None,
               extra: list[str] | None = None) -> str:
         """Sin `extra`, la configuración la decide el motor TISMA (lo medido para este equipo, o su plan)."""
+        with self._cerrojo:
+            return self._start(path, hw, ctx, threads, extra)
+
+    def _start(self, path: str, hw: dict, ctx: int = 0, threads: tuple[int, int] | None = None,
+               extra: list[str] | None = None) -> str:
         exe = shutil.which("llama-server")
         if not exe:
             raise RuntimeError("llama-server (llama.cpp) no está instalado")
@@ -499,6 +587,8 @@ class LocalServer:
         # 32k con 16 GB o más (con la caché KV en q8_0, un modelo de 7-8 B ocupa ~1 GB de KV a 32k)
         ctx = ctx or (32768 if hw.get("ram_mb", 0) >= 15000 else 16384)
         self.ctx = ctx
+        if self.port and port_listening(self.port):
+            self.port = 0                    # quedó ocupado (otro programa o un motor que no terminó): otro puerto
         if not self.port:
             import socket
             with socket.socket() as sk:
@@ -514,9 +604,10 @@ class LocalServer:
                 "--cache-reuse", "256", *thr, *(extra or [])]
         self.kv_quant = "-ctk" not in (extra or [])         # la configuración medida puede elegir otro tipo
         self.proc = self._spawn(base + (KV_QUANT if self.kv_quant else []))
+        self._gen += 1
         self.model = p.name
         self.path = str(p)
-        threading.Thread(target=self._fallback, args=(self.proc, base), daemon=True).start()
+        threading.Thread(target=self._fallback, args=(self.proc, base, self._gen), daemon=True).start()
         return f"http://127.0.0.1:{self.port}/v1"
 
     # ---- primera respuesta casi inmediata: las instrucciones ya procesadas, guardadas en disco
@@ -562,19 +653,25 @@ class LocalServer:
 
     @staticmethod
     def _spawn(argv: list[str]) -> subprocess.Popen:
-        return subprocess.Popen(jail_engine(argv), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return LANZADOR.lanzar(lambda: subprocess.Popen(jail_engine(argv), stdout=subprocess.DEVNULL,
+                                                        stderr=subprocess.DEVNULL))
 
-    def _fallback(self, proc: subprocess.Popen, base: list[str], wait_s: float = 180) -> None:
-        """Si el motor no admite la caché KV comprimida (requiere Flash Attention), se relanza sin ella."""
+    def _fallback(self, proc: subprocess.Popen, base: list[str], gen: int = 0, wait_s: float = 180) -> None:
+        """Si el motor no admite la caché KV comprimida (requiere Flash Attention), se relanza sin ella. Solo si se
+        cayó SOLO: si TISMA Code lo paró o arrancó otro mientras tanto (gen cambió), relanzarlo dejaba un motor
+        huérfano ocupando memoria."""
         try:
             rc = proc.wait(wait_s)
         except subprocess.TimeoutExpired:
             return                                   # sigue vivo: funcionó
-        if rc != 0 and self.proc is proc and self.kv_quant:
-            self.kv_quant = False
-            self.proc = self._spawn(base)
+        with self._cerrojo:
+            if rc != 0 and self.proc is proc and self.kv_quant and self._gen == gen:
+                self.kv_quant = False
+                self.proc = self._spawn(base)
 
     def stop(self) -> None:
-        if self.proc and self.proc.poll() is None:
-            cerrar_ordenado(self.proc)          # guarda la caché de n-gramas del modelo antes de salir
-        self.proc = None
+        with self._cerrojo:
+            self._gen += 1
+            if self.proc and self.proc.poll() is None:
+                cerrar_ordenado(self.proc)          # guarda la caché de n-gramas del modelo antes de salir
+            self.proc = None

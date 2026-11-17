@@ -202,16 +202,14 @@ class HopeServer:
             sk.bind(("127.0.0.1", 0))
             self.port = sk.getsockname()[1]
         self.plan = p
-        self.proc = subprocess.Popen(models.jail_engine(self.argv(carpeta, p)),
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        argv = self.argv(carpeta, p)
+        self.proc = models.LANZADOR.lanzar(lambda: subprocess.Popen(models.jail_engine(argv),
+                                                                    stdout=subprocess.DEVNULL,
+                                                                    stderr=subprocess.DEVNULL))
         return f"http://127.0.0.1:{self.port}/v1"
 
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(10)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
+            models.cerrar_ordenado(self.proc)      # el motor de dentro de la jaula, no solo la jaula
         self.proc = None
 

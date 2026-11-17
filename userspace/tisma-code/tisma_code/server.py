@@ -770,6 +770,8 @@ def main(argv: list[str] | None = None) -> int:
         APP.server.stop()
         if APP.session:
             APP.session.close()          # sus servidores MCP y especialistas
+        n = models.cerrar_motores_hijos()  # y cualquier motor que haya quedado (nunca queda uno ocupando memoria)
+        print(f"TISMA Code cerrado ({n} motor(es) apagado(s))", flush=True)
     return 0
 
 

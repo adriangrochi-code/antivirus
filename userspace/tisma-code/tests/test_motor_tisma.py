@@ -352,3 +352,14 @@ def test_optimizar_prueba_mejoras_de_gpu_combina_las_que_ganan_y_las_guarda(mode
     assert rec["args"].count("--spec-type") == 1 and rec["gen"] == 14.0
     assert motor.config_for(str(modeldir / "grande.gguf"), A275)["args"] == rec["args"]     # guardada
     assert pasos[-1][0] == pasos[-1][1]
+
+
+def test_lanzador_unico_para_los_motores():
+    """Todos los motores nacen del mismo hilo de larga vida (la jaula queda atada al hilo que la crea)."""
+    import threading
+    from tisma_code import models
+    nombres = []
+    t = threading.Thread(target=lambda: nombres.append(models.LANZADOR.lanzar(lambda: threading.current_thread().name)))
+    t.start(); t.join()
+    nombres.append(models.LANZADOR.lanzar(lambda: threading.current_thread().name))
+    assert nombres == ["lanzador-motores", "lanzador-motores"]
