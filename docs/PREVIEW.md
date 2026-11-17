@@ -5,6 +5,8 @@ ni para equipos con datos importantes sin copia.**
 
 ## Novedades de la preview 18
 
+(Incluye todo lo de la preview 17, que no llegó a publicarse.)
+
 - **Seguridad**: 210 archivos de programas del sistema quedaban con dueño equivocado (un usuario normal podía
   cambiarlos y ganar permisos de administrador). Arreglado al construir la ISO y, en equipos ya instalados, al
   arrancar.
@@ -22,6 +24,8 @@ ni para equipos con datos importantes sin copia.**
   viejas). Al actualizar desde el USB, los equipos instalados antes de la preview 16 también reciben el TRIM del
   SSD cifrado.
 - **Navegador privado**: se instala aunque otro repositorio falle en ese momento.
+- **Avisos**: lo que pasa entre el arranque y el inicio de sesión (p. ej. «el equipo volvió a la versión anterior»)
+  ya no se pierde: se muestra al entrar.
 
 ## Novedades de la preview 17
 
