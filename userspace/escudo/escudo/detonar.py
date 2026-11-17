@@ -338,6 +338,14 @@ def detonar(path: str, args: list[str] | None = None, segundos: int = 45, uid: i
             run(cmd, capture_output=True, timeout=segundos + (600 if vm else 5), start_new_session=True)
         except subprocess.TimeoutExpired:
             pass                                     # el tiempo de observación terminó: es lo normal
+        if vm and usar_vm is None and not traza.exists():
+            # La VM ni siquiera montó la carpeta compartida (detonar-invitado crea traza.txt ANTES de ejecutar la
+            # muestra, así que la muestra no puede provocar esto): falla de la VM, no de la muestra. Se repite en
+            # el aislamiento normal en vez de marcar «sospechoso» todo lo nuevo (preview 16: /mnt de solo lectura)
+            inf = detonar(path, args, segundos, uid, gid, usar_vm=False, run=run, base_dir=base_dir, fondo=fondo)
+            inf.nota = "; ".join(x for x in (inf.nota, "la máquina virtual de análisis no arrancó: se usó el "
+                                             "aislamiento normal") if x)
+            return inf
         texto = traza.read_text(errors="replace") if traza.exists() else ""
         inf = analizar_traza(texto, HOME_FALSO, f"/tmp/muestra/{name}")
         if windows:

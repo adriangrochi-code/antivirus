@@ -155,3 +155,28 @@ def test_gate_no_bloquea_al_instalador_pero_si_descargas(tmp_path):
                   "38 1 0:3 / /tmp rw - x x rw\n39 38 0:4 / /tmp/calamares-root-x rw - x x rw\n"
                   "40 38 0:5 / /tmp/.mount_App rw - x x rw\n")
     assert fan.submounts(["/home", "/tmp"], str(mi)) == ["/home/ana"]
+
+
+@needs_tools
+def test_vm_que_no_arranca_repite_en_el_aislamiento_normal(tmp_path, monkeypatch):
+    """Si la VM no llega ni a montar la carpeta compartida (falla suya, no de la muestra), no se marca todo lo nuevo
+    como sospechoso: se analiza en el aislamiento normal."""
+    import subprocess
+    monkeypatch.setattr(detonar, "vm_disponible", lambda: True)
+    llamadas = []
+
+    def run(cmd, **kw):
+        llamadas.append(cmd)
+        if "qemu-system-x86_64" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")      # VM rota: no escribe nada
+        return subprocess.run(cmd, **kw)
+    f = tmp_path / "prog.sh"
+    f.write_text(BUENO)
+    inf = detonar.detonar(str(f), segundos=15, base_dir=tmp_path, run=run)
+    assert inf.veredicto == "limpio" and inf.entorno == "sandbox" and "no arrancó" in inf.nota
+    assert any("qemu-system-x86_64" in c for c in llamadas)
+    f.write_text(MALO)
+    assert detonar.detonar(str(f), segundos=15, base_dir=tmp_path, run=run).veredicto == "malicioso"
+    # Pedida la VM a propósito (usar_vm=True): sin repetir, falla cerrado
+    assert detonar.detonar(str(f), segundos=15, base_dir=tmp_path, run=run, usar_vm=True).veredicto == "sospechoso"
+    assert not list(tmp_path.glob("escudo-detonar-*"))
