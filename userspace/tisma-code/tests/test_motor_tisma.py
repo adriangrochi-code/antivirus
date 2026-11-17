@@ -286,6 +286,10 @@ def test_modelo_optimizado_o_reducido_queda_como_el_de_siempre(monkeypatch, tmp_
 
     class S:
         ctx = 4096
+
+        def restaurar_prefijo(self):
+            pass
+
         def start(self, path, hw):
             servidos.append(path)
             return "http://127.0.0.1:2/v1"

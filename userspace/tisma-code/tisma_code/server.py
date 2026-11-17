@@ -165,6 +165,9 @@ class App:
         """Sirve este modelo (con lo medido para él, si se optimizó) y lo deja como el de siempre: al volver a
         abrir TISMA Code arranca este, no el que elegiría el motor."""
         ep = self.server.start(path, self.hw)
+        # Las instrucciones ya procesadas de este modelo (guardadas en el disco): la primera respuesta no espera a
+        # releerlas (~3000 tokens; en la A275, unos 20 s)
+        threading.Thread(target=self.server.restaurar_prefijo, daemon=True).start()
         self.config.update({"endpoint": ep, "model": Path(path).name, "preferido": str(Path(path).resolve())})
         self.save_config()
         if self.session:

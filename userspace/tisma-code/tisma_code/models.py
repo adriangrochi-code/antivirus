@@ -626,16 +626,30 @@ class LocalServer:
         except (urllib.error.URLError, OSError, ValueError):
             return False
 
+    def listo(self) -> bool:
+        """El motor ya cargó el modelo (/health responde 200; mientras carga, 503)."""
+        if not self.port or not port_listening(self.port):
+            return False
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{self.port}/health",
+                                         headers={"Authorization": f"Bearer {self.api_key}"})
+            with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310 (127.0.0.1, motor propio)
+                return r.status == 200
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
+
     def restaurar_prefijo(self, esperar_s: float = 180) -> bool:
         """Al arrancar: si hay instrucciones ya procesadas para este modelo y configuración, se cargan (la
         primera respuesta no espera a releerlas). llama.cpp reutiliza el prefijo común con el pedido nuevo."""
         if not (SLOTS_DIR / self.archivo_prefijo()).is_file():
             return False
+        # Listo de verdad (/health 200): con el puerto abierto el motor todavía carga el modelo y responde 503, y la
+        # recuperación se perdía (la primera respuesta volvía a leer ~3000 tokens: en la A275, unos 20 s)
         fin = time.monotonic() + esperar_s
         while time.monotonic() < fin and self.proc and self.proc.poll() is None:
-            if port_listening(self.port):
+            if self.listo():
                 break
-            time.sleep(1)
+            time.sleep(0.5)
         ok = self._slot("restore")
         self.prefijo_guardado = ok                # ya estaba guardado: no se vuelve a escribir
         return ok
