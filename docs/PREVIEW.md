@@ -3,6 +3,17 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 19
+
+- **TISMA Code responde bien y mucho más rápido en equipos sin gráfica dedicada**: el contexto ya no se comprime
+  en el procesador (leer las instrucciones era 10 veces más lento) y se mide con un contexto real (antes elegía
+  la mitad de hilos). Pedir código ya no le ofrece la calculadora a los modelos chicos. Cada respuesta tiene un
+  tope de largo (un modelo en bucle no queda escribiendo minutos).
+- **Reducir con calidad mínima**: eliges «que conserve al menos 90 %» (o lo que quieras) y busca el formato más
+  chico que lo cumple, midiendo la calidad de verdad.
+- **TISMA Code**: el indicador ya no dice «motor apagado» con el modelo andando, y la barra muestra el modelo en
+  uso al terminar de reducir.
+
 ## Novedades de la preview 18
 
 (Incluye todo lo de la preview 17, que no llegó a publicarse.)
