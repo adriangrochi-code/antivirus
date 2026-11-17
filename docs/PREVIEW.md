@@ -3,6 +3,16 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 17
+
+- **Instalación arreglada** (causa del «Loading Linux …-minimal» en la A275): el instalador ejecutaba los pasos de
+  TISMA sin encontrar las herramientas del sistema y el menú de arranque quedaba con el kernel equivocado y sin
+  initramfs. Reproducido y comprobado: el sistema instalado llega a la pantalla de inicio de sesión.
+- **Sin avisos de «iniciando…»** al entrar y menú sin terminales (Drivers, SolidCraft, Revisar el otro sistema).
+- **TISMA Code**: n-gramas en la gráfica y caché de n-gramas guardada que mejora con el uso; barra de progreso que
+  avanza también dentro de cada etapa al reducir.
+- (La preview 16 no se recomienda: le faltan estos arreglos de instalación.)
+
 ## Novedades de la preview 16
 
 - **Arranque**: el sistema instalado arranca con el kernel de Debian desde el principio (como el USB).
