@@ -3,6 +3,14 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 16
+
+- **Arranque**: el sistema instalado arranca con el kernel de Debian desde el principio (como el USB).
+- **TISMA Code**: el primer mensaje ya no falla si el motor se está reiniciando; nivel de esfuerzo; cuantización a
+  elección al reducir; el modelo optimizado o reducido queda como el de siempre; barras de progreso con el tamaño
+  final; los componentes muestran su progreso y por qué fallan; con «Pensar» apagado ya no dice «Pensando…».
+- **Pantalla**: logo y texto más nítidos en pantallas de poca resolución (1366×768).
+
 ## Novedades de la preview 15
 
 - **Arreglo de arranque**: en un equipo real se quita solo el kernel «minimal» (solo para máquinas virtuales), que
