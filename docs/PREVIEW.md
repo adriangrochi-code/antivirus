@@ -3,6 +3,15 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 15
+
+- **Arreglo de arranque**: en un equipo real se quita solo el kernel «minimal» (solo para máquinas virtuales), que
+  en la preview 14 dejó la A275 en «Loading Linux …-minimal». Nueva entrada «Arrancar en modo seguro» y, si el
+  equipo no llega dos veces seguidas a la pantalla de inicio, la elige sola.
+- **Navegador privado** (app opcional): navegar sin rastreo y, con «Modo Tor», en anónimo.
+- **Escudo**: el análisis de las descargas cede la CPU a lo que estás usando; la máquina virtual de análisis
+  rápida se descarga sola después de instalar.
+
 ## Novedades de la preview 14
 
 - **Arranque a prueba de fallos**: si el equipo no llega a la pantalla de inicio, el menú de arranque aparece solo
