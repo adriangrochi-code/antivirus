@@ -343,6 +343,53 @@ def jail_engine(argv: list[str]) -> list[str]:
             "--setenv", "XDG_CACHE_HOME", str(cache), "--setenv", "LANG", "C.UTF-8", "--", *argv]
 
 
+def descendientes(pid: int) -> list[int]:
+    """Procesos hijos (y nietos) de `pid`, del más cercano al más lejano."""
+    out, pendientes = [], [pid]
+    while pendientes:
+        p = pendientes.pop(0)
+        for t in Path(f"/proc/{p}/task").glob("*/children"):
+            try:
+                hijos = [int(x) for x in t.read_text().split()]
+            except (OSError, ValueError):
+                continue
+            out += hijos
+            pendientes += hijos
+    return out
+
+
+def cerrar_ordenado(proc: subprocess.Popen, espera: float = 15) -> None:
+    """Cierra el motor dejándolo terminar bien: así guarda lo aprendido (la caché de n-gramas de ese modelo). A
+    través de bubblewrap, un SIGTERM a la jaula mataba al motor de golpe (--die-with-parent) y no guardaba nada:
+    la señal va al propio llama-server, y la jaula termina sola cuando él termina."""
+    import signal
+    if proc.poll() is not None:
+        return
+    motor = [p for p in descendientes(proc.pid) if _nombre(p) in ("llama-server", "tisma-engine")]
+    for p in motor:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
+    if not motor:
+        proc.terminate()
+    try:
+        proc.wait(espera)
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        try:
+            proc.wait(5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def _nombre(pid: int) -> str:
+    try:
+        return Path(f"/proc/{pid}/comm").read_text().strip()
+    except OSError:
+        return ""
+
+
 def port_listening(port: int) -> bool:
     for table in ("/proc/net/tcp", "/proc/net/tcp6"):
         try:
@@ -529,9 +576,5 @@ class LocalServer:
 
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(10)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
+            cerrar_ordenado(self.proc)          # guarda la caché de n-gramas del modelo antes de salir
         self.proc = None

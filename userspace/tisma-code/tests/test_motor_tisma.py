@@ -301,3 +301,25 @@ def test_modelo_optimizado_o_reducido_queda_como_el_de_siempre(monkeypatch, tmp_
     app.server.config = {}
     app._auto_motor()
     assert servidos[-1] == str(b)                    # al reabrir, el elegido; no el que elegiría el motor
+
+
+def test_cerrar_ordenado_avisa_al_motor_dentro_de_la_jaula(tmp_path):
+    """El SIGTERM va al llama-server de dentro (así guarda su caché de n-gramas), no a la jaula."""
+    import shutil
+    import subprocess
+    import sys
+    from tisma_code import models
+    falso = tmp_path / "llama-server"                     # un «motor» que guarda algo al recibir SIGTERM
+    falso.write_text(f"#!{sys.executable}\nimport signal, sys, time\n"
+                     f"signal.signal(signal.SIGTERM, lambda *a: (open('{tmp_path}/guardado', 'w').write('ok'), sys.exit(0)))\n"
+                     "time.sleep(60)\n")
+    falso.chmod(0o755)
+    envoltorio = shutil.which("setsid") or "env"            # un proceso intermedio, como bwrap
+    p = subprocess.Popen([envoltorio, "sh", "-c", f"'{falso}'; true"])
+    import time
+    for _ in range(50):
+        if any(models._nombre(x) == "llama-server" for x in models.descendientes(p.pid)):
+            break
+        time.sleep(0.1)
+    models.cerrar_ordenado(p, espera=10)
+    assert (tmp_path / "guardado").read_text() == "ok" and p.poll() is not None
