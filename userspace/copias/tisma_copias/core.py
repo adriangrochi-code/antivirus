@@ -89,6 +89,16 @@ def instantaneas(snapdir: Path = SNAPDIR) -> list[dict]:
     return out
 
 
+def en_instalacion(proc: str = "/proc") -> bool:
+    """¿Corriendo dentro de un chroot (el instalador, una reparación) y no en el sistema arrancado? La raíz de este
+    proceso no es la del sistema (la de PID 1)."""
+    try:
+        a, b = os.stat("/"), os.stat(f"{proc}/1/root/")
+    except OSError:
+        return True                          # sin /proc o sin permiso para verlo: no es el sistema normal
+    return (a.st_dev, a.st_ino) != (b.st_dev, b.st_ino)
+
+
 def crear(motivo: str = "manual", nota: str = "", runner=run, snapdir: Path = SNAPDIR,
           min_intervalo_s: int = 600) -> str | None:
     if motivo not in MOTIVOS:
@@ -97,6 +107,11 @@ def crear(motivo: str = "manual", nota: str = "", runner=run, snapdir: Path = SN
         raise CopiasError("la raíz no es btrfs: las instantáneas no están disponibles (usa la copia externa)")
     if not snapdir.is_dir():
         raise CopiasError(f"{snapdir} no existe (subvolumen @snapshots)")
+    if motivo == "actualizacion" and en_instalacion():
+        # El instalador (o cualquier chroot) instala y quita paquetes: una «instantánea antes de actualizar» ahí
+        # guardaba el sistema A MEDIO INSTALAR y «Volver a como estaba antes de la última actualización» llevaba a
+        # ese estado roto (y ocupaba espacio). Solo se hacen en el sistema ya arrancado.
+        return None
     now = _now()
     if motivo == "actualizacion":           # apt puede invocar el gancho varias veces seguidas
         for s in reversed(instantaneas(snapdir)):

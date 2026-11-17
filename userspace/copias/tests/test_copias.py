@@ -54,6 +54,7 @@ def test_create_list_and_prune(tmp_path, monkeypatch):
 
 
 def test_update_hook_deduplicates(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "en_instalacion", lambda: False)
     fake = Fake()
     t = dt.datetime(2026, 11, 11, 10, 0, 0)
     monkeypatch.setattr(core, "_now", lambda: t)
@@ -193,3 +194,17 @@ def test_restore_into_user_folder_runs_as_that_user(tmp_path, monkeypatch):
     with pytest.raises(core.CopiasError, match="ruta completa"):
         core.restaurar_archivo(name, "doc.txt", runner=runner, snapdir=snapdir)
     shutil.rmtree(base)
+
+
+def test_sin_instantanea_de_actualizacion_durante_la_instalacion(tmp_path, monkeypatch):
+    """En el instalador (chroot) no se guarda el sistema a medio instalar como «antes de la actualización»."""
+    monkeypatch.setattr(core, "en_instalacion", lambda: True)
+    assert core.crear("actualizacion", runner=Fake(), snapdir=tmp_path) is None
+    monkeypatch.undo()
+    proc = tmp_path / "proc" / "1"
+    proc.mkdir(parents=True)
+    (proc / "root").symlink_to("/")
+    assert core.en_instalacion(str(tmp_path / "proc")) is False        # misma raíz que PID 1: sistema arrancado
+    (proc / "root").unlink()
+    (proc / "root").symlink_to(tmp_path)
+    assert core.en_instalacion(str(tmp_path / "proc")) is True         # otra raíz: chroot
