@@ -3,6 +3,15 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 20
+
+- **Instalar ya no depende del USB**: «Instalar TISMA OS» carga el sistema en la memoria antes de empezar (si el
+  equipo tiene memoria de sobra). Instalar leía el USB entero a la vez que escribía el disco y, con un pendrive
+  o puerto que falla bajo esa carga, terminaba en «KERNEL PANIC … exitcode=0x00000007» (visto en la ThinkPad A275,
+  que desde la RAM instalaba bien).
+- **Si el kernel falla**, la pantalla muestra el texto del error (antes, un código QR imposible de leer en una foto).
+- **TISMA Code**: un error inesperado se explica en la ventana (antes solo decía «Failed to fetch»).
+
 ## Novedades de la preview 19
 
 - **TISMA Code responde bien y mucho más rápido en equipos sin gráfica dedicada**: el contexto ya no se comprime

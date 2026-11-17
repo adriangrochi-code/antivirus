@@ -5,8 +5,32 @@
 # pendrive que falla terminaba en «KERNEL PANIC … exitcode=0x00000007» (squashfs corrupto) sin explicar nada.
 # Sin tildes ni eñes: la consola del arranque no siempre las muestra.
 
+# Instalar o actualizar con el sistema cargado en la memoria: instalar lee el USB entero (~1,8 GB) mientras escribe
+# en el disco, y un pendrive o puerto que falla bajo esa carga terminaba en «KERNEL PANIC ... exitcode=0x00000007»
+# (visto en la ThinkPad A275: desde la RAM instalaba bien). live-boot copia el USB a la memoria (de corrido, que
+# es lo que mejor tolera un USB flojo) y el instalador lee de ahi. Solo si sobra memoria (USB + 4 GB para el
+# escritorio y el instalador); si no, sigue desde el USB como antes. «tisma.usb» lo desactiva.
+Tisma_a_ram ()
+{
+	case " ${TISMA_CMDLINE:-$(cat /proc/cmdline)} " in
+		*" tisma.probar "*|*" toram"*|*" tisma.comprobar "*|*" tisma.usb "*) return 0 ;;
+	esac
+	_MEM=$(awk '/^MemTotal:/{print $2}' "${TISMA_MEMINFO:-/proc/meminfo}" 2>/dev/null)
+	_TAM=$(du -sk "${1}" 2>/dev/null | cut -f1)
+	# Sin du: el squashfs es casi todo el USB (+ 300 MB de margen por el resto)
+	[ -n "${_TAM}" ] || _TAM=$(( $(wc -c < "${1}/live/filesystem.squashfs" 2>/dev/null || echo 0) / 1024 + 307200 ))
+	[ -n "${_MEM}" ] && [ -n "${_TAM}" ] || return 0
+	if [ "${_MEM}" -ge $((_TAM + 4194304)) ]; then
+		TORAM="true"
+		export TORAM
+		echo "   Cargando TISMA en la memoria para instalar sin depender del USB (1-2 minutos)..." > "${TISMA_CONSOLA:-/dev/console}" 2>/dev/null
+	fi
+	return 0
+}
+
 Verify_checksums ()
 {
+	Tisma_a_ram "${1}"
 	case " ${TISMA_CMDLINE:-$(cat /proc/cmdline)} " in
 		*" tisma.comprobar "*) ;;
 		*) return 0 ;;

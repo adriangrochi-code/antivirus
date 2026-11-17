@@ -472,7 +472,8 @@ def test_comprobar_el_usb(tmp_path):
     subprocess.run("find . -type f ! -name sha256sum.txt | sort | xargs sha256sum > sha256sum.txt", shell=True,
                    cwd=m, check=True)
     def correr(cmdline):
-        env = {"TISMA_PRUEBA": "1", "TISMA_CMDLINE": cmdline, "PATH": "/usr/bin:/bin"}
+        env = {"TISMA_PRUEBA": "1", "TISMA_CMDLINE": cmdline, "PATH": "/usr/bin:/bin", "TISMA_CONSOLA": "/dev/null",
+               "TISMA_MEMINFO": str(tmp_path / "poca")}
         return subprocess.run(["sh", "-c", f". {script}; Verify_checksums {m}"], env=env, capture_output=True,
                               text=True)
     r = correr("boot=live tisma.comprobar")
@@ -481,6 +482,29 @@ def test_comprobar_el_usb(tmp_path):
     r = correr("boot=live tisma.comprobar")
     assert r.returncode == 1 and "CON ERRORES" in r.stdout
     assert correr("boot=live").stdout == ""                              # arranque normal: no hace nada
+
+
+def test_instalar_carga_el_usb_en_la_memoria(tmp_path):
+    """Instalar leyendo el USB a la vez que se escribe el disco daba «KERNEL PANIC … 0x00000007» en la A275 (desde la
+    RAM instalaba bien): con memoria de sobra, la entrada «Instalar» carga el USB en la RAM sola."""
+    import subprocess
+    script = ROOT / "usr/lib/live/boot/0031-tisma-comprobar"
+    m = tmp_path / "m"
+    (m / "live").mkdir(parents=True)
+    (m / "live/filesystem.squashfs").write_bytes(b"x" * 4096)
+    (tmp_path / "mucha").write_text("MemTotal:       16000000 kB\n")
+    (tmp_path / "poca").write_text("MemTotal:        3000000 kB\n")
+
+    def toram(cmdline, mem):
+        env = {"TISMA_CMDLINE": cmdline, "PATH": "/usr/bin:/bin", "TISMA_CONSOLA": "/dev/null",
+               "TISMA_MEMINFO": str(tmp_path / mem)}
+        r = subprocess.run(["sh", "-c", f'. {script}; Verify_checksums {m}; echo "[$TORAM]"'], env=env,
+                           capture_output=True, text=True)
+        return r.stdout.strip().splitlines()[-1]
+    assert toram("boot=live", "mucha") == "[true]"                       # «Instalar» / «Actualizar»
+    assert toram("boot=live", "poca") == "[]"                            # poca memoria: desde el USB, como antes
+    assert toram("boot=live tisma.probar", "mucha") == "[]"              # «Probar» no lo necesita
+    assert toram("boot=live tisma.usb", "mucha") == "[]"                 # se puede desactivar
 
 
 def test_buscar_el_programa_que_ya_conoce(tmp_path):
