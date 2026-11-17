@@ -85,12 +85,16 @@ def test_plans(monkeypatch):
 def test_candidates(monkeypatch):
     monkeypatch.setattr(motor, "has_igpu", lambda: True)
     base = motor.plan(INFO_DENSO, int(4.7 * GB), A275)
-    c = motor.candidates(INFO_DENSO, int(4.7 * GB), A275, base, draft="/m/d.gguf")
+    monkeypatch.setattr(motor, "cache_ngramas", lambda p: "/cache/m.bin")
+    c = motor.candidates(INFO_DENSO, int(4.7 * GB), A275, base, draft="/m/d.gguf", path="/m/m.gguf")
     assert [x["nombre"] for x in c] == ["plan", "gráfica integrada", "CPU + gráfica para el prompt",
-                                         "n-gramas (sin coste de memoria)", "con borrador"]
+                                         "n-gramas (sin coste de memoria)", "gráfica integrada + n-gramas",
+                                         "caché de n-gramas guardada (en la gráfica)", "con borrador"]
     assert "--device" not in c[2]["args"]                     # sin --device none: el prompt puede ir a la gráfica
     assert c[3]["args"][-2:] == ["--spec-type", "ngram-mod"]
-    assert c[4]["args"][-6:] == ["-md", "/m/d.gguf", "--draft-max", "16", "--draft-min", "2"]
+    assert c[4]["args"] == ["-ngl", "999", "--spec-type", "ngram-mod"]          # n-gramas EN la gráfica
+    assert c[5]["args"] == ["-ngl", "999", "--spec-type", "ngram-cache", "-lcd", "/cache/m.bin"]
+    assert c[6]["args"][-6:] == ["-md", "/m/d.gguf", "--spec-draft-n-max", "16", "--spec-draft-n-min", "2"]
     mtp = motor.candidates({**INFO_DENSO, "mtp": 1}, int(4.7 * GB), A275, base)
     assert any(x["args"][-2:] == ["--spec-type", "draft-mtp"] for x in mtp)
     base = motor.plan(INFO_MOE, 18 * GB, RTX8)

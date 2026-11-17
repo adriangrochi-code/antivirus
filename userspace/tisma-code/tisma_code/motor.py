@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import struct
 import time
@@ -234,7 +235,17 @@ def mlock_args(model_mb: float, hw: dict) -> list[str]:
     return ["--mlock"] if soft == resource.RLIM_INFINITY or soft >= model_mb * 1.1 * (1 << 20) else []
 
 
-def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = None) -> list[dict]:
+def cache_ngramas(path: str) -> str:
+    """Caché de n-gramas de este modelo (lo que más se repite al usarlo), en la carpeta escribible del motor: se
+    guarda entre arranques y crece con el uso, así cada vez se adivinan más tokens sin calcularlos."""
+    d = models.MODELS_DIR.parent / "cache-motor" / "ngramas"
+    d.mkdir(parents=True, exist_ok=True)
+    nombre = re.sub(r"[^A-Za-z0-9._-]", "_", Path(path).name)[:100]
+    return str(d / f"{nombre}.bin")
+
+
+def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = None,
+               path: str | None = None) -> list[dict]:
     """Pocas alternativas que vale la pena medir (cada una cuesta cargar el modelo)."""
     out = [dict(base, nombre="plan")]
     if base["dispositivo"] == "cpu" and has_igpu():
@@ -254,12 +265,25 @@ def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = 
     # capas de predicción que algunos modelos traen dentro (Qwen3.x Next, DeepSeek, GLM). Se mide si compensa.
     out.append(dict(base, nombre="n-gramas (sin coste de memoria)",
                     args=base["args"] + ["--spec-type", "ngram-mod"]))
+    # Lo mismo en la GRÁFICA (en la A275 la gráfica integrada fue lo más rápido: los n-gramas se suman a eso) y con
+    # una caché GUARDADA de n-gramas que crece con el uso (lo que más se escribe se adivina sin calcularlo)
+    gpu = next((c for c in out if c.get("dispositivo") in ("igpu", "gpu", "mixto")), None)
+    if base["dispositivo"] in ("gpu", "mixto"):
+        gpu = base
+    if gpu is not None and gpu is not base:          # si el plan ya es la GPU, los n-gramas de arriba ya van ahí
+        out.append(dict(gpu, nombre=f"{'gráfica integrada' if gpu['dispositivo'] == 'igpu' else 'GPU'} + n-gramas",
+                        args=gpu["args"] + ["--spec-type", "ngram-mod"]))
+    if path:
+        donde = gpu or base
+        out.append(dict(donde, nombre="caché de n-gramas guardada" + (" (en la gráfica)" if gpu else ""),
+                        args=donde["args"] + ["--spec-type", "ngram-cache", "-lcd", cache_ngramas(path)]))
     if info.get("mtp"):
         out.append(dict(base, nombre="MTP del propio modelo", args=base["args"] + ["--spec-type", "draft-mtp"]))
     if draft:
         gpu_draft = ["-ngld", "999"] if base["dispositivo"] in ("gpu", "mixto") else []   # el borrador, también en GPU
-        out.append(dict(base, nombre="con borrador", args=base["args"] + ["-md", draft, "--draft-max", "16",
-                                                                          "--draft-min", "2", *gpu_draft]))
+        # (--draft-max/--draft-min ya no existen en llama.cpp: con ellos el borrador nunca arrancaba)
+        out.append(dict(base, nombre="con borrador", args=base["args"] + ["-md", draft, "--spec-draft-n-max", "16",
+                                                                          "--spec-draft-n-min", "2", *gpu_draft]))
     return out
 
 
@@ -378,7 +402,7 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
     draft = compatible_draft(path, info, models.local_models())
     results = []
     threads = thread_options()
-    lista = candidates(info, size, hw, base, draft)
+    lista = candidates(info, size, hw, base, draft, path)
     total = len(lista) + (1 if len(threads) > 1 else 0)
     for i, c in enumerate(lista):
         if progreso:
