@@ -123,3 +123,10 @@ def test_progreso_de_reducir_llega_al_final(tmp_path, monkeypatch):
 def test_tamano_legible():
     from tisma_code.server import tamano_legible
     assert tamano_legible(612_000_000) == "612 MB" and tamano_legible(1_840_000_000) == "1,84 GB"
+
+
+def test_avance_dentro_de_cada_etapa():
+    from tisma_code.reducir import fraccion
+    assert fraccion(["llama-imatrix", "--chunks", "24"], "computing...[1]5.1,[2]4.9,[6]4.7,") == 0.25
+    assert fraccion(["llama-quantize", "a", "b"], "[  10/ 200] blk.0\n[ 100/ 200] blk.9") == 0.5
+    assert fraccion(["llama-perplexity", "--chunks", "8"], "cargando") is None

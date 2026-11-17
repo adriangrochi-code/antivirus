@@ -163,11 +163,44 @@ def jaula(argv: list[str], trabajo: Path) -> list[str]:
             "--setenv", "LANG", "C.UTF-8", "--", *argv]
 
 
-def ejecutar(argv: list[str], trabajo: Path) -> str:
-    r = subprocess.run(jaula(argv, trabajo), capture_output=True, text=True, timeout=6 * 3600)
-    if r.returncode != 0:
-        raise ReducirError((r.stderr or r.stdout)[-400:].strip() or f"{argv[0]} falló")
-    return r.stdout + r.stderr
+_TROZO = re.compile(r"\[(\d+)\]\s*[\d.]+")                 # llama-imatrix / llama-perplexity: «[7]5.43,»
+_TENSOR = re.compile(r"\[\s*(\d+)\s*/\s*(\d+)\s*\]")          # llama-quantize: «[ 12/ 291] blk.0…»
+
+
+def fraccion(argv: list[str], salida: str) -> float | None:
+    """Cuánto lleva la herramienta (0 a 1), leyendo lo que va escribiendo."""
+    if argv and argv[0] == "llama-quantize":
+        m = _TENSOR.findall(salida[-2000:])
+        return int(m[-1][0]) / max(1, int(m[-1][1])) if m else None
+    if "--chunks" in argv:
+        m = _TROZO.findall(salida[-2000:])
+        return min(1.0, int(m[-1]) / max(1, int(argv[argv.index("--chunks") + 1]))) if m else None
+    return None
+
+
+def ejecutar(argv: list[str], trabajo: Path, avance=None) -> str:
+    """Corre la herramienta aislada; si se pasa `avance`, lo llama con la fracción hecha mientras trabaja."""
+    import time
+    p = subprocess.Popen(jaula(argv, trabajo), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    salida, ultimo, fin = "", -1.0, time.monotonic() + 6 * 3600
+    try:
+        while chunk := p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096):
+            salida = (salida + chunk.decode(errors="replace"))[-200_000:]
+            if avance:
+                f = fraccion(argv, salida)
+                if f is not None and f - ultimo >= 0.02:
+                    ultimo = f
+                    avance(f)
+            if time.monotonic() > fin:
+                p.kill()
+                raise ReducirError(f"{argv[0]} tardó demasiado")
+        rc = p.wait()
+    finally:
+        if p.poll() is None:
+            p.kill()
+    if rc != 0:
+        raise ReducirError(salida[-400:].strip() or f"{argv[0]} falló")
+    return salida
 
 
 def hilos() -> str:
@@ -197,11 +230,20 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
     hecho = [0]
     aviso_base = avisar
 
+    etapa = [""]
+
     def avisar(m: str) -> None:              # noqa: F811 — cada aviso es una etapa: avanza la barra
         aviso_base(m)
+        etapa[0] = m.rstrip("…")
         if progreso:
-            progreso(min(hecho[0], total - 1), total, m.rstrip("…"))
+            progreso(min(hecho[0], total - 1), total, etapa[0])
         hecho[0] += 1
+
+    if run is ejecutar and progreso:          # dentro de cada etapa, el avance que va escribiendo la herramienta
+        def run(argv, trabajo):  # noqa: F811
+            base = min(hecho[0] - 1, total - 1)
+            return ejecutar(argv, trabajo, avance=lambda f: progreso(round(base + f * 0.99, 3), total,
+                                                                     f"{etapa[0]} ({round(f * 100)} %)"))
     try:
         cal, ev = textos_de_muestra(trabajo)
         requant = ["--allow-requantize"] if origen not in ("f32", "f16", "bf16") else []
