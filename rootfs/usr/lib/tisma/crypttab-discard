@@ -1,0 +1,30 @@
+#!/bin/sh
+# TISMA (al instalar): con /boot sin cifrar, el instalador escribe las líneas de /etc/crypttab SIN opciones, y sin
+# «discard» el TRIM semanal del SSD (fstrim.timer) no llega a través del cifrado: el SSD pierde rendimiento y vida
+# útil. Se agrega «luks,discard» a las líneas sin opciones y se rehace el initramfs (que lleva una copia).
+# (discard revela qué bloques están libres, no su contenido: es lo habitual en portátiles con SSD.)
+set -u
+F=/etc/crypttab
+[ -f "$F" ] || exit 0
+cambio=0
+tmp=$(mktemp)
+while IFS= read -r linea || [ -n "$linea" ]; do
+    case "$linea" in
+        ''|'#'*) printf '%s\n' "$linea" ;;
+        *)
+            set -- $linea
+            if [ $# -eq 3 ]; then
+                printf '%s %s %s luks,discard\n' "$1" "$2" "$3"; cambio=1
+            elif [ $# -ge 4 ] && ! printf '%s' "$4" | grep -qw discard; then
+                printf '%s %s %s %s,discard\n' "$1" "$2" "$3" "$4"; cambio=1
+            else
+                printf '%s\n' "$linea"
+            fi ;;
+    esac
+done < "$F" > "$tmp"
+if [ "$cambio" = 1 ]; then
+    cat "$tmp" > "$F"
+    PATH=/usr/sbin:/usr/bin:/sbin:/bin update-initramfs -u -k all >/dev/null 2>&1 || true
+fi
+rm -f "$tmp"
+exit 0
