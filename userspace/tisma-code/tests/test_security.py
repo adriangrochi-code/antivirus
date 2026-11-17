@@ -219,3 +219,22 @@ def test_ajustes_solo_claves_permitidas():
     """«Ajustes» solo cambia los interruptores previstos, y solo con valores sí/no."""
     src = (Path(__file__).resolve().parents[1] / "tisma_code/server.py").read_text()
     assert 'for k in ("trazas_hope", "auto_motor", "liberar_memoria"):' in src and "isinstance(b.get(k), bool)" in src
+
+
+def test_error_inesperado_responde_500_y_no_corta(monkeypatch):
+    """Un fallo inesperado en un pedido cortaba la conexión y la ventana solo decía «Failed to fetch»."""
+    import http.client
+    import json
+    from tisma_code import server, models
+    server.APP = server.App()
+    monkeypatch.setattr(server.Handler, "_authorized", lambda self: True)
+    monkeypatch.setattr(models, "search", lambda q: (_ for _ in ()).throw(AttributeError("getuid")))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+        c.request("GET", "/api/models/search?q=qwen", headers={"Host": f"127.0.0.1:{httpd.server_port}"})
+        r = c.getresponse()
+        assert r.status == 500 and "getuid" in json.loads(r.read())["error"]
+    finally:
+        httpd.shutdown()

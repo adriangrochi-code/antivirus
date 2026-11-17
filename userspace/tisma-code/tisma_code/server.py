@@ -83,7 +83,10 @@ class App:
                    "simulacion": ("Simulación", "OpenFOAM, FEniCSx, Netgen y ParaView (~1 GB)", "/usr/bin/paraview")}
 
     def _registro_comp(self, k: str) -> Path:
-        d = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "tisma-code"
+        if plataforma.ES_WINDOWS:
+            d = plataforma.DIR_DATOS / "registros"
+        else:
+            d = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "tisma-code"
         d.mkdir(parents=True, exist_ok=True, mode=0o700)
         return d / f"componente-{k}.log"
 
@@ -479,6 +482,21 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # ------------------------------------------------------------ utilidades
+    def _sin_cortes(self, fn):
+        """Un error inesperado en un pedido cortaba la conexión sin respuesta y la ventana solo decía «Failed to
+        fetch» (visto al descargar modelos y componentes). Ahora responde 500 con el motivo, en simple."""
+        try:
+            return fn()
+        except (BrokenPipeError, ConnectionResetError):
+            return None                          # la página se cerró o recargó a mitad: nada que contestar
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            try:
+                return self._send(500, {"error": f"Error interno de TISMA Code ({type(e).__name__}): {e}"})
+            except OSError:
+                return None
+
     def _send(self, code: int, body, ctype: str = "application/json") -> None:
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
         self.send_response(code)
@@ -518,6 +536,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ GET
     def do_GET(self):  # noqa: N802
+        return self._sin_cortes(self._get)
+
+    def _get(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         if not self._host_ok():
@@ -624,6 +645,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ POST
     def do_POST(self):  # noqa: N802
+        return self._sin_cortes(self._post)
+
+    def _post(self):
         if not self._authorized():
             return self._send(403, {"error": "no autorizado"})
         APP.ultimo_contacto = time.monotonic()
