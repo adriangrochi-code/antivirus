@@ -175,7 +175,7 @@ def hilos() -> str:
 
 
 def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ejecutar, avisar=lambda m: None,
-            trabajo_base: Path | None = None) -> dict:
+            trabajo_base: Path | None = None, progreso=None) -> dict:
     """Crea la versión reducida junto al original. nivel: «auto», «normal», «liviano» o «muy_liviano» (precisión,
     siempre según la importancia medida); quitar_capas: además busca y quita capas que casi no aportan.
     Devuelve tamaños, capas quitadas y calidad medida."""
@@ -191,6 +191,17 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
     base_dir = trabajo_base or models.MODELS_DIR.parent / "reducir"
     trabajo = base_dir / secrets.token_hex(6)
     trabajo.mkdir(parents=True, mode=0o700)
+    # Etapas: importancia, calidad del original, [cada capa candidata + la referencia], versión reducida, su calidad
+    n_cand = len(candidatas(info.get("capas", 0))) if quitar_capas else 0
+    total = 4 + (n_cand + 1 if quitar_capas else 0)
+    hecho = [0]
+    aviso_base = avisar
+
+    def avisar(m: str) -> None:              # noqa: F811 — cada aviso es una etapa: avanza la barra
+        aviso_base(m)
+        if progreso:
+            progreso(min(hecho[0], total - 1), total, m.rstrip("…"))
+        hecho[0] += 1
     try:
         cal, ev = textos_de_muestra(trabajo)
         requant = ["--allow-requantize"] if origen not in ("f32", "f16", "bf16") else []
@@ -222,6 +233,7 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
                 cuantizar(prueba, [capa])
                 medidas[capa] = ppl(prueba)
                 prueba.unlink(missing_ok=True)
+            avisar("Midiendo la referencia sin quitar capas…")
             sin_quitar = trabajo / "sin-quitar.gguf"
             cuantizar(sin_quitar, [])
             ref = ppl(sin_quitar)                         # la referencia es la misma precisión, sin quitar capas
@@ -231,6 +243,7 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
         nombre = f"{src.stem}-reducido-{tipo.lower()}" + (f"-{len(quitar)}capas" if quitar else "") + ".gguf"
         tmp = trabajo / nombre
         cuantizar(tmp, quitar)
+        avisar("Midiendo la calidad de la versión reducida…")
         final = ppl(tmp)
         if quitar and final / base - 1 > PERDIDA_MAX_TOTAL * 1.5:   # juntas empeoraron de más: sin quitar capas
             avisar("Quitar capas empeoraba demasiado: se conservan todas.")
@@ -242,6 +255,8 @@ def reducir(modelo: str, nivel: str = "auto", quitar_capas: bool = False, run=ej
             final = ppl(tmp)
         destino = src.parent / nombre
         shutil.move(str(tmp), destino)
+        if progreso:
+            progreso(total, total, "Listo")
         calidad = max(0.0, min(100.0, 100 * base / final)) if final else 0.0
         return {"archivo": str(destino), "antes": total_size(src), "despues": destino.stat().st_size,
                 "tipo": tipo, "capas_quitadas": quitar, "capas": info.get("capas", 0),

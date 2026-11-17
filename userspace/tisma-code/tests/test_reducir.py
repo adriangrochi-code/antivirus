@@ -96,3 +96,25 @@ def test_nivel_de_esfuerzo(tmp_path):
     assert s.pensar_activo() is False                                     # automático: modelo chico, sin pensar
     s.pensar = True
     assert s.pensar_activo() is True                                      # lo elegido en «Pensar» manda
+
+
+def test_progreso_de_reducir_llega_al_final(tmp_path, monkeypatch):
+    """La barra avanza por etapas y termina en 100 % (antes solo se veía «Midiendo…» mucho rato)."""
+    from tisma_code import models, reducir as red
+    import tisma_code.motor as motor
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path)
+    src = tmp_path / "m" / "x-f16.gguf"
+    src.parent.mkdir()
+    src.write_bytes(b"x" * 100)
+    monkeypatch.setattr(motor, "gguf_info", lambda p: {"capas": 0, "tipo_archivo": 1})
+    monkeypatch.setattr(red, "textos_de_muestra", lambda d: (d / "c.txt", d / "e.txt"))
+
+    def run(argv, trabajo):
+        if argv[0] == "llama-quantize":
+            Path(argv[-3]).write_bytes(b"y" * 40)
+        return "Final estimate: PPL = 10.0"
+    from pathlib import Path
+    pasos = []
+    r = red.reducir(str(src), "auto", run=run, progreso=lambda i, n, t: pasos.append((i, n)))
+    assert pasos[-1][0] == pasos[-1][1] and [i for i, _ in pasos] == sorted(i for i, _ in pasos)
+    assert Path(r["archivo"]).exists()

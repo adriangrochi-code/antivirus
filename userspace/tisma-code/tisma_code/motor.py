@@ -370,7 +370,7 @@ def thread_options() -> list[tuple[int, int]]:
     return [(units, logical)] + ([(logical, units)] if units != logical else [])
 
 
-def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=None) -> dict:
+def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=None, progreso=None) -> dict:
     """Mide las alternativas y guarda la mejor para este modelo y este equipo."""
     info = gguf_info(path)
     size = total_size(path)
@@ -378,13 +378,19 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
     draft = compatible_draft(path, info, models.local_models())
     results = []
     threads = thread_options()
-    for c in candidates(info, size, hw, base, draft):
+    lista = candidates(info, size, hw, base, draft)
+    total = len(lista) + (1 if len(threads) > 1 else 0)
+    for i, c in enumerate(lista):
+        if progreso:
+            progreso(i, total, f"Probando «{c['nombre']}» ({i + 1} de {total})")
         g, pp = run(path, hw, c["args"], c["ctx"], threads[0])
         results.append({**c, "hilos": list(threads[0]), "gen": round(g, 2), "prompt": round(pp, 1)})
         if on_step:
             on_step(f"{c['nombre']}: {g:.1f} tokens/s generando, {pp:.0f} leyendo")
     best = min(results, key=step_seconds)
     if best["gen"] > 0 and len(threads) > 1 and best["dispositivo"] in ("cpu", "mixto"):
+        if progreso:
+            progreso(total - 1, total, f"Probando con {threads[1][0]} hilos ({total} de {total})")
         g, pp = run(path, hw, best["args"], best["ctx"], threads[1])
         if on_step:
             on_step(f"{best['nombre']} con {threads[1][0]} hilos: {g:.1f} tokens/s")
@@ -397,6 +403,8 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
            "fecha": time.strftime("%Y-%m-%d %H:%M")}
     if best["gen"] > 0:
         _save(path, rec)
+    if progreso:
+        progreso(total, total, "Listo")
     return rec
 
 

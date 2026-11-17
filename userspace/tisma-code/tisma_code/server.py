@@ -321,7 +321,10 @@ class App:
         try:
             self.push({"type": "info", "message": f"Reduciendo {Path(path).name}. Tarda un rato; puedes "
                        "seguir usando el equipo. El original no se toca."})
-            r = reducir.reducir(path, nivel, capas, avisar=lambda m: self.push({"type": "info", "message": "· " + m}))
+            r = reducir.reducir(path, nivel, capas, avisar=lambda m: None,
+                                progreso=lambda i, n, t: self.push({"type": "progreso", "id": "reducir",
+                                                                    "titulo": "Reduciendo el modelo",
+                                                                    "paso": i, "total": n, "texto": t}))
             capas = (f", sin {len(r['capas_quitadas'])} de {r['capas']} capas" if r["capas_quitadas"] else "")
             self.push({"type": "info", "message": f"Listo: {Path(r['archivo']).name} — {r['antes'] / 1e9:.2f} GB → "
                        f"{r['despues'] / 1e9:.2f} GB{capas}. Conserva un {r['calidad']:.0f} % de la calidad medida. "
@@ -351,7 +354,10 @@ class App:
         if self.server.proc:
             self.server.stop()            # su memoria (VRAM incluida) falsearía las mediciones
         try:
-            rec = motor.optimize(path, self.hw, on_step=lambda m: self.push({"type": "info", "message": "· " + m}))
+            rec = motor.optimize(path, self.hw, on_step=lambda m: self.push({"type": "info", "message": "· " + m}),
+                                 progreso=lambda i, n, t: self.push({"type": "progreso", "id": "optimizar",
+                                                                     "titulo": "Optimizando el motor",
+                                                                     "paso": i, "total": n, "texto": t}))
         except Exception as e:  # noqa: BLE001 (GGUF raro, motor que no arranca…): se avisa y se restaura
             self.push({"type": "error", "message": f"No se pudo optimizar: {e}"})
             rec = {}

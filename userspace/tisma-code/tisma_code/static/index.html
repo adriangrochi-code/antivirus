@@ -47,6 +47,8 @@ code, pre, .mono { font-variant-ligatures: none; font-feature-settings: "liga" 0
 .note code { word-break: break-all; }
 code { font-family: var(--mono); font-size: 13px; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
 .note { color: var(--faint); font-size: 13px; margin: 6px 0; }
+.progreso .pbar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--faint) 25%, transparent); margin: 6px 0 4px; overflow: hidden; max-width: 420px; }
+.progreso .pbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
 .err { background: var(--err-bg); padding: 9px 13px; border-radius: 10px; margin: 10px 0; }
 
 .t { margin: 4px 0; font-size: 14px; }
@@ -297,11 +299,33 @@ function setBusy(b, label) {
   }
 }
 
+// Barra de progreso de tareas largas (optimizar, reducir): etapa actual, porcentaje y tiempo transcurrido (corre
+// solo aunque una etapa tarde: así nunca parece colgado)
+const barras = {};
+function progreso(ev) {
+  let b = barras[ev.id];
+  if (!b || !b.el.isConnected) {
+    const el = document.createElement("div"); el.className = "note progreso";
+    el.innerHTML = `<b></b> <span class="pt"></span><div class="pbar"><i></i></div><small></small>`;
+    $("#log").appendChild(el); $("#chat").scrollTop = $("#chat").scrollHeight;
+    b = barras[ev.id] = {el, t0: Date.now(), tick: null};
+    b.tick = setInterval(() => { const s = Math.round((Date.now() - b.t0) / 1000);
+      b.el.querySelector("small").textContent = `${b.texto || ""} · ${Math.floor(s / 60)} min ${s % 60} s`; }, 1000);
+  }
+  const pct = ev.total ? Math.round(100 * ev.paso / ev.total) : 0;
+  b.texto = ev.texto;
+  b.el.querySelector("b").textContent = ev.titulo;
+  b.el.querySelector(".pt").textContent = pct + " %";
+  b.el.querySelector("i").style.width = pct + "%";
+  if (ev.paso >= ev.total) { clearInterval(b.tick); b.el.querySelector("small").textContent = "Listo"; delete barras[ev.id]; }
+}
+
 function onEvent(ev) {
   switch (ev.type) {
     case "thinking": setBusy(true, ev.pensando === false ? "Escribiendo la respuesta" : "Pensando"); break;
     case "assistant": put(md(ev.text), "a"); break;
     case "info": put(esc(ev.message), "note"); break;
+    case "progreso": progreso(ev); break;
     case "error": put(esc(ev.message), "err"); break;
     case "idle": setBusy(false); break;
     case "metrics":
