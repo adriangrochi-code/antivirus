@@ -50,7 +50,7 @@ VARLIB_EXCLUIR = ["dpkg", "apt", "ucf", "initramfs-tools", "python", "systemd/de
 # Lo que el instalador quita al instalar (modules/packages.conf): es solo del USB
 PAQUETES_LIVE = ["live-boot", "live-boot-doc", "live-boot-initramfs-tools", "live-config", "live-config-doc",
                  "live-config-systemd", "live-tools", "live-task-localisation", "live-task-recommended",
-                 "user-setup", "calamares-settings-debian"]
+                 "user-setup", "calamares-settings-debian", "calamares"]
 PENDIENTES = "var/lib/tisma/reinstalar.list"
 RSYNC = ["rsync", "-aHAXx", "--numeric-ids"]
 NO_COPIAR = ["/proc/*", "/sys/*", "/dev/*", "/run/*", "/tmp/*", "/home/*", "/var/log/*", "/var/cache/*",
