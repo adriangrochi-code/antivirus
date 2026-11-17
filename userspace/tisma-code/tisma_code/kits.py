@@ -86,9 +86,21 @@ def kit_of(tool: str) -> str | None:
     return next((k for k, v in KITS.items() if tool in v["tools"]), None)
 
 
+# Pedir CÓDIGO («escribe una función que devuelva el promedio…»): las palabras de cálculo describen lo que hará
+# el programa, no un cálculo que haya que hacer ahora. Con el kit de cálculo a la vista, un modelo chico llamaba
+# a «calcular» con «sum(numbers)/len(numbers)» en vez de escribir la función (visto con Qwen3 0.6B).
+PROGRAMAR = re.compile(r"(escrib|crea|haz|hac[eé]|implementa|program|genera|arregla|corrige|modifica|a[ñn]ade)\w*\b.{0,60}?"
+                       r"\b(funci[oó]n|script|programa|clase|m[eé]todo|c[oó]digo|test|prueba unitaria|api|app)"
+                       r"|\b(python|javascript|typescript|rust|java|c\+\+|golang|bash|sql|html|css)\b")
+CALCULO_YA = re.compile(r"\d+\s*[-+*/^]\s*\d|cu[aá]nto (es|da|vale|mide|pesa)|calcula(me)? (el|la|cu)|exact")
+
+
 def from_text(text: str) -> set[str]:
     low = text.lower()
-    return {k for k, v in KITS.items() if re.search(v["claves"], low)}
+    kits = {k for k, v in KITS.items() if re.search(v["claves"], low)}
+    if "calculo" in kits and PROGRAMAR.search(low) and not CALCULO_YA.search(low):
+        kits.discard("calculo")                       # se puede activar igual si el modelo lo pide (herramientas)
+    return kits
 
 
 def visible(all_schemas: list[dict], active: set[str], context_tokens: int) -> list[dict]:

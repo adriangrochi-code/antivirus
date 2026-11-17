@@ -545,6 +545,16 @@ def threads_for(model_file: str) -> tuple[int, int] | None:
 KV_QUANT = ["-fa", "auto", "-ctk", "q8_0", "-ctv", "q8_0"]
 
 
+def solo_cpu(args: list[str]) -> bool:
+    """¿El motor corre solo en el procesador? (sin capas en la gráfica o sin dispositivo)."""
+    for i, a in enumerate(args[:-1]):
+        if a in ("-ngl", "--n-gpu-layers") and args[i + 1] == "0":
+            return True
+        if a == "--device" and args[i + 1] == "none":
+            return True
+    return False
+
+
 class LocalServer:
     """Sirve un GGUF descargado con llama-server (llama.cpp): puerto aleatorio y clave aleatoria."""
 
@@ -605,7 +615,19 @@ class LocalServer:
                 "--api-key", self.api_key, "-c", str(ctx), "--jinja", "--slot-save-path", str(SLOTS_DIR),
                 # reutiliza trozos de la caché KV aunque el prefijo cambie (p. ej. tras un reinicio de contexto)
                 "--cache-reuse", "256", *thr, *(extra or [])]
-        self.kv_quant = "-ctk" not in (extra or [])         # la configuración medida puede elegir otro tipo
+        self.kv_quant = "-ctk" not in (extra or []) and not solo_cpu(extra or [])
+        if solo_cpu(extra or []) and "-ctk" not in (extra or []):
+            # Solo procesador: la caché comprimida (q8_0) hace que leer un prompt largo sea hasta 10 veces más lento
+            # (medido: 115 → 18 tokens/s a 8k tokens, contra 325 → 234 sin comprimir), y el agente envía ~7k tokens
+            # de instrucciones: cada respuesta tardaba minutos. Sin comprimir, con la mitad de contexto como tope
+            # (la misma memoria que q8_0 al doble).
+            ctx = self.ctx = min(ctx, 16384)
+            base[base.index("-c") + 1] = str(ctx)
+            if "-fa" not in base:
+                # Y sin Flash Attention: en el procesador lee el prompt algo más rápido con ella (237 contra 154
+                # tokens/s) pero ESCRIBE mucho más lento con contexto largo (6 contra 16 tokens/s a 7k tokens).
+                # En una conversación el prompt se relee de la caché y se escribe en cada paso: sin ella gana.
+                base += ["-fa", "off"]
         self.proc = self._spawn(base + (KV_QUANT if self.kv_quant else []))
         self._gen += 1
         self.model = p.name

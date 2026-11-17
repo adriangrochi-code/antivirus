@@ -348,6 +348,17 @@ BENCH_PROMPT = ("Explica en dos frases qué hace este código y luego reescribe 
                 "    print('media:', round(media(datos), 2))\n    print('máximo:', max(datos, default=None))\n")
 
 
+def contexto_de_prueba(caracteres: int = 7000) -> str:
+    """~2.000 tokens delante del pedido de prueba, como las instrucciones y herramientas que el agente manda siempre.
+    Con un prompt corto la medición no veía lo que pasa con contexto largo: en el procesador, escribir a 7k tokens es
+    5-8 veces más lento que en vacío, y la elección de hilos o de Flash Attention se invertía (medido: 2 hilos
+    parecían mejores y en uso real 4 eran el doble de rápidos). Texto real y variado (las descripciones de las
+    herramientas), no repetido: si no, los n-gramas salían inflados."""
+    from . import tools
+    texto = "\n".join(f"{s['function']['name']}: {s['function'].get('description', '')}" for s in tools.TOOL_SCHEMAS)
+    return "Herramientas disponibles:\n" + texto[:caracteres] + "\n\n"
+
+
 def hw_key(hw: dict) -> str:
     return f"ram{hw.get('ram_mb', 0) // 1024}-vram{hw.get('vram_mb', 0) // 1024}-" + \
         ",".join(sorted(g.get("name", "") for g in hw.get("gpus", [])))
@@ -368,17 +379,20 @@ def model_key(model_file: str) -> str:
 
 def saved(model_file: str, hw: dict) -> dict | None:
     m = models._read_json(MEDIDAS).get(model_key(model_file))
-    if not m or m.get("equipo") != hw_key(hw):
-        return None
+    if not m or m.get("equipo") != hw_key(hw) or m.get("medicion", 1) < MEDICION:
+        return None                       # otro equipo, o medido con el método viejo (prompt corto): se vuelve a medir
     args = m.get("args") or []
     if "-md" in args and not Path(args[args.index("-md") + 1]).is_file():
         return None                       # el modelo borrador se borró: se vuelve a planificar
     return m
 
 
+MEDICION = 2                              # 2: con contexto de prueba delante (contexto_de_prueba)
+
+
 def _save(model_file: str, rec: dict) -> None:
     data = models._read_json(MEDIDAS)
-    data[model_key(model_file)] = rec
+    data[model_key(model_file)] = {**rec, "medicion": MEDICION}
     MEDIDAS.parent.mkdir(parents=True, exist_ok=True)
     tmp = MEDIDAS.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False))
@@ -403,7 +417,8 @@ def bench(path: str, hw: dict, args: list[str], ctx: int, threads: tuple[int, in
             except (models.urllib.error.URLError, OSError):
                 pass
             time.sleep(0.5)
-        body = json.dumps({"prompt": BENCH_PROMPT, "n_predict": 96, "cache_prompt": False, "temperature": 0}).encode()
+        body = json.dumps({"prompt": contexto_de_prueba() + BENCH_PROMPT, "n_predict": 96, "cache_prompt": False,
+                           "temperature": 0}).encode()
         with models.urllib.request.urlopen(models.urllib.request.Request(base + "/completion", data=body, headers=hdr),
                                            timeout=900) as r:
             tm = json.load(r).get("timings") or {}

@@ -159,7 +159,9 @@ def test_local_server_uses_motor_plan(modeldir, monkeypatch):
     monkeypatch.setattr(srv, "_fallback", lambda *a: None)
     srv.start(str(modeldir / "grande.gguf"), A275)
     argv = spawned[0]
-    assert argv[argv.index("--device") + 1] == "none" and argv[argv.index("-c") + 1] == "32768"
+    assert argv[argv.index("--device") + 1] == "none" and argv[argv.index("-c") + 1] == "16384"
+    # Solo procesador: caché del contexto SIN comprimir (q8_0 hacía la lectura de prompts largos ~10x más lenta)
+    assert "-ctk" not in argv and "q8_0" not in argv
     with pytest.raises(ValueError, match="borrador"):
         srv.start(str(modeldir / "grande.gguf"), A275, extra=["-md", "/etc/passwd"])
 

@@ -54,3 +54,12 @@ def test_kits_reset_per_task(tmp_path):
     s.send("Simula el circuito filtro.cir con ngspice")
     s.send("Lista los archivos")
     assert "ingenieria" in llm.calls[0] and "ingenieria" not in llm.calls[1]
+
+
+def test_pedir_codigo_no_activa_la_calculadora():
+    """«Escribe una función que devuelva el promedio»: es programar, no calcular ahora (un modelo chico llamaba a
+    «calcular» con sum(numbers)/len(numbers) en vez de escribir la función)."""
+    from tisma_code import kits
+    assert kits.from_text("Escribe una función en Python que devuelva el promedio de una lista de números.") == {"desarrollo"}
+    assert "calculo" in kits.from_text("calcula el promedio de 3, 5 y 10")
+    assert "calculo" in kits.from_text("¿Cuánto es 0.1+0.2 exacto?")
