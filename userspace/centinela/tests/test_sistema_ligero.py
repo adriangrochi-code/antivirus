@@ -507,3 +507,11 @@ def test_buscar_el_programa_que_ya_conoce(tmp_path):
     assert "DPkg::Post-Invoke" in hook and "/usr/lib/tisma/lanzadores /" in hook
     build = (ROOT.parent / "iso/build-iso.sh").read_text()
     assert '"$CHROOT/usr/lib/tisma/lanzadores"' in build and "appstreamcli refresh-cache" in build
+
+
+def test_bluetooth_temprano_solo_con_emparejados():
+    """Teclado/ratón Bluetooth: tiene que andar en la pantalla de inicio de sesión (no esperar a la fase 2)."""
+    c = ini(SD / "tisma-bluetooth-emparejado.service")
+    assert c["Install"]["WantedBy"] == "multi-user.target" and c["Service"]["Type"] == "oneshot"
+    assert "/var/lib/bluetooth/*/*/info" in c["Service"]["ExecStart"] and "--no-block" in c["Service"]["ExecStart"]
+    assert "tisma-bluetooth-emparejado" in (ROOT.parent / "iso/build-iso.sh").read_text()

@@ -403,7 +403,7 @@ in_chroot systemctl disable systemd-timesyncd 2>/dev/null || true
 # Nada del arranque espera a que haya red (los servicios que la usan reintentan solos): segundos menos al encender
 in_chroot systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 # Esenciales: si alguno no existe se avisa (antes un fallo aquí cortaba la build entera)
-for u in nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer centinela-power \
+for u in nftables apparmor sddm NetworkManager centinela-firstboot tisma-fase2.timer tisma-bluetooth-emparejado centinela-power \
          centinela-adaptd escudo; do
     # reenable: rehace los enlaces desde la unidad actual (Escudo pasó de la fase 2 a multi-user.target: con
     # «enable» quedaba también el enlace viejo en una imagen reconstruida)

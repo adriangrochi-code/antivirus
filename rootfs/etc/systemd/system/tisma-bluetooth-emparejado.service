@@ -1,0 +1,13 @@
+# Bluetooth va en la fase 2 (después del escritorio), pero si hay un teclado o ratón Bluetooth emparejado hace
+# falta ya en la pantalla de inicio de sesión: entonces se arranca en cuanto esa pantalla aparece (sin esperar a
+# la fase 2, que sin sesión tarda 45 s). Sin dispositivos emparejados no hace nada.
+[Unit]
+Description=TISMA: Bluetooth temprano si hay dispositivos emparejados
+ConditionPathIsDirectory=/var/lib/bluetooth
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'for f in /var/lib/bluetooth/*/*/info; do [ -f "$f" ] && exec systemctl start --no-block bluetooth.service; done; exit 0'
+
+[Install]
+WantedBy=multi-user.target
