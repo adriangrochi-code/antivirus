@@ -512,8 +512,8 @@ class LocalServer:
                 "--api-key", self.api_key, "-c", str(ctx), "--jinja", "--slot-save-path", str(SLOTS_DIR),
                 # reutiliza trozos de la caché KV aunque el prefijo cambie (p. ej. tras un reinicio de contexto)
                 "--cache-reuse", "256", *thr, *(extra or [])]
-        self.kv_quant = True
-        self.proc = self._spawn(base + KV_QUANT)
+        self.kv_quant = "-ctk" not in (extra or [])         # la configuración medida puede elegir otro tipo
+        self.proc = self._spawn(base + (KV_QUANT if self.kv_quant else []))
         self.model = p.name
         self.path = str(p)
         threading.Thread(target=self._fallback, args=(self.proc, base), daemon=True).start()

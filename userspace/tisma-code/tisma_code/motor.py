@@ -287,6 +287,37 @@ def candidates(info: dict, size: int, hw: dict, base: dict, draft: str | None = 
     return out
 
 
+def mejoras(best: dict, path: str | None = None) -> list[dict]:
+    """Segunda etapa de «optimizar»: sobre el mejor dispositivo, lo que suele acelerar (sobre todo en la gráfica). Cada
+    una se mide por separado; las que ganan se combinan (combinar)."""
+    args = best["args"]
+    out = []
+    especula = "--spec-type" in args or "-md" in args
+    if not especula:
+        if path:
+            out.append({"nombre": "caché de n-gramas guardada", "extra": ["--spec-type", "ngram-cache", "-lcd",
+                                                                         cache_ngramas(path)], "grupo": "spec"})
+        out.append({"nombre": "n-gramas", "extra": ["--spec-type", "ngram-mod"], "grupo": "spec"})
+    if best["dispositivo"] in ("gpu", "igpu", "mixto"):
+        # Lotes de prompt más grandes: la gráfica procesa más tokens por pasada (leer el prompt, más rápido)
+        out.append({"nombre": "lotes de prompt grandes", "extra": ["-ub", "1024", "-b", "2048"], "grupo": "lote"})
+        # Contexto sin comprimir: en algunas gráficas (integradas sobre todo) comprimir la caché cuesta más de lo que
+        # ahorra en lectura de memoria
+        out.append({"nombre": "contexto sin comprimir", "extra": ["-fa", "auto", "-ctk", "f16", "-ctv", "f16"],
+                    "grupo": "kv"})
+    return out
+
+
+def combinar(base_args: list[str], ganadoras: list[dict]) -> list[str]:
+    """Una mejora por grupo (la más rápida de cada grupo ya viene primero)."""
+    vistos, out = set(), list(base_args)
+    for g in ganadoras:
+        if g["grupo"] not in vistos:
+            vistos.add(g["grupo"])
+            out += g["extra"]
+    return out
+
+
 def compatible_draft(main: str, info: dict, local: list[dict]) -> str | None:
     """Modelo borrador: mismo tokenizador y vocabulario, y al menos 6 veces más pequeño."""
     size = total_size(main)
@@ -403,7 +434,7 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
     results = []
     threads = thread_options()
     lista = candidates(info, size, hw, base, draft, path)
-    total = len(lista) + (1 if len(threads) > 1 else 0)
+    total = len(lista) + (1 if len(threads) > 1 else 0) + 5        # + la etapa de mejoras (estimada; se ajusta)
     for i, c in enumerate(lista):
         if progreso:
             progreso(i, total, f"Probando «{c['nombre']}» ({i + 1} de {total})")
@@ -421,6 +452,41 @@ def optimize(path: str, hw: dict, ctx_wanted: int = 32768, run=bench, on_step=No
         alt = {**best, "hilos": list(threads[1]), "gen": round(g, 2), "prompt": round(pp, 1)}
         if step_seconds(alt) < step_seconds(best):
             best = alt
+    # Etapa 2: mejoras sobre el mejor dispositivo, una a una; las que ganan, juntas
+    if best["gen"] > 0:
+        extras = mejoras(best, path)
+        hecho = len(lista) + (1 if len(threads) > 1 else 0)
+        total = hecho + len(extras) + 1
+        ganadoras = []
+        for j, m in enumerate(extras):
+            if progreso:
+                progreso(hecho + j, total, f"Probando «{m['nombre']}» ({hecho + j + 1} de {total})")
+            args = best["args"] + m["extra"]
+            g, pp = run(path, hw, args, best["ctx"], tuple(best["hilos"]))
+            r = {**best, "args": args, "nombre": f"{best['nombre']} + {m['nombre']}", "gen": round(g, 2),
+                 "prompt": round(pp, 1)}
+            results.append(r)
+            if on_step:
+                on_step(f"{r['nombre']}: {g:.1f} tokens/s generando, {pp:.0f} leyendo")
+            if step_seconds(r) < step_seconds(best) * 0.98:          # gana de verdad (no por ruido)
+                ganadoras.append({**m, "seg": step_seconds(r), "r": r})
+        ganadoras.sort(key=lambda m: m["seg"])
+        if len({m["grupo"] for m in ganadoras}) > 1:
+            if progreso:
+                progreso(total - 1, total, f"Probando las mejoras juntas ({total} de {total})")
+            args = combinar(best["args"], ganadoras)
+            g, pp = run(path, hw, args, best["ctx"], tuple(best["hilos"]))
+            nombres = " + ".join(dict.fromkeys(m["nombre"] for m in ganadoras))
+            r = {**best, "args": args, "nombre": f"{best['nombre']} + {nombres}", "gen": round(g, 2),
+                 "prompt": round(pp, 1)}
+            results.append(r)
+            if on_step:
+                on_step(f"{r['nombre']}: {g:.1f} tokens/s generando, {pp:.0f} leyendo")
+            ganadoras.insert(0, {"seg": step_seconds(r), "r": r})
+        if ganadoras:
+            mejor = min(ganadoras, key=lambda m: m["seg"])["r"]
+            if step_seconds(mejor) < step_seconds(best):
+                best = mejor
     rec = {"equipo": hw_key(hw), "args": best["args"], "ctx": best["ctx"], "hilos": best["hilos"],
            "dispositivo": best["dispositivo"], "nombre": best["nombre"], "gen": best["gen"], "prompt": best["prompt"],
            "motivo": best["motivo"], "pruebas": [{k: r[k] for k in ("nombre", "gen", "prompt")} for r in results],

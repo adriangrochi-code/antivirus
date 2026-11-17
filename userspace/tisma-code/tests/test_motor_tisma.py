@@ -323,3 +323,32 @@ def test_cerrar_ordenado_avisa_al_motor_dentro_de_la_jaula(tmp_path):
         time.sleep(0.1)
     models.cerrar_ordenado(p, espera=10)
     assert (tmp_path / "guardado").read_text() == "ok" and p.poll() is not None
+
+
+def test_optimizar_prueba_mejoras_de_gpu_combina_las_que_ganan_y_las_guarda(modeldir, monkeypatch):
+    """Etapa 2: sobre la gráfica integrada (lo más rápido en la A275) se prueban n-gramas, caché de n-gramas, lotes
+    grandes y contexto sin comprimir; las que ganan se juntan y la combinación queda guardada para el modelo."""
+    monkeypatch.setattr(motor, "cache_ngramas", lambda p: "/cache/m.bin")
+    monkeypatch.setattr(motor, "compatible_draft", lambda *a: None)
+
+    def run(path, hw, args, ctx, threads):
+        if "--device" in args:                                             # plan (CPU): lento
+            return (2.0, 20.0)
+        if args[:2] != ["-ngl", "999"]:
+            return (1.0, 10.0)
+        gen, pp = 11.0, 150.0                                              # gráfica integrada
+        if "ngram-cache" in args:
+            gen += 3                                                       # la caché de n-gramas ayuda
+        if "ngram-mod" in args:
+            gen += 1
+        if "-ub" in args:
+            pp += 100                                                      # los lotes grandes aceleran el prompt
+        if "f16" in args:
+            gen -= 2                                                       # sin comprimir: peor en este equipo
+        return (gen, pp)
+    pasos = []
+    rec = motor.optimize(str(modeldir / "grande.gguf"), A275, run=run, progreso=lambda i, n, t: pasos.append((i, n)))
+    assert "ngram-cache" in rec["args"] and "-ub" in rec["args"] and "f16" not in rec["args"]
+    assert rec["args"].count("--spec-type") == 1 and rec["gen"] == 14.0
+    assert motor.config_for(str(modeldir / "grande.gguf"), A275)["args"] == rec["args"]     # guardada
+    assert pasos[-1][0] == pasos[-1][1]
