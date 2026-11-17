@@ -15,10 +15,11 @@ import json
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
+
+from .plataforma import DIR_CONFIG
 
 ENDPOINT = os.environ.get("TISMA_JARVIS_URL", "http://127.0.0.1:8000")
-KEY_FILE = Path.home() / ".config/tisma-code/openjarvis.env"
+KEY_FILE = DIR_CONFIG / "openjarvis.env"
 
 
 def _key() -> str:

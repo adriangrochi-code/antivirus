@@ -182,6 +182,12 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
       <option value="medio">Medio (recomendado)</option>
       <option value="alto">Alto: piensa antes de responder y revisa más</option>
       <option value="maximo">Máximo: para tareas largas y difíciles (mucho más lento)</option></select></label>
+    <div id="aj-comandos-sec" hidden>
+    <h3>Comandos del proyecto</h3>
+    <label class="ajsw"><input type="checkbox" id="aj-comandos"> Permitir que el agente ejecute comandos (compilar,
+      pruebas…). En este equipo NO se ejecutan aislados: pueden leer y cambiar tus archivos y usar la red. Actívalo
+      solo si confías en el proyecto; cada comando pedirá permiso.</label>
+    </div>
     <h3>Componentes</h3><div id="aj-comp"></div>
     <h3>Privacidad</h3>
     <label class="ajsw"><input type="checkbox" id="aj-trazas"> Guardar en este equipo el registro de las tareas
@@ -357,8 +363,10 @@ function onEvent(ev) {
                  rea_modo: "¿Cambiar el modo de REA en", jarvis: "¿Consultar a OpenJarvis (puede usar Internet) desde"}[ev.tool] || "¿Permitir";
       const target = ev.args.path ? `<code>${esc(ev.args.path)}</code>` : "este proyecto";
       const always = ev.tool === "verify" ? "Sí, confío en las pruebas de este proyecto" : "Sí, y no volver a preguntar en esta sesión";
+      // Donde los comandos no van aislados, se pregunta cada vez: sin «no volver a preguntar»
+      const cadaVez = state.equipo && (state.equipo.cada_vez || []).includes(ev.tool);
       const d = put(`<div class="q">${q} ${target}?</div><pre>${diff(ev.preview)}</pre><div class="acts">
-        <button class="btn p" data-a="1">Sí</button><button class="btn" data-a="2">${always}</button><button class="btn" data-a="0">No</button></div>`, "perm");
+        <button class="btn p" data-a="1">Sí</button>${cadaVez ? "" : `<button class="btn" data-a="2">${always}</button>`}<button class="btn" data-a="0">No</button></div>`, "perm");
       d.querySelectorAll("[data-a]").forEach(b => b.onclick = async () => {
         await api("/api/approve", {id: ev.id, allow: b.dataset.a !== "0", always: b.dataset.a === "2"});
         d.querySelector(".acts").innerHTML = `<span class="note">${b.dataset.a === "0" ? "No permitido" : "Permitido"}</span>`;
@@ -404,7 +412,7 @@ async function openDirs(path, hint) {
   let d;
   try { d = await api("/api/dirs?path=" + encodeURIComponent(path ?? state.workspace ?? "")); }
   catch (e) { put(esc(e.message), "err"); return; }
-  const recent = (state.config.recent || []).map(r => `<div class="it" data-open="${esc(r)}">🕘 ${esc(r.split("/").pop())}<small>${esc(r)}</small></div>`).join("");
+  const recent = (state.config.recent || []).map(r => `<div class="it" data-open="${esc(r)}">🕘 ${esc(nombreBase(r))}<small>${esc(r)}</small></div>`).join("");
   $("#dirPop").innerHTML = (hint ? `<div class="hint">${esc(hint)}</div>` : "") +
     (recent ? `<div class="tt">Recientes</div>${recent}<hr>` : "") +
     `<div class="tt">Explorar${d.git ? ` · ⎇ ${esc(d.git)}` : ""}</div>
@@ -515,10 +523,13 @@ async function setModel(endpoint, model) {
 }
 $("#modelChip").onclick = () => $("#modelPop").classList.contains("on") ? closePops() : openModels();
 
+const nombreBase = p => p.split(/[\\/]/).pop();      // rutas con / o con \\
 function showChips() {
+  // .chip tiene display:flex (el atributo hidden no lo ocultaría)
+  $("#sinApuroChip").style.display = state.equipo && !state.equipo.sin_apuro ? "none" : "";
   if (typeof pintarPensar === "function") api("/api/ajustes").then(pintarPensar).catch(() => {});
   const w = state.workspace;
-  $("#dirLabel").textContent = w ? w.split("/").pop() + (state.git ? ` ⎇ ${state.git}` : "") : "Elegir carpeta";
+  $("#dirLabel").textContent = w ? nombreBase(w) + (state.git ? ` ⎇ ${state.git}` : "") : "Elegir carpeta";
   $("#modelLabel").textContent = state.config.model || "Modelo";
 }
 
@@ -607,7 +618,7 @@ async function pintarSinApuro() {
     $("#saModelo").onchange();
   }
   $("#saLista").innerHTML = d.tareas.length ? d.tareas.map(t => `<div class="ajrow">${esc(t.pedido.slice(0, 90))}${t.pedido.length > 90 ? "…" : ""}
-      <small>${SA_ESTADO[t.estado] || esc(t.estado)}${t.palabras ? ` · ${t.palabras} palabras` : ""} · ${esc(t.modelo.split("/").pop())}${t.detalle ? " · " + esc(t.detalle) : ""}</small>
+      <small>${SA_ESTADO[t.estado] || esc(t.estado)}${t.palabras ? ` · ${t.palabras} palabras` : ""} · ${esc(nombreBase(t.modelo))}${t.detalle ? " · " + esc(t.detalle) : ""}</small>
       <div class="row" style="margin-top:6px">${t.palabras || t.estado === "lista" ? `<button class="btn" data-ver="${esc(t.id)}">Ver</button>` : ""}
       ${["en_cola", "trabajando", "pausada"].includes(t.estado) ? `<button class="btn" data-cancelar="${esc(t.id)}">Cancelar</button>`
         : `<button class="btn" data-borrar="${esc(t.id)}">Borrar</button>`}</div></div>`).join("")
@@ -655,6 +666,9 @@ function pintarDescargas(ds) {
 }
 let compTimer = null;
 function pintarComponentes(comps) {
+  if (!Object.keys(comps).length && state.equipo && !state.equipo.componentes) {
+    $("#aj-comp").innerHTML = `<div class="ajrow"><small>No disponibles en este equipo.</small></div>`; return;
+  }
   $("#aj-comp").innerHTML = Object.entries(comps).map(([k, c]) => `<div class="ajrow">${esc(c.nombre)}
       <small>${esc(c.desc)}</small>${c.no_recomendado ? `<small>${esc(c.no_recomendado)}</small>` : ""}${
       c.estado === "instalado" ? "<small>✓ Instalado</small>" :
@@ -681,6 +695,8 @@ async function abrirAjustes() {
   const mo = a.motor || {};
   $("#aj-motor").innerHTML = `<div class="ajrow">${esc(mo.nombre || "Apagado")}<small>${esc([mo.modelo, mo.detalle].filter(Boolean).join(" · ") || "Sin modelo en marcha")}</small></div>`;
   pintarComponentes(a.componentes);
+  $("#aj-comandos-sec").hidden = !(a.equipo && !a.equipo.aislamiento);
+  $("#aj-comandos").checked = !!a.comandos_sin_aislar;
   $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-liberar").checked = a.liberar_memoria; $("#aj-pensar").value = a.pensar || "auto"; $("#aj-esfuerzo").value = a.esfuerzo || "medio";
   $("#ajustes").hidden = false;
 }
@@ -688,6 +704,7 @@ $("#ajbtn").onclick = () => $("#ajustes").hidden ? abrirAjustes() : ($("#ajustes
 $("#bajando").onclick = abrirAjustes;
 $("#ajcerrar").onclick = () => $("#ajustes").hidden = true;
 $("#aj-trazas").onchange = e => api("/api/ajustes", {trazas_hope: e.target.checked});
+$("#aj-comandos").onchange = e => api("/api/ajustes", {comandos_sin_aislar: e.target.checked});
 $("#aj-auto").onchange = e => api("/api/ajustes", {auto_motor: e.target.checked});
 $("#aj-liberar").onchange = e => api("/api/ajustes", {liberar_memoria: e.target.checked});
 $("#aj-pensar").onchange = async e => pintarPensar(await api("/api/ajustes", {pensar: e.target.value}));

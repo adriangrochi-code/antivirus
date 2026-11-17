@@ -42,7 +42,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CONFIG = Path.home() / ".config/tisma-code/especialistas.json"
+from .plataforma import DIR_CONFIG, es_archivo_privado
+
+CONFIG = DIR_CONFIG / "especialistas.json"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 MAX_SERVERS = 1          # modelos de chat extra cargados a la vez (RAM: equipos de 8-16 GB)
 IDLE_UNLOAD = 180        # s sin uso → el modelo se descarga de la memoria
@@ -80,7 +82,7 @@ def load(path: Path = CONFIG) -> tuple[dict[str, Specialist], dict[str, str]]:
     except OSError:
         return {}, {}
     # Solo un archivo normal del propio usuario y no escribible por otros.
-    if not path.is_file() or path.is_symlink() or st.st_uid != os.getuid() or st.st_mode & 0o022:
+    if not path.is_file() or path.is_symlink() or not es_archivo_privado(st):
         raise SpecialistError(f"{path}: debe ser un archivo tuyo y no escribible por otros usuarios")
     data = json.loads(path.read_text(encoding="utf-8"))
     out: dict[str, Specialist] = {}

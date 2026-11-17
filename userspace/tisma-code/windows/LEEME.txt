@@ -1,0 +1,21 @@
+TISMA Code (portable)
+=====================
+
+Para abrirlo: doble clic en "TISMA Code.vbs" (sin consola) o en "TISMA Code.cmd" (con el registro a la vista).
+Si la grafica da problemas, usa "TISMA Code (solo CPU).cmd".
+
+Los modelos y la configuracion se guardan en %LOCALAPPDATA%\TISMA Code. Para desinstalar, borra esta carpeta y
+esa.
+
+En este equipo hay menos aislamiento que en TISMA OS:
+- El motor de IA corre limitado (no puede crear procesos, memoria acotada, se cierra con la app), pero podria leer
+  tus archivos. Descarga modelos solo de fuentes en las que confies.
+- Los comandos del agente (compilar, pruebas) vienen desactivados. Si los activas en Ajustes NO van aislados
+  (pueden leer y cambiar tus archivos y usar la red) y cada uno te pide permiso.
+- REA, Craft Anything, SolidCraft, Simulacion, Strata, Hope y el modo "Sin apuro" no estan disponibles.
+
+El programa no esta firmado: la primera vez el sistema puede avisar de que protegio el equipo. Pulsa
+"Mas informacion" y "Ejecutar de todas formas" solo si descargaste el ZIP del repositorio oficial.
+
+Licencias (carpeta LICENCIAS): TISMA Code es GPL-3.0. Incluye Python (PSF), llama.cpp (MIT), OpenMP de LLVM
+(Apache 2.0 con excepcion LLVM), sympy y mpmath (BSD; su licencia tambien esta en lib\).

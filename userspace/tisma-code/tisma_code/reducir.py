@@ -22,7 +22,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import models
+from . import models, plataforma
 
 # Tipo de destino según la precisión de origen (de «general.file_type» o del nombre del archivo)
 DESTINO = {"f32": "Q4_K_M", "f16": "Q4_K_M", "bf16": "Q4_K_M", "q8_0": "Q4_K_M", "q6_k": "Q4_K_M",
@@ -184,6 +184,8 @@ def textos_de_muestra(destino: Path, raices: list[Path] | None = None) -> tuple[
 
 def jaula(argv: list[str], trabajo: Path) -> list[str]:
     """Sin red, sin la carpeta personal, sin capacidades: solo los modelos (lectura) y su carpeta de trabajo."""
+    if plataforma.ES_WINDOWS:            # sin bubblewrap: se lanzan con plataforma.lanzar_herramienta (Job Object)
+        raise ReducirError("Esta herramienta no se puede ejecutar aislada en este equipo")
     bwrap = shutil.which("bwrap")
     if not bwrap:
         raise ReducirError("bubblewrap no está instalado: por seguridad no se procesan modelos sin aislamiento")
@@ -214,7 +216,13 @@ def fraccion(argv: list[str], salida: str) -> float | None:
 def ejecutar(argv: list[str], trabajo: Path, avance=None) -> str:
     """Corre la herramienta aislada; si se pasa `avance`, lo llama con la fracción hecha mientras trabaja."""
     import time
-    p = subprocess.Popen(jaula(argv, trabajo), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if plataforma.ES_WINDOWS:
+        try:
+            p = plataforma.lanzar_herramienta(argv, trabajo)
+        except OSError as e:
+            raise ReducirError(f"No se pudo lanzar {argv[0]}: {e}")
+    else:
+        p = subprocess.Popen(jaula(argv, trabajo), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     salida, ultimo, fin = "", -1.0, time.monotonic() + 6 * 3600
     try:
         while chunk := p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096):
@@ -231,6 +239,8 @@ def ejecutar(argv: list[str], trabajo: Path, avance=None) -> str:
     finally:
         if p.poll() is None:
             p.kill()
+        if plataforma.ES_WINDOWS:
+            plataforma.cerrar_job(p)
     if rc != 0:
         raise ReducirError(salida[-400:].strip() or f"{argv[0]} falló")
     return salida

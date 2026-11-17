@@ -4,6 +4,8 @@ Las de solo lectura se ejecutan directamente; las que modifican archivos o
 ejecutan comandos requieren aprobación del usuario (ver ``NEEDS_APPROVAL``).
 Los comandos se ejecutan dentro de bubblewrap: el sistema es de solo lectura,
 solo la carpeta del proyecto es escribible y no hay red (salvo que se permita).
+En Windows no hay jaula: los comandos vienen desactivados y, activados en Ajustes, piden
+permiso cada vez (ver plataforma.py).
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import harness
+from . import harness, plataforma
 
 from .base import MAX_OUTPUT, ToolError, _clip  # noqa: F401 (reexportados)
 SKIP_DIRS = {".git", ".tisma", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", "target", ".cache"}
@@ -35,7 +37,14 @@ class Workspace:
                     for d in (".ssh", ".gnupg", ".config", ".local", ".mozilla", ".cache")):
             raise ToolError("Por seguridad no se puede abrir como proyecto la carpeta personal completa, "
                             "la raíz ni carpetas de configuración: elige la carpeta del proyecto")
+        if plataforma.ES_WINDOWS and _prohibida_windows(self.root, home):
+            raise ToolError("Por seguridad no se puede abrir como proyecto la carpeta personal completa, "
+                            "la raíz ni carpetas de configuración: elige la carpeta del proyecto")
         self.allow_network = False
+        # Solo cuentan donde no hay jaula (plataforma.ES_WINDOWS): el usuario activó en Ajustes los comandos sin
+        # aislar, y aprobó ESTA orden (agent._ask lo pone justo antes de ejecutarla; execute lo borra al terminar)
+        self.sin_aislar = False
+        self.aprobado = False
 
     def resolve(self, path: str) -> Path:
         p = (self.root / path).resolve() if not os.path.isabs(path) else Path(path).resolve()
@@ -155,6 +164,10 @@ class Workspace:
         """bubblewrap: sistema de solo lectura, $HOME y /run ocultos (sin D-Bus, gpg-agent, systemd
         de usuario…), entorno limpio, .git de solo lectura (no se pueden plantar hooks ni fsmonitor),
         sin red salvo permiso, sin capacidades. Sin bubblewrap no se ejecuta nada."""
+        if plataforma.ES_WINDOWS:
+            # Sin jaula, los programas auxiliares (linters, formateadores, git, rg) no se ejecutan: algunos corren
+            # código del repositorio (configuraciones de eslint, core.fsmonitor…)
+            raise ToolError(plataforma.MSG_COMANDOS)
         bwrap = shutil.which("bwrap")
         if not bwrap:
             raise ToolError("bubblewrap no está instalado: por seguridad no se ejecutan comandos sin aislamiento")
@@ -174,6 +187,8 @@ class Workspace:
         return argv + ["bash", "-o", "pipefail", "-c", command]
 
     def run_command(self, command: str, timeout: int = 120) -> str:
+        if plataforma.ES_WINDOWS:
+            return self._run_command_sin_jaula(command, timeout)
         try:
             r = subprocess.run(self.sandbox_argv(command), cwd=self.root, capture_output=True,
                                text=True, timeout=timeout, errors="replace")
@@ -181,6 +196,40 @@ class Workspace:
             return f"Tiempo agotado ({timeout} s)"
         out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
         return _clip(f"[código de salida {r.returncode}]\n{out}")
+
+    def _run_command_sin_jaula(self, command: str, timeout: int) -> str:
+        """Windows: no hay bubblewrap. Desactivado salvo que el usuario lo active en Ajustes; aun así cada orden
+        pide permiso (agent._ask con plataforma.aprobar_cada_vez) y corre en un Job Object (muere con la app, tiempo
+        y memoria acotados), en la carpeta del proyecto y con un entorno mínimo. NO aísla archivos ni red."""
+        if not (self.sin_aislar and self.aprobado):
+            return plataforma.MSG_COMANDOS
+        try:
+            r = plataforma.ejecutar_comando(command, self.root, timeout)
+        except subprocess.TimeoutExpired:
+            return f"Tiempo agotado ({timeout} s)"
+        except OSError as e:
+            return f"No se pudo ejecutar el comando: {e}"
+        out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
+        return _clip(f"[código de salida {r.returncode}]\n{out}")
+
+
+def _prohibida_windows(root: Path, home: Path) -> bool:
+    """La raíz de una unidad, la carpeta del sistema o de programas, AppData (donde están las claves de los
+    navegadores y la configuración) y la carpeta de datos de TISMA Code."""
+    if root == Path(root.anchor):
+        return True
+    sensibles = [home / "AppData", plataforma.DIR_DATOS]
+    for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
+        if os.environ.get(var):
+            sensibles.append(Path(os.environ[var]))
+    for d in sensibles:
+        try:
+            d = d.resolve()
+        except OSError:
+            continue
+        if root == d or d in root.parents:
+            return True
+    return False
 
 
 BASE_SCHEMAS = [
@@ -248,6 +297,14 @@ from . import exactas  # noqa: E402
 TOOL_SCHEMAS = (BASE_SCHEMAS + exactas.SCHEMAS + devtools.SCHEMAS + [harness.VERIFY_SCHEMA, harness.TODO_SCHEMA] + CONTEXTO_SCHEMAS
                 + HOPE_SCHEMAS + DOC_SCHEMAS + REA_SCHEMAS + CRAFT_SCHEMAS + SOLIDCRAFT_SCHEMAS + ingenieria.SCHEMAS
                 + JARVIS_SCHEMAS + construir.SCHEMAS)
+if plataforma.ES_WINDOWS:
+    # Sin las herramientas de TISMA OS (REA, Craft, SolidCraft, Ingeniería, Hope, OpenJarvis) ni las que necesitan la
+    # jaula; run_command describe cmd.exe y que no está aislado
+    TOOL_SCHEMAS = [s for s in plataforma.filtrar_esquemas(TOOL_SCHEMAS) if s["function"]["name"] != "run_command"] + [
+        {"type": "function", "function": {
+            "name": "run_command", "description": "Ejecuta una orden de cmd.exe en la carpeta del proyecto (NO aislada: "
+            "el usuario debe aprobar cada una y puede tenerlas desactivadas). Úsalo para compilar y probar.",
+            "parameters": {"type": "object", "required": ["command"], "properties": {"command": {"type": "string"}}}}}]
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
 
@@ -284,7 +341,10 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
     if name == "edit_file":
         return ws.edit_file(args["path"], args["old"], args["new"])
     if name == "run_command":
-        return ws.run_command(args["command"])
+        try:
+            return ws.run_command(args["command"])
+        finally:
+            ws.aprobado = False
     if name == "ingenieria":
         opts = args.get("opciones") or {}
         if not isinstance(opts, dict):
@@ -303,7 +363,10 @@ def execute(ws: Workspace, name: str, args: dict) -> str:
         if not checks:
             return ("No se detectaron tests ni compilación en el proyecto. "
                     "Usa run_command con el comando adecuado.")
-        return "\n\n".join(f"$ {c}\n{ws.run_command(c, timeout=300)}" for c in checks)
+        try:
+            return "\n\n".join(f"$ {c}\n{ws.run_command(c, timeout=300)}" for c in checks)
+        finally:
+            ws.aprobado = False
     raise ToolError(f"Herramienta desconocida: {name}")
 
 
@@ -335,6 +398,11 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
         red = " · CON acceso a la red" if args.get("red") else " · sin red"
         return (f"Craft Anything pasará a modo {modo}{red} (aislado con bubblewrap, sin acceso a tu carpeta "
                 f"personal).\nMotivo: {args.get('motivo', '—')}")
+    if name == "verify" and plataforma.ES_WINDOWS:
+        checks = harness.detect_checks(ws.root)
+        return ("Ejecutará el código de pruebas del proyecto SIN aislamiento en este equipo (puede leer y cambiar tus "
+                "archivos y usar la red):\n" + "\n".join(f"> {c}" for c in checks)) if checks else \
+            "No hay comprobaciones detectadas"
     if name == "verify":
         checks = harness.detect_checks(ws.root)
         return ("Ejecutará el código de pruebas del proyecto (aislado, sin red):\n" +
@@ -351,6 +419,9 @@ def preview(ws: Workspace, name: str, args: dict) -> str:
             extra += f"\nEscribirá: {args['salida']}"
         return (f"{args.get('accion')}: {args.get('archivo')}{extra}\n(receta fija, aislada con bubblewrap: solo ve el "
                 "proyecto y sin red; los scripts de FreeCAD, Blender u Octave son código del proyecto)")
+    if name == "run_command" and plataforma.ES_WINDOWS:
+        return (f"> {args['command']}\n(SIN aislamiento en este equipo: puede leer y cambiar tus archivos y usar la red; "
+                "se pide permiso cada vez)")
     if name == "run_command":
         net = "con red" if ws.allow_network else "sin red"
         return f"$ {args['command']}\n(aislado con bubblewrap: solo ve el proyecto, {net}, .git de solo lectura)"

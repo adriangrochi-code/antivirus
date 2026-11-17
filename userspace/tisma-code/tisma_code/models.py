@@ -15,9 +15,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from . import plataforma
+
 HF = "https://huggingface.co"
 MODELS_DIR = Path(os.environ.get("TISMA_MODELS_DIR",
-                                 Path.home() / ".local/share/tisma-code/models"))
+                                 plataforma.DIR_DATOS / "models"))
 # Instrucciones ya procesadas por el motor (llama-server --slot-save-path): dentro de la caché del motor, la
 # única carpeta en la que su jaula puede escribir
 SLOTS_DIR = MODELS_DIR.parent / "cache-motor" / "prefijos"
@@ -37,10 +39,12 @@ def _get_json(url: str, timeout: int = 30, api_key: str | None = None):
 def hardware() -> dict:
     """RAM y VRAM disponibles (usa el perfil de centinela si existe)."""
     ram_mb = 0
-    for line in Path("/proc/meminfo").read_text().splitlines():
+    for line in ([] if plataforma.ES_WINDOWS else Path("/proc/meminfo").read_text().splitlines()):
         if line.startswith("MemTotal:"):
             ram_mb = int(line.split()[1]) // 1024
     gpus = []
+    if plataforma.ES_WINDOWS:
+        ram_mb = plataforma.ram_total_mb()
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=10).stdout
@@ -56,6 +60,8 @@ def hardware() -> dict:
             # APU: la «VRAM» es una reserva de la RAM compartida, no memoria propia más rápida
             if mb > 2048:
                 gpus.append({"name": card.name, "vram_mb": mb})
+    if plataforma.ES_WINDOWS:
+        gpus += plataforma.gpus_windows()          # AMD/Intel con memoria propia (las NVIDIA, por nvidia-smi)
     bw = None
     try:
         b = json.loads(Path("/var/lib/centinela/bench.json").read_text())
@@ -331,6 +337,9 @@ def jail_engine(argv: list[str]) -> list[str]:
     desbordamientos de memoria reales (p. ej. CVE-2024-42477/42478/42479): si un modelo malicioso lograra
     ejecutar código, quedaría en una jaula sin la carpeta personal (solo los modelos, de lectura), sin
     capacidades ni otros procesos visibles. Comparte la red porque escucha en 127.0.0.1."""
+    if plataforma.ES_WINDOWS:
+        # Sin bubblewrap: el motor solo se lanza con plataforma.lanzar_motor (Job Object). Nunca sin nada.
+        raise RuntimeError("Este motor no se puede ejecutar aislado en este equipo")
     bwrap = shutil.which("bwrap")
     if not bwrap:
         raise RuntimeError("bubblewrap no está instalado: por seguridad el motor no se ejecuta sin aislamiento")
@@ -348,6 +357,8 @@ def jail_engine(argv: list[str]) -> list[str]:
 
 def descendientes(pid: int) -> list[int]:
     """Procesos hijos (y nietos) de `pid`, del más cercano al más lejano."""
+    if plataforma.ES_WINDOWS:
+        return plataforma.descendientes(pid)
     out, pendientes = [], [pid]
     while pendientes:
         p = pendientes.pop(0)
@@ -405,6 +416,8 @@ def cerrar_ordenado(proc: subprocess.Popen, espera: float = 15) -> None:
     través de bubblewrap, un SIGTERM a la jaula mataba al motor de golpe (--die-with-parent) y no guardaba nada:
     la señal va al propio llama-server, y la jaula termina sola cuando él termina."""
     import signal
+    if plataforma.ES_WINDOWS:
+        return plataforma.cerrar_motor(proc, espera)
     if proc.poll() is not None:
         return
     motor = [p for p in descendientes(proc.pid) if _nombre(p) in ("llama-server", "tisma-engine")]
@@ -438,6 +451,8 @@ def cerrar_motores_hijos(espera: float = 15) -> int:
     que se pisó con otro) se cierra en orden (guarda su caché) y después las jaulas que queden. Devuelve cuántos."""
     import signal
     import time as _t
+    if plataforma.ES_WINDOWS:
+        return plataforma.cerrar_motores(espera)
     hijos = descendientes(os.getpid())
     motores = [p for p in hijos if _nombre(p) in ("llama-server", "tisma-engine")]
     for p in motores:
@@ -458,6 +473,8 @@ def cerrar_motores_hijos(espera: float = 15) -> int:
 
 
 def _vivo(pid: int) -> bool:
+    if plataforma.ES_WINDOWS:
+        return plataforma.proceso_vivo(pid)
     try:
         estado = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
         return estado != "Z"
@@ -466,6 +483,8 @@ def _vivo(pid: int) -> bool:
 
 
 def _nombre(pid: int) -> str:
+    if plataforma.ES_WINDOWS:
+        return plataforma.nombre_proceso(pid)
     try:
         return Path(f"/proc/{pid}/comm").read_text().strip()
     except OSError:
@@ -473,6 +492,8 @@ def _nombre(pid: int) -> str:
 
 
 def port_listening(port: int) -> bool:
+    if plataforma.ES_WINDOWS:
+        return plataforma.puerto_escucha(port)
     for table in ("/proc/net/tcp", "/proc/net/tcp6"):
         try:
             for line in Path(table).read_text().splitlines()[1:]:
@@ -486,7 +507,10 @@ def port_listening(port: int) -> bool:
 
 def port_owner_is_me(port: int) -> bool:
     """¿El proceso que escucha en 127.0.0.1:port es de este usuario? (evita que otro usuario local
-    suplante al motor de IA y le dicte llamadas a herramientas al agente)."""
+    suplante al motor de IA y le dicte llamadas a herramientas al agente). En Windows, más estricto: todo lo que
+    escuche en el puerto tiene que ser un proceso lanzado por TISMA Code."""
+    if plataforma.ES_WINDOWS:
+        return plataforma.puerto_es_mio(port)
     import os as _os
     inodes = set()
     for table in ("/proc/net/tcp", "/proc/net/tcp6"):
@@ -692,6 +716,8 @@ class LocalServer:
 
     @staticmethod
     def _spawn(argv: list[str]) -> subprocess.Popen:
+        if plataforma.ES_WINDOWS:
+            return LANZADOR.lanzar(lambda: plataforma.lanzar_motor(argv))
         return LANZADOR.lanzar(lambda: subprocess.Popen(jail_engine(argv), stdout=subprocess.DEVNULL,
                                                         stderr=subprocess.DEVNULL))
 

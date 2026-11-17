@@ -31,6 +31,9 @@ TIMEOUT = 60
 
 
 def have(tool: str) -> bool:
+    from .plataforma import ES_WINDOWS
+    if ES_WINDOWS:              # sin jaula no se ejecutan (ver la nota de seguridad de arriba): se usan los respaldos
+        return False
     return shutil.which(tool) is not None
 
 
