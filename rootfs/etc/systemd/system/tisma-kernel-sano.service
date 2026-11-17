@@ -1,0 +1,16 @@
+[Unit]
+Description=TISMA: en un equipo real, quitar el kernel minimal y arrancar con el kernel correcto
+# Se corrige solo en cada arranque (si el instalador o una actualización dejaron el kernel «minimal», que es solo
+# para máquinas virtuales, como primero del menú: en la A275 el equipo quedaba en «Loading Linux …-minimal»)
+ConditionPathExists=!/run/live
+After=local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Slice=tisma-segundo-plano.slice
+ExecStart=-/usr/bin/tisma-secureboot quitar-minimal
+ExecStart=/usr/bin/tisma-secureboot elegir
+
+[Install]
+WantedBy=multi-user.target

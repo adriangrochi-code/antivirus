@@ -6,6 +6,23 @@
 # sin necesitar el escritorio.
 set -e
 . /usr/share/grub/grub-mkconfig_lib
+BOOTDEV=$(${grub_probe} --target=device /boot)
+REL=$(make_system_path_relative_to_its_root /boot)
+if [ -n "${GRUB_DEVICE_UUID}" ]; then RAIZ="UUID=${GRUB_DEVICE_UUID}"; else RAIZ="${GRUB_DEVICE}"; fi
+SUBVOL=""
+[ "$(stat -f -c %T / 2>/dev/null)" = btrfs ] && SUBVOL="rootflags=subvol=@"
+# «Modo seguro»: el kernel de Debian más nuevo (firmado por Debian: arranca siempre, también con Secure Boot y en
+# cualquier equipo). 06_tisma_fallos lo elige SOLO tras dos arranques seguidos que no llegaron al inicio de sesión.
+DEB=$(ls -1 /boot/vmlinuz-* 2>/dev/null | grep -v -e '-centinela-' -e '\.old$' | sed 's#^/boot/vmlinuz-##' | sort -V | tail -1)
+if [ -n "$DEB" ] && [ -e "/boot/initrd.img-$DEB" ]; then
+    echo "menuentry 'Arrancar en modo seguro (kernel de Debian $DEB)' --class tisma --id tisma-seguro {"
+    prepare_grub_to_access_device "$BOOTDEV" | sed 's/^/  /'
+    cat <<GRUBEOF
+  linux ${REL}/vmlinuz-${DEB} root=${RAIZ} ro ${SUBVOL} ${GRUB_CMDLINE_LINUX} ${GRUB_CMDLINE_LINUX_DEFAULT}
+  initrd ${REL}/initrd.img-${DEB}
+}
+GRUBEOF
+fi
 SNAPDIR=/.snapshots
 [ -d "$SNAPDIR" ] || exit 0
 [ "$(stat -f -c %T / 2>/dev/null)" = btrfs ] || exit 0
@@ -16,10 +33,7 @@ for v in $(ls -1 "$SNAPDIR/$NOMBRE/lib/modules" 2>/dev/null | sort -V -r); do
     if [ -e "/boot/vmlinuz-$v" ] && [ -e "/boot/initrd.img-$v" ]; then VERSION=$v; break; fi
 done
 [ -n "$VERSION" ] || exit 0
-BOOTDEV=$(${grub_probe} --target=device /boot)
-REL=$(make_system_path_relative_to_its_root /boot)
 FECHA=$(echo "$NOMBRE" | sed -E 's/^([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2}).*/\3\/\2\/\1 \4:\5/')
-if [ -n "${GRUB_DEVICE_UUID}" ]; then RAIZ="UUID=${GRUB_DEVICE_UUID}"; else RAIZ="${GRUB_DEVICE}"; fi
 echo "menuentry 'Volver a como estaba antes de la última actualización ($FECHA)' --class tisma {"
 prepare_grub_to_access_device "$BOOTDEV" | sed 's/^/  /'
 cat <<GRUBEOF

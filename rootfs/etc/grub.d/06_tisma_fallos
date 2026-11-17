@@ -2,7 +2,8 @@
 # TISMA: arranque a prueba de fallos. Cada arranque suma un intento en el grubenv de la partición EFI (GRUB no
 # puede escribir en btrfs); el sistema lo pone a cero cuando llega al inicio de sesión (tisma-arranque-ok). Si el
 # arranque anterior no llegó, el menú aparece solo (sin tener que pulsar Mayús) con la opción de volver a como
-# estaba antes de la última actualización (/etc/grub.d/42_tisma_volver). Por defecto sigue arrancando normal.
+# estaba antes de la última actualización (/etc/grub.d/42_tisma_volver). Tras un fallo sigue arrancando normal;
+# tras dos seguidos, el modo seguro (kernel de Debian, firmado: arranca en cualquier equipo).
 set -e
 cat <<'GRUBEOF'
 if search --no-floppy --file --set=tisma_esp_f /tisma/grubenv; then
@@ -18,6 +19,10 @@ if search --no-floppy --file --set=tisma_esp_f /tisma/grubenv; then
   if [ "${tisma_intentos}" != "1" ]; then
     set timeout_style=menu
     set timeout=30
+  fi
+  if [ "${tisma_intentos}" = "3" ]; then
+    # Dos arranques seguidos sin llegar al inicio de sesión: por defecto, el modo seguro (kernel de Debian)
+    set default=tisma-seguro
   fi
 fi
 GRUBEOF
