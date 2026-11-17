@@ -160,3 +160,19 @@ def test_debian_kernels_ordena_y_excluye(tmp_path):
         (tmp_path / n).write_text("x")
     ks = [os.path.basename(k) for k in mod.debian_kernels(str(tmp_path))]
     assert ks == ["vmlinuz-7.2.12+deb13-amd64", "vmlinuz-7.10.1+deb13-amd64"]
+
+
+def test_elegir_rehace_el_menu_si_la_entrada_no_carga_su_initramfs(tmp_path, monkeypatch):
+    """El instalador arma el menú ANTES de crear los initramfs. Con el kernel correcto ya primero (preview 16),
+    elegir no lo regeneraba y la entrada quedaba sin initramfs: el kernel no podía abrir el disco."""
+    previa = '# Generado por tisma-secureboot elegir\nGRUB_TOP_LEVEL="{deb}"\n'
+    run, ordenes = _entorno(tmp_path, monkeypatch, "vmlinuz-7.2.12+deb13-amd64", previa)
+    (tmp_path / "boot" / "initrd.img-7.2.12+deb13-amd64").write_text("x")      # el initramfs ya existe
+    mod.elegir(run)
+    assert ["/usr/sbin/update-grub"] in ordenes
+    # con la línea initrd en el menú, ya no se toca
+    menu = tmp_path / "grub.cfg"
+    menu.write_text("menuentry 'TISMA' {\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64 ro\n\tinitrd\t/initrd.img-7.2.12+deb13-amd64\n}\n")
+    ordenes.clear()
+    mod.elegir(run)
+    assert ["/usr/sbin/update-grub"] not in ordenes

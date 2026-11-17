@@ -124,12 +124,32 @@ def elegir(run=sh) -> str:
     # El menú de GRUB se regenera si la configuración cambió O si el menú no arranca lo elegido: en la A275 (preview
     # 6) el archivo quedó bien pero el menú seguía con el kernel TISMA primero, y como la configuración ya «estaba
     # al día» nunca se volvía a generar
-    if want != cur or (elegido and primer_kernel(GRUB_MENU) != os.path.basename(elegido)):
+    # …o si la entrada por defecto no carga su initramfs: el instalador arma el menú ANTES de crearlos y, sin
+    # regenerarlo, el kernel arrancaba sin poder abrir el disco
+    if want != cur or (elegido and primer_kernel(GRUB_MENU) != os.path.basename(elegido)) or not primer_con_initrd(GRUB_MENU):
         rc, out = run([UPDATE_GRUB])
         if rc:
             raise RuntimeError("update-grub falló: " + out.strip()[-300:])
     return f"kernel TISMA ({os.path.basename(k)})" if k else \
         f"kernel firmado de Debian ({os.path.basename(elegido)})" if elegido else "lo que elija GRUB"
+
+
+def primer_con_initrd(menu: str | None = None, boot: str | None = None) -> bool:
+    """¿La entrada por defecto carga un initramfs que existe? (Si el menú no se puede leer, se da por bueno.)"""
+    menu, boot = menu or GRUB_MENU, boot or BOOT
+    try:
+        lineas = [l.split() for l in open(menu, encoding="utf-8", errors="replace")]
+    except OSError:
+        return True
+    for i, partes in enumerate(lineas):
+        if len(partes) >= 2 and partes[0] == "linux":
+            for sig in lineas[i + 1:]:
+                if sig and sig[0] == "initrd":
+                    return os.path.exists(os.path.join(boot, os.path.basename(sig[-1])))
+                if sig and sig[0] in ("linux", "}", "menuentry"):
+                    break
+            return not glob.glob(f"{boot}/initrd.img-*")       # sin initramfs en /boot: nada que cargar
+    return True
 
 
 def primer_kernel(menu: str = GRUB_MENU) -> str | None:
