@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=SolidCraft (instalar)
+Name=SolidCraft
 GenericName=CAD paramétrico 3D
 Comment=Diseño de piezas en 3D (STEP, STL, 3MF); se instala desde su versión oficial verificada
-Exec=sh -c 'if command -v solidcraft >/dev/null; then exec solidcraft; fi; centinela-apps solidcraft && exec solidcraft; read -p "Pulsa Intro para cerrar" x'
+Exec=/usr/lib/tisma/menu-solidcraft
 Icon=tisma-solidcraft
-Terminal=true
+Terminal=false
 Categories=Graphics;3DGraphics;Engineering;
 Keywords=cad;3d;solidcraft;step;stl;pieza;ingenieria;

@@ -1,0 +1,12 @@
+#!/bin/sh
+# TISMA: «Drivers y firmware» del menú, con ventanas (antes abría una terminal con «Pulsa Intro para cerrar»).
+notify-send -a "Drivers y firmware" -i tisma-drivers "Buscando drivers y firmware…" "Puede pedir tu contraseña de administrador." 2>/dev/null
+pkexec /usr/bin/tisma-drivers instalar >/dev/null 2>&1
+rc=$?
+informe=$(mktemp)
+/usr/bin/tisma-drivers buscar > "$informe" 2>&1
+if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+    kdialog --title "Drivers y firmware" --sorry "No se instaló nada: hace falta la contraseña de administrador."
+fi
+kdialog --title "Drivers y firmware" --textbox "$informe" 640 420
+rm -f "$informe"

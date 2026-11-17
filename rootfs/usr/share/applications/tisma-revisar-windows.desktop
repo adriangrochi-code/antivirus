@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Revisar el otro sistema
-Comment=Busca y limpia virus en otro sistema instalado en este equipo (mientras está apagado), desde TISMA
-Exec=sh -c 'tisma-seguridad windows; echo; read -p "Pulsa Intro para cerrar" x'
+Comment=Busca y limpia virus en otro sistema instalado en este equipo (mientras está apagado): TISMA Seguridad → «Revisar el otro sistema»
+Exec=tisma-seguridad-panel
 Icon=tisma-revisar-windows
-Terminal=true
+Terminal=false
 Categories=System;Security;
 Keywords=windows;virus;antivirus;rescate;limpiar;malware;escudo;

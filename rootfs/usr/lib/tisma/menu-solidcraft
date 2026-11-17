@@ -1,0 +1,11 @@
+#!/bin/sh
+# TISMA: «SolidCraft» del menú: si no está, se instala con una ventana (antes, en una terminal).
+if command -v solidcraft >/dev/null 2>&1; then exec solidcraft "$@"; fi
+kdialog --title "SolidCraft" --yesno "SolidCraft (diseño de piezas en 3D) no está instalado.
+
+Se descarga de su versión oficial y se comprueba antes de instalarlo. ¿Instalarlo ahora?" || exit 0
+notify-send -a "SolidCraft" -i tisma-solidcraft "Instalando SolidCraft…" "Te avisamos al terminar." 2>/dev/null
+if pkexec /usr/bin/centinela-apps solidcraft >/dev/null 2>&1 && command -v solidcraft >/dev/null 2>&1; then
+    exec solidcraft "$@"
+fi
+kdialog --title "SolidCraft" --error "No se pudo instalar SolidCraft. Revisa la conexión a internet y vuelve a intentarlo."

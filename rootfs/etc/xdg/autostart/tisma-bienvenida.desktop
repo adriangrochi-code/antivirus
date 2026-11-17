@@ -3,6 +3,7 @@ Type=Application
 Name=Bienvenida a TISMA
 Comment=Primer inicio de sesión: aspecto, aplicaciones e IA local
 Exec=tisma-bienvenida --si-primera-vez
+StartupNotify=false
 Icon=tisma-bienvenida
 NoDisplay=true
 X-KDE-autostart-phase=2
