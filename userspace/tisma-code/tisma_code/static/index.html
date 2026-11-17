@@ -172,6 +172,11 @@ pre { margin: 6px 0 4px 16px; padding: 10px 12px; background: var(--panel); bord
     <label class="ajsw" style="flex-direction:column;align-items:flex-start">Pensar antes de responder
       <select id="aj-pensar"><option value="auto">Automático (no en modelos chicos: responden mucho antes)</option>
       <option value="si">Siempre (más lento, a veces más acertado)</option><option value="no">Nunca</option></select></label>
+    <label class="ajsw" style="flex-direction:column;align-items:flex-start">Nivel de esfuerzo
+      <select id="aj-esfuerzo"><option value="bajo">Bajo: responde rápido, revisa poco</option>
+      <option value="medio">Medio (recomendado)</option>
+      <option value="alto">Alto: piensa antes de responder y revisa más</option>
+      <option value="maximo">Máximo: para tareas largas y difíciles (mucho más lento)</option></select></label>
     <h3>Componentes</h3><div id="aj-comp"></div>
     <h3>Privacidad</h3>
     <label class="ajsw"><input type="checkbox" id="aj-trazas"> Guardar en este equipo el registro de las tareas
@@ -452,6 +457,10 @@ async function openModels() {
     const d = put(`<b>Reducir este modelo</b> (se crea uno nuevo; el original no se toca)<br>` +
       `<button class="chip" data-r="auto">Automático</button> un escalón más liviano que ahora<br>` +
       info.niveles.map(n => `<button class="chip" data-r="${n}">${NOMBRE[n][0]}</button> ${NOMBRE[n][1]}<br>`).join("") +
+      (info.manuales && info.manuales.length ? `<details style="margin:6px 0"><summary>Avanzado: elegir el formato (cuantización)</summary>` +
+        `<small>Ahora: ${esc((info.origen || "?").toUpperCase())}. Menos bits = más chico y rápido, pero responde peor.</small><br>` +
+        info.manuales.map(m => `<button class="chip" data-r="${esc(m.tipo)}">${esc(m.tipo)}</button> ~${m.bits} bits: ${esc(m.desc)}<br>`).join("") +
+        `</details>` : "") +
       `<label style="display:inline-flex;gap:6px;margin:6px 0"><input type="checkbox" class="capas"> Quitar también capas que casi no aportan (más rápido; tarda más en prepararse)</label><br>` +
       `<button class="chip" data-r="">Cancelar</button>`, "note");
     d.querySelectorAll("[data-r]").forEach(b => b.onclick = async () => {
@@ -637,7 +646,7 @@ async function abrirAjustes() {
   const mo = a.motor || {};
   $("#aj-motor").innerHTML = `<div class="ajrow">${esc(mo.nombre || "Apagado")}<small>${esc([mo.modelo, mo.detalle].filter(Boolean).join(" · ") || "Sin modelo en marcha")}</small></div>`;
   pintarComponentes(a.componentes);
-  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-liberar").checked = a.liberar_memoria; $("#aj-pensar").value = a.pensar || "auto";
+  $("#aj-trazas").checked = a.trazas_hope; $("#aj-auto").checked = a.auto_motor; $("#aj-liberar").checked = a.liberar_memoria; $("#aj-pensar").value = a.pensar || "auto"; $("#aj-esfuerzo").value = a.esfuerzo || "medio";
   $("#ajustes").hidden = false;
 }
 $("#ajbtn").onclick = () => $("#ajustes").hidden ? abrirAjustes() : ($("#ajustes").hidden = true);
@@ -647,6 +656,7 @@ $("#aj-trazas").onchange = e => api("/api/ajustes", {trazas_hope: e.target.check
 $("#aj-auto").onchange = e => api("/api/ajustes", {auto_motor: e.target.checked});
 $("#aj-liberar").onchange = e => api("/api/ajustes", {liberar_memoria: e.target.checked});
 $("#aj-pensar").onchange = async e => pintarPensar(await api("/api/ajustes", {pensar: e.target.value}));
+$("#aj-esfuerzo").onchange = async e => { await api("/api/ajustes", {esfuerzo: e.target.value}); };
 // Botón «Pensar» de la caja de mensaje (como el de DeepSeek): enciende o apaga el razonamiento previo
 function pintarPensar(a) {
   const on = a.pensar === "si" || (a.pensar === "auto" && a.pensar_efectivo === true);

@@ -67,7 +67,7 @@ def test_sesion_con_hope_ejecuta_corchetes_y_manda_su_sesion(tmp_path):
 def test_otros_modelos_no_interpretan_corchetes(tmp_path):
     _, llm, ev = _sesion(tmp_path, "qwen3-8b", [{"content": "Sería ⟦read_file: calc.py⟧"}])
     assert not [e for e in ev if e["type"] == "tool"]
-    assert all(e is None for e in llm.extras)          # sin «user» para motores que no son Hope
+    assert all(e is None or "user" not in e for e in llm.extras)      # sin «user» para motores que no son Hope
 
 
 def test_cabecera_de_sesion_solo_con_un_id_valido(monkeypatch):

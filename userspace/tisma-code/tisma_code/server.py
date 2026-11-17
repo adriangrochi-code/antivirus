@@ -122,6 +122,7 @@ class App:
                 "auto_motor": self.config.get("auto_motor", True) is not False,
                 "liberar_memoria": self.config.get("liberar_memoria", True) is not False,
                 "pensar": self.config.get("pensar", "auto"),
+                "esfuerzo": self.config.get("esfuerzo", "medio"),
                 "pensar_efectivo": self.session.pensar_activo() if self.session else None}
 
     def pensar(self) -> bool | None:
@@ -520,7 +521,9 @@ class Handler(BaseHTTPRequestHandler):
                 if models.MODELS_DIR.resolve() not in p.parents or not p.is_file():
                     return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
                 origen = red.precision(p, gguf_info(str(p)).get("tipo_archivo"))
-                return self._send(200, {"origen": origen, "niveles": red.niveles_posibles(origen)})
+                return self._send(200, {"origen": origen, "niveles": red.niveles_posibles(origen),
+                                        "manuales": [{"tipo": t, "bits": red.MANUALES[t][0], "desc": red.MANUALES[t][1]}
+                                                     for t in red.manuales_posibles(origen)]})
             if url.path == "/api/ajustes":
                 return self._send(200, APP.ajustes())
             if url.path == "/api/sin-apuro":
@@ -570,6 +573,7 @@ class Handler(BaseHTTPRequestHandler):
                     from .trazas import Trazas
                     s.trazas = Trazas(s.ws.root)
                 s.pensar = APP.pensar()
+                s.esfuerzo = APP.config.get("esfuerzo", "medio")
                 APP.session = s
                 if old:
                     old.close()                  # sin esto quedaban vivos llama-server y servidores MCP
@@ -582,6 +586,10 @@ class Handler(BaseHTTPRequestHandler):
                 for k in ("trazas_hope", "auto_motor", "liberar_memoria"):
                     if isinstance(b.get(k), bool):
                         APP.config[k] = b[k]
+                if b.get("esfuerzo") in ("bajo", "medio", "alto", "maximo"):
+                    APP.config["esfuerzo"] = b["esfuerzo"]
+                    if APP.session:
+                        APP.session.esfuerzo = b["esfuerzo"]
                 if b.get("pensar") in ("auto", "si", "no"):
                     APP.config["pensar"] = b["pensar"]
                     if APP.session:
@@ -641,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
                 if models.MODELS_DIR.resolve() not in Path(path).parents:
                     return self._send(400, {"error": "Solo modelos descargados por TISMA Code"})
                 from . import reducir as red
-                nivel = b.get("nivel") if b.get("nivel") in ("auto", *red.NIVELES) else "auto"
+                nivel = b.get("nivel") if b.get("nivel") in ("auto", *red.NIVELES, *red.MANUALES) else "auto"
                 threading.Thread(target=APP.reducir, args=(path, nivel, b.get("capas") is True), daemon=True).start()
                 return self._send(200, {"ok": True})
             if url.path == "/api/sin-apuro":

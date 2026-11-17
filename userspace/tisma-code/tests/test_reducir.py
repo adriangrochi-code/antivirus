@@ -71,3 +71,28 @@ def test_solo_modelos_de_tisma(tmp_path, monkeypatch):
     otro.write_bytes(b"x")
     with pytest.raises(r.ReducirError):
         r.reducir(str(otro))
+
+
+def test_formato_manual_solo_si_achica():
+    from tisma_code import reducir as red
+    assert red.manuales_posibles("q4_k_m")[0] == "IQ4_XS"                 # nunca «subir» a Q5/Q6/Q8
+    assert "Q8_0" in red.manuales_posibles("f16") and "Q8_0" not in red.manuales_posibles("q8_0")
+    assert red.tipo_destino("f16", "Q5_K_M") == "Q5_K_M"
+    import pytest
+    with pytest.raises(red.ReducirError):
+        red.tipo_destino("q4_k_m", "Q6_K")
+
+
+def test_nivel_de_esfuerzo(tmp_path):
+    from tisma_code import agent
+    s = agent.Session.__new__(agent.Session)
+    s.pensar = None
+    s.current = type("C", (), {"model": "qwen2.5-coder-1.5b"})()
+    s.esfuerzo = "alto"
+    assert s.pensar_activo() is True and s.nivel()["pasos"] == 80
+    s.esfuerzo = "bajo"
+    assert s.pensar_activo() is False and s.nivel()["rondas"] == 1
+    s.esfuerzo = "medio"
+    assert s.pensar_activo() is False                                     # automático: modelo chico, sin pensar
+    s.pensar = True
+    assert s.pensar_activo() is True                                      # lo elegido en «Pensar» manda

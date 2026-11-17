@@ -35,6 +35,20 @@ FILE_TYPE = {0: "f32", 1: "f16", 7: "q8_0", 2: "q4_0", 15: "q4_k_m", 14: "q4_k_s
 NIVELES = {"normal": ("Q4_K_M", 4.9), "liviano": ("IQ3_M", 3.7), "muy_liviano": ("IQ2_M", 2.7)}
 BITS = {"f32": 32, "f16": 16, "bf16": 16, "q8_0": 8.5, "q6_k": 6.6, "q5_k_m": 5.7, "q5_k_s": 5.5, "q5_0": 5.5,
         "q4_k_m": 4.9, "q4_k_s": 4.6, "q4_0": 4.5, "iq4_xs": 4.3, "iq4_nl": 4.5, "q3_k_m": 3.9, "iq3_m": 3.7}
+# Elección manual («Avanzado»): formato exacto de llama-quantize → (bits por peso aprox., descripción simple).
+# De más a menos precisión. Los IQ (más chicos a igual calidad) siempre con la importancia medida.
+MANUALES = {
+    "Q8_0": (8.5, "casi sin pérdida, el doble de grande que Q4"),
+    "Q6_K": (6.6, "casi sin pérdida"),
+    "Q5_K_M": (5.7, "muy poca pérdida"),
+    "Q4_K_M": (4.9, "el equilibrio habitual"),
+    "IQ4_XS": (4.3, "como Q4, algo más chico"),
+    "Q3_K_M": (3.9, "pierde algo de calidad"),
+    "IQ3_M": (3.7, "pierde algo; buen tamaño para equipos modestos"),
+    "IQ3_XXS": (3.1, "pierde bastante"),
+    "IQ2_M": (2.7, "pierde mucho: solo equipos muy justos"),
+    "Q2_K": (2.6, "pierde mucho"),
+}
 PERDIDA_MAX_CAPA = 0.04        # cada capa quitada puede empeorar la perplejidad como mucho un 4 %
 PERDIDA_MAX_TOTAL = 0.12       # y todas juntas, un 12 %
 MAX_CANDIDATAS = 6
@@ -59,7 +73,17 @@ def niveles_posibles(origen: str | None) -> list[str]:
     return [k for k, (_, b) in NIVELES.items() if bits and b < bits - 0.15]
 
 
+def manuales_posibles(origen: str | None) -> list[str]:
+    """Formatos que achican este modelo (no se ofrece «subir» la precisión: no recupera lo perdido)."""
+    bits = BITS.get(origen or "")
+    return [t for t, (b, _) in MANUALES.items() if bits and b < bits - 0.15]
+
+
 def tipo_destino(origen: str | None, nivel: str) -> str:
+    if nivel in MANUALES:
+        if nivel not in manuales_posibles(origen):
+            raise ReducirError(f"{nivel} no achica este modelo: elige un formato con menos bits.")
+        return nivel
     if nivel == "auto":
         t = DESTINO.get(origen or "")
         if not t:

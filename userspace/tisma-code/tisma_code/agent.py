@@ -92,6 +92,15 @@ Para usar una herramienta, usa la llamada de función. Si no puedes, escribe exa
 VENTANA_PEQUENA = 12288
 
 MAX_STEPS = 50
+# Nivel de esfuerzo (Ajustes o el botón junto al mensaje): cuánto trabaja el modelo antes de responder.
+#   pensar: None = automático (no en modelos chicos) · rondas: cuántas veces revisa y corrige lo verificado
+#   pasos: máximo de acciones por pedido · razonamiento: «reasoning_effort» para los modelos que lo admiten
+ESFUERZO = {
+    "bajo": {"pensar": False, "rondas": 1, "pasos": 20, "razonamiento": "low"},
+    "medio": {"pensar": None, "rondas": 3, "pasos": 50, "razonamiento": "medium"},
+    "alto": {"pensar": True, "rondas": 4, "pasos": 80, "razonamiento": "high"},
+    "maximo": {"pensar": True, "rondas": 6, "pasos": 120, "razonamiento": "high"},
+}
 
 
 class LLMError(Exception):
@@ -326,12 +335,19 @@ class Session:
         return lambda messages, temperature=0.2: self.especialistas.chat(name, messages)
 
     pensar: bool | None = None          # None = automático (Ajustes de TISMA Code)
+    esfuerzo: str = "medio"             # bajo · medio · alto · maximo (ESFUERZO)
+
+    def nivel(self) -> dict:
+        return ESFUERZO.get(self.esfuerzo, ESFUERZO["medio"])
 
     def pensar_activo(self) -> bool:
-        """¿Dejar que el modelo «piense» antes de responder? Automático: no en modelos chicos (hasta ~4B), que en
-        equipos modestos tardan muchísimo en razonar por escrito; sí en los grandes."""
+        """¿Dejar que el modelo «piense» antes de responder? Lo que se eligió en «Pensar» manda; si no, el nivel de
+        esfuerzo; y en automático: no en modelos chicos (hasta ~4B), que en equipos modestos tardan muchísimo en
+        razonar por escrito; sí en los grandes."""
         if self.pensar is not None:
             return self.pensar
+        if self.nivel()["pensar"] is not None:
+            return self.nivel()["pensar"]
         return not es_modelo_chico(self.current.model or "")
 
     def _plain_chat(self, messages: list, temperature: float = 0.2, rapido: bool = False) -> str:
@@ -459,7 +475,7 @@ class Session:
         if experience:
             self.emit("info", message=f"Usando {len(used_ids)} recuerdo(s) de tareas parecidas")
         self.current = self.router.first()
-        loop = review.ReviewLoop()
+        loop = review.ReviewLoop(max_rounds=self.nivel()["rondas"])
         t0, tokens0 = time.monotonic(), self.stats["completion_tokens"]
         verified, last_verify, self_reviewed = None, "", False
 
@@ -584,6 +600,10 @@ class Session:
             # antes de contestar (respuestas de 3 a 5 veces más lentas en preguntas simples)
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
                                   extra={"chat_template_kwargs": {"enable_thinking": False}})
+        elif self._llm_extra:
+            # Pensando: cuánto, según el nivel de esfuerzo (los modelos que no lo admiten lo ignoran)
+            msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
+                                  extra={"reasoning_effort": self.nivel()["razonamiento"]})
         else:
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas)
         dt = time.monotonic() - t0
@@ -639,7 +659,8 @@ class Session:
 
     def _agent_loop(self) -> str:
         """Pasos del modelo hasta que responde sin herramientas. Devuelve su respuesta final."""
-        for _ in range(MAX_STEPS):
+        pasos = self.nivel()["pasos"]
+        for _ in range(pasos):
             if self._cancel.is_set():
                 self.emit("info", message="Detenido por el usuario")
                 return ""
@@ -677,7 +698,7 @@ class Session:
             # en la A275 con una pregunta simple): a la segunda repetición se le pide la respuesta SIN herramientas
             if self._repetidas >= 2 and self._repetidas > antes:
                 return self._responder_ya()
-        self.emit("info", message=f"Se alcanzó el límite de {MAX_STEPS} pasos")
+        self.emit("info", message=f"Se alcanzó el límite de {pasos} pasos (sube el nivel de esfuerzo para permitir más)")
         return self._responder_ya()
 
     def _responder_ya(self) -> str:
