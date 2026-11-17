@@ -68,7 +68,9 @@ def test_install_flow_writes_progress_and_runs_components(tmp_path, monkeypatch)
     calls = []
     assert mod.instalar(["p"], _fake_run(["libc6:amd64"], calls)) == 0
     assert any(c[0] == "debconf-set-selections" for c in calls)                 # licencia de Steam preaceptada
-    inst = [c for c in calls if "install" in c]
+    assert ["dpkg", "--configure", "-a", "--force-confold"] in calls            # termina una instalación cortada
+    assert any(c[-2:] == ["-f", "install"] for c in calls)
+    inst = [c for c in calls if "install" in c and "-f" not in c]
     assert inst and inst[0][-1] == "steam-installer" and "libc6" not in inst[0]  # solo lo que falta
     assert [str(comps / "comp.sh"), "/"] in calls
     st = json.loads((tmp_path / "run/estado.json").read_text())

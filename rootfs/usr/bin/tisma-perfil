@@ -146,7 +146,12 @@ def instalar(nombres: list[str], run=None) -> int:
     errores = []
     if pend:
         guardar({**estado, "fase": "actualizando"})
+        # Si una instalación anterior se cortó (apagado, sin luz, el límite de tiempo del instalador), dpkg queda
+        # a medio configurar y todo apt-get install falla hasta terminarla: se termina aquí (sin nada pendiente
+        # no hace nada)
+        run(["dpkg", "--configure", "-a", "--force-confold"], env=env, capture_output=True)
         run([*APT, "update"], env=env)
+        run([*APT, "-f", "install"], env=env, capture_output=True)
         guardar({**estado, "fase": "instalando"})
         r = run([*APT, "install", "--no-install-recommends", *pend], env=env, capture_output=True, text=True)
         if r.returncode != 0:
