@@ -3,6 +3,26 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 18
+
+- **Seguridad**: 210 archivos de programas del sistema quedaban con dueño equivocado (un usuario normal podía
+  cambiarlos y ganar permisos de administrador). Arreglado al construir la ISO y, en equipos ya instalados, al
+  arrancar.
+- **Instalación con internet lento**: el instalador descarga como mucho 20 minutos (antes podía quedarse una hora y
+  cortar la instalación a la fuerza); lo que falte se completa solo en el primer arranque. Si una descarga se corta
+  (apagón, apagado), se repara sola. Los reintentos esperan cada vez más (no gastan datos cada 15 minutos).
+- **Arranque a prueba de fallos**: encender y apagar enseguida ya no cuenta como «arranque fallido» (a la tercera
+  vez aparecía el modo seguro sin motivo, y los ajustes de rendimiento del equipo se desactivaban en silencio).
+  Si se desactivan de verdad, ahora avisa con un botón para volver a usarlos.
+- **Escudo**: la máquina virtual de análisis rápida no podía abrir la muestra y marcaba todo lo nuevo como
+  «sospechoso». Arreglado, se prueba antes de publicarla, y si alguna vez falla se usa el aislamiento normal.
+- **Bienvenida**: si instalas usos mientras se descarga la base, espera su turno en vez de dar un error falso.
+- **Bluetooth**: un teclado o ratón Bluetooth emparejado funciona ya en la pantalla de inicio de sesión.
+- **Disco**: las copias automáticas ya no llenan un disco pequeño (con menos del 10 % libre se borran las más
+  viejas). Al actualizar desde el USB, los equipos instalados antes de la preview 16 también reciben el TRIM del
+  SSD cifrado.
+- **Navegador privado**: se instala aunque otro repositorio falle en ese momento.
+
 ## Novedades de la preview 17
 
 - **Instalación arreglada** (causa del «Loading Linux …-minimal» en la A275): el instalador ejecutaba los pasos de
@@ -222,7 +242,7 @@ La cadena es la estándar de Debian: shim (firmado por Microsoft) → GRUB (firm
   lenta (squashfs con xz, para que la ISO quepa en un archivo de GitHub); solo traducciones al español (y al inglés), sin documentación de paquetes (las
   licencias sí), sin fuentes chinas/japonesas/coreanas, sin 32 bits hasta instalar el perfil de juegos, y el
   firmware de NVIDIA se instala al detectar la GPU (`tisma-drivers`). La máquina virtual de análisis de Escudo
-  solo va en la ISO completa: en la normal, lo descargado se analiza en su sandbox.
+  no va en la ISO: se descarga sola después de instalar (mientras tanto, lo descargado se analiza en su sandbox).
 - **Hope va incluido** (sus herramientas de cálculo exacto, crítico y consejo; no la red neuronal), desde una
   versión fija y comprobada de su repositorio público. Sus complementos (sympy, scipy, matplotlib, z3…) se
   descargan al instalar en el disco, como LibreOffice; en la sesión del USB algunas herramientas de Hope
