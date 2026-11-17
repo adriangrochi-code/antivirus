@@ -207,7 +207,7 @@ def test_sin_pensar_en_modelos_chicos(project, tmp_path_factory):
     s = agent.Session(str(project), "http://x/v1", "qwen3-0.6b-q8_0.gguf", llm=llm,
                       kb_dir=tmp_path_factory.mktemp("kb"))
     s.send("hola")
-    assert {"chat_template_kwargs": {"enable_thinking": False}} in vistos
+    assert {"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"} in vistos
     vistos.clear()
     s.pensar = True
     s.send("hola de nuevo")

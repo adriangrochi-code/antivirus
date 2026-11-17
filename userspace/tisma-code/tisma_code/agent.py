@@ -599,7 +599,7 @@ class Session:
             # Sin «pensamiento»: en equipos lentos los modelos chicos escribían cientos de palabras de razonamiento
             # antes de contestar (respuestas de 3 a 5 veces más lentas en preguntas simples)
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
-                                  extra={"chat_template_kwargs": {"enable_thinking": False}})
+                                  extra={"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"})
         elif self._llm_extra:
             # Pensando: cuánto, según el nivel de esfuerzo (los modelos que no lo admiten lo ignoran)
             msg, usage = self.llm(self.current.endpoint, self.current.model, messages, schemas,
@@ -665,7 +665,7 @@ class Session:
                 self.emit("info", message="Detenido por el usuario")
                 return ""
             self._maybe_compact()
-            self.emit("thinking", model=self.current.name)
+            self.emit("thinking", model=self.current.name, pensando=self.pensar_activo())
             visible = kits.visible(self.schemas, self.kits, self.context_tokens)
             if self.context_tokens <= VENTANA_PEQUENA:
                 visible = [kits.SCHEMA_CORTO if t["function"]["name"] == "herramientas" else t for t in visible]
@@ -705,7 +705,7 @@ class Session:
         """Respuesta final sin herramientas con lo que ya se sabe (corta un bucle)."""
         self.messages.append({"role": "user", "content": "Ya tienes la información necesaria. Responde ahora a mi "
                               "pregunta con lo que sabes, en español y sin usar herramientas."})
-        self.emit("thinking", model=self.current.name)
+        self.emit("thinking", model=self.current.name, pensando=self.pensar_activo())
         msg = self._call_llm(self.messages, [])
         content = harness.strip_text_tool_calls(msg.get("content") or "", self.tool_names)
         self.messages.append({"role": "assistant", "content": content})

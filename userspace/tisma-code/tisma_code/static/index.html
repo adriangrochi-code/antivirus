@@ -299,7 +299,7 @@ function setBusy(b, label) {
 
 function onEvent(ev) {
   switch (ev.type) {
-    case "thinking": setBusy(true, "Pensando"); break;
+    case "thinking": setBusy(true, ev.pensando === false ? "Escribiendo la respuesta" : "Pensando"); break;
     case "assistant": put(md(ev.text), "a"); break;
     case "info": put(esc(ev.message), "note"); break;
     case "error": put(esc(ev.message), "err"); break;
@@ -359,7 +359,7 @@ async function send() {
   if (!state.workspace) { openDirs(undefined, "Primero elige la carpeta del proyecto: tu mensaje se queda escrito."); return; }
   put(esc(text), "u");
   $("#input").value = ""; grow();
-  setBusy(true, "Pensando");
+  setBusy(true, $("#pensarChip").classList.contains("on") ? "Pensando" : "Escribiendo la respuesta");
   try { await api("/api/message", {text}); } catch (e) { put(esc(e.message), "err"); setBusy(false); }
 }
 const grow = () => { const t = $("#input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; };
