@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -14 328 376" width="328" height="376">
+  <!-- Logo de TISMA para tamaños chicos (menú, barra de tareas, cabecera de las apps): el mismo dibujo con el
+       borde del hexágono el doble de grueso y sin las aristas blancas finas (a 32 px medían menos de medio píxel
+       y se veían serruchadas). Para tamaños grandes, logo.svg. -->
+  <defs>
+    <linearGradient id="pl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A55BE8"/><stop offset="1" stop-color="#5B1FA6"/>
+    </linearGradient>
+    <linearGradient id="pr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E3FDD"/><stop offset="1" stop-color="#4A1690"/>
+    </linearGradient>
+  </defs>
+  <path d="M150 0 L300 87 L300 261 L150 348 L0 261 L0 87 Z" fill="none" stroke="#E6E6EA" stroke-width="20"
+        stroke-linejoin="round"/>
+  <path d="M150 34 L22 252 L150 334 L278 252 Z" fill="#DADADD"/>
+  <path d="M150 34 L150 334 L278 252 Z" fill="#ECECEF"/>
+  <path d="M150 34 L72 246 L150 280 Z" fill="url(#pl)"/>
+  <path d="M150 34 L228 246 L150 280 Z" fill="url(#pr)"/>
+</svg>

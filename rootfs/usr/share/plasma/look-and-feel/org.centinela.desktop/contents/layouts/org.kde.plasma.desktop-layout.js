@@ -9,7 +9,7 @@ try { panel.hiding = "none"; } catch (e) {}
 
 var start = panel.addWidget("org.kde.plasma.kickoff");
 start.currentConfigGroup = ["General"];
-start.writeConfig("icon", "/usr/share/centinela/branding/logo.svg");
+start.writeConfig("icon", "/usr/share/centinela/branding/logo-pequeno.svg");
 // Favoritos del menú: pocos y con nombres claros. Kickoff los pasa a su base de favoritos la primera vez
 // (por eso «favoritesPortedToKAstats» en false); sin esto mostraba los de fábrica con nombres técnicos.
 start.writeConfig("favorites", [

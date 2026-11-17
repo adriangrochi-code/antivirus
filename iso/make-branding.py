@@ -62,13 +62,14 @@ def main(branding: Path, root: Path) -> None:
 
     b = root / "usr/share/centinela/branding"
     b.mkdir(parents=True, exist_ok=True)
-    for f in ("logo.svg", "logo-light.svg", "wordmark.svg", "wallpaper.svg", "wallpaper-claro.svg"):
+    for f in ("logo.svg", "logo-pequeno.svg", "logo-light.svg", "wordmark.svg", "wallpaper.svg", "wallpaper-claro.svg"):
         (b / f).write_bytes((branding / f).read_bytes())
     icons = root / "usr/share/icons/hicolor"
     for size in (16, 32, 48, 64, 128, 256):
         d = icons / f"{size}x{size}/apps"
         d.mkdir(parents=True, exist_ok=True)
-        svg(branding / "logo.svg", d / "tisma.png", size)
+        # Hasta 64 px, el logo para tamaños chicos (sin aristas finas: no se ve serruchado)
+        svg(branding / ("logo-pequeno.svg" if size <= 64 else "logo.svg"), d / "tisma.png", size)
     (icons / "scalable/apps").mkdir(parents=True, exist_ok=True)
     (icons / "scalable/apps/tisma.svg").write_bytes((branding / "logo.svg").read_bytes())
     # Iconos de cada app de TISMA: misma familia (hexágono de la marca), símbolo y color propios (branding/iconos.py)
