@@ -197,6 +197,8 @@ def test_usos_elegidos_al_instalar_se_suman(tmp_path, monkeypatch):
 def test_desde_el_instalador_la_descarga_tiene_limite(tmp_path, monkeypatch):
     """Internet lento al instalar: no se queda una hora ni corta dpkg a mitad; lo termina el primer arranque."""
     (tmp_path / "p.list").write_text("# Prueba\nlibreoffice-writer @comp\n")
+    (tmp_path / "comp.sh").write_text("#!/bin/sh\n")
+    (tmp_path / "comp.sh").chmod(0o755)
     monkeypatch.setattr(mod, "DIR", str(tmp_path))
     monkeypatch.setattr(mod, "COMPONENTES", str(tmp_path))
     monkeypatch.setattr(mod, "ESTADO", str(tmp_path / "run/estado.json"))
@@ -213,7 +215,19 @@ def test_desde_el_instalador_la_descarga_tiene_limite(tmp_path, monkeypatch):
     assert mod.instalar(["p"], run) == 1                                       # sin marca de hecho: se reintenta
     assert not any("install" in c and "--download-only" not in c and "-f" not in c for c in calls)  # no instala a medias
     assert "primer arranque" in json.loads((tmp_path / "run/estado.json").read_text())["mensaje"]
+    assert not any(c[0].endswith("comp.sh") for c in calls)                   # componentes: en el primer arranque
+    # La descarga falla sin agotar el tiempo (espejo caído): tampoco se instala sin límite
+    calls.clear()
+
+    def run_falla(cmd, **kw):
+        calls.append(cmd)
+        if "--download-only" in cmd:
+            return subprocess.CompletedProcess(cmd, 100, "", "Err")
+        return base(cmd, **kw)
+    assert mod.instalar(["p"], run_falla) == 1
+    assert not any("install" in c and "--download-only" not in c and "-f" not in c for c in calls)
     monkeypatch.delenv("TISMA_LIMITE_DESCARGA")
     calls.clear()
     mod.instalar(["p"], base)
     assert not any("--download-only" in c for c in calls)                     # fuera del instalador: sin límite
+    assert any(c[0].endswith("comp.sh") for c in calls)

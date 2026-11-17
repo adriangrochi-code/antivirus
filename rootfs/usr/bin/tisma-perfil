@@ -105,6 +105,9 @@ def faltan(pkgs: list[str], run=None) -> list[str]:
     return out
 
 
+LENTA = "La conexión es lenta: el resto se descarga solo en el primer arranque."
+
+
 def turno(ruta: str | None = None):
     """Una instalación a la vez (la del primer arranque, tisma-completar, y la de la Bienvenida): sin esto las dos
     escribían el mismo estado y la Bienvenida podía dar por fallida la suya. Se espera sin escribir el estado de la
@@ -153,33 +156,40 @@ def instalar(nombres: list[str], run=None) -> int:
         # a medio configurar y todo apt-get install falla hasta terminarla: se termina aquí (sin nada pendiente
         # no hace nada)
         run(["dpkg", "--configure", "-a", "--force-confold"], env=env, capture_output=True)
-        run([*APT, "update"], env=env)
+        resto = (lambda: {"timeout": max(1, limite - time.time())}) if limite else (lambda: {})
+        try:
+            run([*APT, "update"], env=env, **resto())
+        except subprocess.TimeoutExpired:
+            errores.append(LENTA)
         run([*APT, "-f", "install"], env=env, capture_output=True)
         guardar({**estado, "fase": "instalando"})
-        if limite:
-            # Desde el instalador: primero SOLO descargar, con tiempo límite. Si no llega, se deja para el primer
-            # arranque (tisma-completar sigue desde lo ya descargado) en vez de cortar dpkg a mitad de instalar.
+        if limite and not errores:
+            # Desde el instalador: primero SOLO descargar, con tiempo límite (cortar una descarga no rompe nada).
+            # Si no llega o falla, se deja para el primer arranque (tisma-completar sigue desde lo ya descargado)
+            # en vez de cortar dpkg a mitad o volver a descargar todo sin límite.
             try:
-                run([*APT, "install", "--download-only", "--no-install-recommends", *pend], env=env,
-                    capture_output=True, text=True, timeout=max(1, limite - time.time()))
+                r = run([*APT, "install", "--download-only", "--no-install-recommends", *pend], env=env,
+                        capture_output=True, text=True, **resto())
+                if r.returncode != 0:
+                    errores.append(LENTA)
             except subprocess.TimeoutExpired:
-                errores.append("La conexión es lenta: el resto se descarga solo en el primer arranque.")
+                errores.append(LENTA)
         if not errores:
             r = run([*APT, "install", "--no-install-recommends", *pend], env=env, capture_output=True, text=True)
             if r.returncode != 0:
                 errores.append((r.stderr or r.stdout)[-600:])
-    for c in (comps if not errores or not limite else []):
+    if comps and limite:
+        # Los componentes instalan paquetes por su cuenta: no se pueden cortar a tiempo sin dejar dpkg a medias.
+        # Desde el instalador se dejan para el primer arranque.
+        errores.append("Los componentes (" + ", ".join(comps) + ") se descargan en el primer arranque.")
+        comps = []
+    for c in comps:
         guardar({**estado, "fase": f"descargando {c}"})
         script = os.path.join(COMPONENTES, f"{c}.sh")
         if not os.access(script, os.X_OK):
             errores.append(f"falta el componente {c}")
             continue
-        try:
-            r = run([script, "/"], capture_output=True, text=True,
-                    **({"timeout": max(1, limite - time.time())} if limite else {}))
-        except subprocess.TimeoutExpired:
-            errores.append(f"{c}: la conexión es lenta, se descarga en el primer arranque")
-            break
+        r = run([script, "/"], capture_output=True, text=True)
         if r.returncode != 0:
             errores.append(f"{c}: " + (r.stderr or r.stdout)[-300:])
     ok = not errores
