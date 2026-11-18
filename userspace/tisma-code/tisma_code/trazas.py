@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from . import models
+from . import plataforma
 
 DIR = models.MODELS_DIR.parent / "trazas-hope"
 MAX_CAMPO = 20000
@@ -86,6 +87,6 @@ class Trazas:
                  "salida": _clip(salida), "ok": bool(ok), "modelo_generador": modelo,
                  "licencia_modelo": self._lic[modelo], "repo_licencia": self.repo}
         self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        fd = os.open(self.archivo(), os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        fd = plataforma.abrir_sin_enlaces(self.archivo(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(linea, ensure_ascii=False) + "\n")

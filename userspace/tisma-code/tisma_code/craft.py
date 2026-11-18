@@ -32,6 +32,7 @@ import threading
 from pathlib import Path
 
 from .mcp_client import MCPClient, MCPError
+from . import plataforma
 
 MODES = ("limpio", "profundo", "ejecucion")
 # Capas que salen del alcance local o cambian el propio motor: nunca.
@@ -174,7 +175,7 @@ class CraftTools:
 
     def _write_answer(self, rid: str, answer: dict) -> None:
         tmp = self.inbox / f".{rid}.{os.getpid()}.tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        fd = plataforma.abrir_sin_enlaces(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(answer, f)
         os.replace(tmp, self.inbox / f"{rid}.answer.json")   # reemplaza el nombre, nunca sigue un enlace

@@ -31,6 +31,7 @@ from pathlib import Path
 
 from . import models
 from .plataforma import DIR_CONFIG
+from . import plataforma
 
 DIR = models.MODELS_DIR.parent / "sin-apuro"
 COLA = DIR / "tareas.json"
@@ -110,7 +111,7 @@ def _leer() -> list[dict]:
 def _escribir(tareas: list[dict]) -> None:
     DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     tmp = COLA.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    fd = plataforma.abrir_sin_enlaces(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(tareas, f, ensure_ascii=False)
     os.replace(tmp, COLA)
@@ -131,7 +132,7 @@ class _cerrojo_cola:
     """Entre la app y el trabajador (dos procesos) también: flock sobre un archivo aparte."""
     def __enter__(self):
         DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.fd = os.open(DIR / ".cola", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        self.fd = plataforma.abrir_sin_enlaces(DIR / ".cola", os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(self.fd, fcntl.LOCK_EX)
         return self
 
@@ -350,7 +351,7 @@ def siguiente() -> dict | None:
 def trabajar(hw: dict | None = None, pensar: bool = False, espera=time.sleep) -> int:
     """Hace la cola entera, una tarea a la vez; termina cuando no queda nada. Un solo trabajador a la vez."""
     DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(CERROJO, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    fd = plataforma.abrir_sin_enlaces(CERROJO, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:

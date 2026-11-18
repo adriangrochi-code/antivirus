@@ -35,6 +35,29 @@ from pathlib import Path
 
 ES_WINDOWS = os.name == "nt"
 
+
+def _es_enlace(p: str) -> bool:
+    """Enlace simbólico o «junction» de Windows (punto de reanálisis): ninguno se sigue al escribir."""
+    try:
+        st = os.lstat(p)
+    except OSError:
+        return False
+    if os.path.islink(p):
+        return True
+    return bool(getattr(st, "st_file_attributes", 0) & 0x400)      # FILE_ATTRIBUTE_REPARSE_POINT
+
+
+def abrir_sin_enlaces(ruta, flags: int, modo: int = 0o600) -> int:
+    """os.open que nunca sigue un enlace al crear o escribir (O_NOFOLLOW en Linux). En Windows no existe
+    O_NOFOLLOW: se comprueba antes que ni el archivo ni su carpeta sean un enlace o una «junction» (antes daba
+    «module 'os' has no attribute 'O_NOFOLLOW'» al instalar especialistas)."""
+    ruta = os.fspath(ruta)
+    if hasattr(os, "O_NOFOLLOW"):
+        return os.open(ruta, flags | os.O_NOFOLLOW, modo)
+    if _es_enlace(ruta) or _es_enlace(os.path.dirname(os.path.abspath(ruta))):
+        raise OSError(f"no se escribe a través de un enlace: {ruta}")
+    return os.open(ruta, flags | getattr(os, "O_BINARY", 0), modo)
+
 MSG_COMANDOS = ("En este equipo los comandos no se ejecutan aislados: actívalos en Ajustes si confías en el "
                 "proyecto")
 MSG_NO_DISPONIBLE = "No disponible en este equipo"

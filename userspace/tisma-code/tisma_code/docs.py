@@ -19,6 +19,7 @@ import threading
 from pathlib import Path
 
 from .base import safe_dir
+from . import plataforma
 
 LIBRARY = Path(os.environ.get("TISMA_DOCS", Path.home() / "TISMA" / "Documentos"))
 TEXT_EXT = {".md", ".txt", ".rst", ".csv", ".json", ".yaml", ".yml", ".toml", ".ini", ".py", ".c", ".h",
@@ -181,7 +182,7 @@ class DocSpace:
         head = f"# {title.strip()}\n\n- Tipo: {kind}\n- Fecha: {today}\n"
         if tags:
             head += f"- Etiquetas: {', '.join(tags)}\n"
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        fd = plataforma.abrir_sin_enlaces(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(head + "\n" + content.strip() + "\n")
         self.refresh()

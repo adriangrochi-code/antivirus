@@ -444,3 +444,24 @@ def test_textos_de_la_interfaz_no_nombran_el_sistema():
 def test_ajustes_comandos_solo_booleano():
     src = (RAIZ / "server.py").read_text(encoding="utf-8")
     assert 'if isinstance(b.get("comandos_sin_aislar"), bool):' in src
+
+
+def test_abrir_sin_enlaces_sin_o_nofollow(tmp_path, monkeypatch):
+    """En Windows no existe os.O_NOFOLLOW («module 'os' has no attribute 'O_NOFOLLOW'» al instalar especialistas):
+    se escribe igual, pero nunca a través de un enlace."""
+    import os
+    from tisma_code import plataforma
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    f = tmp_path / "a.json"
+    fd = plataforma.abrir_sin_enlaces(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.write(fd, b"ok")
+    os.close(fd)
+    assert f.read_bytes() == b"ok"
+    (tmp_path / "enlace").symlink_to(f)
+    with pytest.raises(OSError):
+        plataforma.abrir_sin_enlaces(tmp_path / "enlace", os.O_WRONLY | os.O_TRUNC, 0o600)
+    otra = tmp_path / "otra"
+    otra.mkdir()
+    (tmp_path / "carpeta-enlace").symlink_to(otra, target_is_directory=True)
+    with pytest.raises(OSError):
+        plataforma.abrir_sin_enlaces(tmp_path / "carpeta-enlace" / "x", os.O_WRONLY | os.O_CREAT, 0o600)

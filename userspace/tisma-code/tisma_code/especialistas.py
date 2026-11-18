@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .plataforma import DIR_CONFIG, es_archivo_privado
+from . import plataforma
 
 CONFIG = DIR_CONFIG / "especialistas.json"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -211,7 +212,7 @@ def install(entry_id: str, path: Path = CONFIG) -> tuple[dict, str]:
         data.setdefault("roles", {})[entry["rol"]] = entry["id"]
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     tmp = path.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    fd = plataforma.abrir_sin_enlaces(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
