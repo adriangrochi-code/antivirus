@@ -29,6 +29,20 @@ def test_audit_rules_evaluation():
     assert p and p.kind == "persistencia" and "autostart" in p.detail
 
 
+def test_persistencia_sin_falsas_alarmas():
+    """Preview 22: «kded6 intentó quedar configurado para abrirse solo al encender el equipo» al instalar. kded6 es
+    parte de KDE; y una escritura que el sistema RECHAZÓ (success=no) no dejó nada configurado."""
+    plantilla = ('type=SYSCALL msg=audit(1731300003.000:{n}): arch=c000003e syscall=257 success={ok} pid=4500 '
+                 'uid=1000 comm="x" exe="{exe}" key="persistencia"\n'
+                 'type=PATH msg=audit(1731300003.000:{n}): item=0 name="/etc/xdg/autostart/x.desktop"\n')
+    ev = behavior.group_events((plantilla.format(n=601, ok="yes", exe="/usr/bin/kded6") +
+                                plantilla.format(n=602, ok="no", exe="/home/ana/.local/x") +
+                                plantilla.format(n=603, ok="yes", exe="/home/ana/.local/x")).splitlines())
+    assert behavior.evaluate(ev["601"]) is None
+    assert behavior.evaluate(ev["602"]) is None
+    assert behavior.evaluate(ev["603"]).kind == "persistencia"          # a real write still alerts
+
+
 def test_hex_encoded_names():
     f = behavior.parse_fields("type=PATH msg=audit(1.0:9): name=2F746D702F612062 nametype=NORMAL")
     assert f["name"] == "/tmp/a b"

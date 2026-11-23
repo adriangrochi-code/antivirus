@@ -3,6 +3,16 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 23
+
+- Instalación: la comprobación final ya no da por bueno un menú de arranque que no existe. Revisa el menú, el
+  kernel, el initramfs (que exista, esté completo y sea válido) y la partición EFI; si algo falla lo repara una vez
+  y, si sigue mal, el instalador lo dice en vez de terminar con un equipo que no arranca.
+- Instalación: con /boot en su propia partición se reponen los archivos del kernel que no se podían copiar.
+- Instalación: el menú de arranque usa el identificador del disco (UUID) en vez de «/dev/sda3», que cambia si hay un
+  USB conectado.
+- Escudo: ya no avisa de «kded6» (parte del escritorio) ni de escrituras que el sistema rechazó.
+
 ## Novedades de la preview 22
 
 - **«TISMA no inicia: reparar el arranque»** (en la ventana «Actualizar TISMA» del USB): sin tocar tus archivos,

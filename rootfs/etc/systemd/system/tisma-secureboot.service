@@ -2,6 +2,8 @@
 Description=TISMA: elegir el kernel de arranque según Secure Boot (kernel TISMA solo si es seguro)
 After=local-fs.target tisma-fase2.target
 ConditionPathExists=/sys/firmware/efi
+# Not on the live USB: it has no GRUB menu of its own to fix (update-grub there only fails and wastes time)
+ConditionKernelCommandLine=!boot=live
 
 [Service]
 Type=oneshot

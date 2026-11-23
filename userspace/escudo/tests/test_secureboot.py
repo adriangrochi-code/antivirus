@@ -207,3 +207,116 @@ def test_crea_el_initramfs_que_falta_y_rehace_el_menu(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         mod.asegurar_initrd(lambda a, i=None: (1, "sin espacio"), str(tmp_path / "b2"), str(mods)) if \
             (tmp_path / "b2").mkdir() or (tmp_path / "b2" / "vmlinuz-7.2.12+deb13-amd64").write_text("x") else None
+
+
+# =====================================================================================================================
+# ===                                 Installer final check («verificar»)                                         ===
+# =====================================================================================================================
+
+ZSTD_INITRD = b"\x28\xb5\x2f\xfd" + b"\0" * (mod.INITRD_MIN_BYTES + 16)    # smallest image the check accepts
+
+
+def _sistema(tmp_path, initrd: bytes | None = ZSTD_INITRD, con_linea_initrd=True):
+    """Fake installed system: /boot with a Debian kernel, a grub.cfg and an ESP with one GRUB stub."""
+    boot, esp = tmp_path / "boot", tmp_path / "esp"
+    (boot / "grub").mkdir(parents=True)
+    (esp / "EFI" / "TISMA").mkdir(parents=True)
+    version = "7.3.4+deb13-amd64"
+    (boot / f"vmlinuz-{version}").write_text("k")
+    if initrd is not None:
+        (boot / f"initrd.img-{version}").write_bytes(initrd)
+    linea = f"\tinitrd\t/initrd.img-{version}\n" if con_linea_initrd else ""
+    (boot / "grub" / "grub.cfg").write_text(
+        f"menuentry 'TISMA' {{\n\tlinux\t/vmlinuz-{version} root=UUID=r ro quiet\n{linea}}}\n")
+    (esp / "EFI" / "TISMA" / "grub.cfg").write_text(
+        "search.fs_uuid 9bfe-boot root hd0,gpt2\nset prefix=($root)'/grub'\nconfigfile $prefix/grub.cfg\n")
+    return boot, esp
+
+
+def _problemas(boot, esp, existentes=("9bfe-boot",)):
+    return mod.problemas_de_arranque(str(boot / "grub" / "grub.cfg"), str(boot), str(esp),
+                                     lambda: "9bfe-boot", lambda u: u in existentes)
+
+
+def test_verificar_acepta_un_sistema_que_arranca(tmp_path):
+    boot, esp = _sistema(tmp_path)
+    assert _problemas(boot, esp) == []
+
+
+def test_verificar_no_da_por_bueno_un_menu_que_no_existe(tmp_path):
+    """A275 (preview 22): sin grub.cfg la comprobación decía «Arranque comprobado: ?» y el sistema no arrancaba."""
+    boot, esp = _sistema(tmp_path)
+    (boot / "grub" / "grub.cfg").unlink()
+    assert any("no existe el menú" in p for p in _problemas(boot, esp))
+    assert mod.primer_con_initrd(str(boot / "grub" / "grub.cfg"), str(boot)) is False
+    (boot / "grub" / "grub.cfg").write_text("set timeout=1\n")            # a menu with no Linux entry
+    assert any("ninguna entrada" in p for p in _problemas(boot, esp))
+
+
+def test_verificar_detecta_initramfs_ausente_vacio_o_danado(tmp_path):
+    boot, esp = _sistema(tmp_path, con_linea_initrd=False)
+    assert any("no carga ningún initramfs" in p for p in _problemas(boot, esp))
+    boot, esp = _sistema(tmp_path / "b", initrd=None)
+    assert any("falta el initramfs" in p for p in _problemas(boot, esp))
+    boot, esp = _sistema(tmp_path / "c", initrd=b"\x28\xb5\x2f\xfd" + b"\0" * 100)    # truncated
+    assert any("incompleto" in p for p in _problemas(boot, esp))
+    boot, esp = _sistema(tmp_path / "d", initrd=b"\0" * (mod.INITRD_MIN_BYTES + 10))   # zeros: not an image
+    assert any("dañado" in p for p in _problemas(boot, esp))
+
+
+def test_stub_efi_de_una_instalacion_anterior(tmp_path):
+    """Un stub de GRUB en la partición EFI que apunta a un /boot borrado se detecta y se corrige; el de otro sistema
+    que sigue existiendo (arranque dual) no se toca."""
+    boot, esp = _sistema(tmp_path)
+    viejo = esp / "EFI" / "debian" / "grub.cfg"
+    viejo.parent.mkdir()
+    viejo.write_text("search.fs_uuid dead-0ld root\nconfigfile ($root)/grub/grub.cfg\n")
+    otro = esp / "EFI" / "otro" / "grub.cfg"
+    otro.parent.mkdir()
+    otro.write_text("search.fs_uuid otro-sistema root\n")
+    problemas = _problemas(boot, esp, existentes=("9bfe-boot", "otro-sistema"))
+    assert len(problemas) == 1 and "EFI/debian/grub.cfg" in problemas[0]
+    rotos, _ = mod.stubs_efi_rotos(str(esp), lambda: "9bfe-boot", lambda u: u in ("9bfe-boot", "otro-sistema"))
+    mod.reparar_stubs_efi(rotos, "9bfe-boot")
+    assert "search.fs_uuid 9bfe-boot root" in viejo.read_text()
+    assert "otro-sistema" in otro.read_text()
+
+
+def test_reponer_kernel_en_modules(tmp_path):
+    """Con /boot en otra partición, los enlaces duros del kernel 7.x no se pueden copiar: se reponen como archivos."""
+    boot, mods = tmp_path / "boot", tmp_path / "modules"
+    boot.mkdir()
+    (mods / "7.3.4+deb13-amd64").mkdir(parents=True)
+    (boot / "vmlinuz-7.3.4+deb13-amd64").write_text("k")
+    (boot / "config-7.3.4+deb13-amd64").write_text("c")
+    assert mod.reponer_kernel_en_modules(str(boot), str(mods)) == ["7.3.4+deb13-amd64/vmlinuz",
+                                                                   "7.3.4+deb13-amd64/config"]
+    assert (mods / "7.3.4+deb13-amd64" / "vmlinuz").read_text() == "k"
+    assert mod.reponer_kernel_en_modules(str(boot), str(mods)) == []
+
+
+def test_verificar_repara_una_vez_y_si_no_falla(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "MODULES", str(tmp_path / "sin-modulos"))
+    monkeypatch.setattr(mod, "BOOT", str(tmp_path / "boot"))
+    monkeypatch.setattr(mod, "ESP", str(tmp_path / "esp"))
+    monkeypatch.setattr(mod, "uuid_de_boot_real", lambda: None)
+    ordenes = []
+
+    def run(argv, inp=None):
+        ordenes.append(argv)
+        return 0, ""
+    estado = {"problemas": ["la entrada vmlinuz-x no carga ningún initramfs"]}
+
+    def comprobar():
+        return list(estado["problemas"])
+
+    def run_que_arregla(argv, inp=None):
+        if argv == [mod.UPDATE_GRUB]:
+            estado["problemas"] = []
+        return run(argv, inp)
+    mod.verificar(run_que_arregla, comprobar)
+    assert [mod.UPDATE_GRUB] in ordenes and ["sync"] in ordenes
+
+    estado["problemas"] = ["falta el initramfs initrd.img-x"]
+    with pytest.raises(RuntimeError, match="no podría arrancar"):
+        mod.verificar(run, comprobar)                     # the repair did not help: the installer must show it

@@ -43,7 +43,11 @@ BROWSERS = {"/usr/lib/chromium/chromium", "/usr/lib/firefox-esr/firefox-esr", "/
             "/usr/lib/firefox-esr/firefox-esr-bin"}
 PERSISTENCE_WRITERS = {"/usr/bin/crontab", "/usr/bin/systemctl", "/usr/bin/dpkg", "/usr/bin/apt",
                        "/usr/bin/apt-get", "/usr/lib/apt/methods/http", "/usr/bin/plasmashell",
-                       "/usr/bin/kwriteconfig6", "/usr/bin/systemsettings", "/usr/bin/visudo"}
+                       "/usr/bin/kwriteconfig6", "/usr/bin/systemsettings", "/usr/bin/visudo",
+                       # KDE's session daemon: its modules (time zone, keyboard, autostart) touch these places as
+                       # part of normal desktop use. Seen as a false alarm during the live install (preview 22):
+                       # «kded6 intentó quedar configurado para abrirse solo al encender el equipo».
+                       "/usr/bin/kded6"}
 
 SEVERITY = {"exec_tmp": "medium", "secretos": "high", "persistencia": "medium", "ldpreload": "high",
             "ptrace": "medium", "modulos": "high", "navegador_secretos": "high", "ransomware": "critical",
@@ -131,7 +135,9 @@ def evaluate(records: list[dict]) -> Alert | None:
         return Alert("navegador_secretos", SEVERITY["navegador_secretos"],
                      f"{exe} accedió a datos del navegador ({target})", pid, exe)
     if key == "persistencia":
-        if exe in PERSISTENCE_WRITERS:
+        # success=no: the write was refused (e.g. a user process opening a root-owned file for writing), so nothing
+        # was left configured to start at boot. Alerting on it only teaches the user to ignore the alerts.
+        if exe in PERSISTENCE_WRITERS or sc.get("success") == "no":
             return None
         return Alert("persistencia", SEVERITY[key], f"{exe} modificó {target}", pid, exe)
     if key == "modulos" and exe in MODULE_LOADERS:

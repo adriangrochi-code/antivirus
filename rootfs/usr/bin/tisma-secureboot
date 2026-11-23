@@ -13,7 +13,8 @@ clave propia de TISMA, que el firmware no conoce: hay que registrarla UNA vez (M
                              - Secure Boot desactivado, o
                              - Secure Boot activado, clave TISMA registrada y kernel TISMA firmado con ella;
                              si no, el kernel firmado de Debian (el equipo siempre arranca).
-  tisma-secureboot verificar        (al instalar) falla si el menú de arranque no carga el initramfs
+  tisma-secureboot verificar        (al instalar) comprueba que el sistema instalado arranca (menú, kernel,
+                             initramfs, partición EFI), lo repara una vez si hace falta y si no, falla
   tisma-secureboot quitar-minimal   (al instalar) en un equipo real quita el kernel TISMA «minimal», que es solo
                              para máquinas virtuales: así GRUB no puede quedarse con un kernel que no arranca
 """
@@ -23,6 +24,7 @@ import glob
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -148,31 +150,62 @@ def elegir(run=sh) -> str:
     # …o si la entrada por defecto no carga su initramfs: el instalador arma el menú ANTES de crearlos y, sin
     # regenerarlo, el kernel arrancaba sin poder abrir el disco
     if want != cur or (elegido and primer_kernel(GRUB_MENU) != os.path.basename(elegido)) or not primer_con_initrd(GRUB_MENU):
-        rc, out = run([UPDATE_GRUB])
-        if rc:
-            raise RuntimeError("update-grub falló: " + out.strip()[-300:])
+        regenerar_menu(run)
     return f"kernel TISMA ({os.path.basename(k)})" if k else \
         f"kernel firmado de Debian ({os.path.basename(elegido)})" if elegido else "lo que elija GRUB"
 
 
 def primer_con_initrd(menu: str | None = None, boot: str | None = None) -> bool:
-    """¿La entrada por defecto carga un initramfs que existe? (Si el menú no se puede leer, se da por bueno.)"""
-    menu, boot = menu or GRUB_MENU, boot or BOOT
+    """Does the default boot entry load an initramfs that exists?
+
+    Parameters:
+        menu: path of the GRUB menu (default GRUB_MENU, /boot/grub/grub.cfg).
+        boot: directory that holds the kernels and initramfs images (default BOOT).
+
+    Returns:
+        True only when the menu can be read, has a «linux» entry, that entry has an «initrd» line and the file it
+        names exists in `boot`.
+
+    Why strict: an unreadable or missing menu used to count as «fine». In the A275 (preview 22) the installer's
+    final check then printed «Arranque comprobado: ?» with no grub.cfg at all and the installed system ended in
+    «VFS: Unable to mount root fs … unknown-block(0,0)». A menu we cannot read is a menu we cannot vouch for.
+    """
+    entrada = entrada_por_defecto(menu or GRUB_MENU)
+    if entrada is None or entrada[1] is None:
+        return False
+    return os.path.exists(os.path.join(boot or BOOT, os.path.basename(entrada[1])))
+
+
+def entrada_por_defecto(menu: str) -> tuple[str, str | None] | None:
+    """Kernel and initramfs of the default GRUB entry (the first «linux» line of the menu).
+
+    Parameters:
+        menu: path of grub.cfg.
+
+    Returns:
+        (kernel_path, initrd_path) as written in the menu, e.g. ("/vmlinuz-7.3.4+deb13-amd64",
+        "/initrd.img-7.3.4+deb13-amd64"); initrd_path is None when the entry has no «initrd» line. Returns None when
+        the menu cannot be read or has no «linux» entry.
+
+    Only the FIRST entry matters: with GRUB_TIMEOUT_STYLE=hidden it is the one that boots. Entries chosen later by
+    06_tisma_fallos (tisma-seguro) are written by 42_tisma_volver only when their initramfs exists.
+    """
     try:
-        lineas = [l.split() for l in open(menu, encoding="utf-8", errors="replace")]
+        with open(menu, encoding="utf-8", errors="replace") as fh:
+            lineas = [linea.split() for linea in fh]
     except OSError:
-        return True
+        return None
     for i, partes in enumerate(lineas):
         if len(partes) >= 2 and partes[0] == "linux":
-            for sig in lineas[i + 1:]:
-                if sig and sig[0] == "initrd":
-                    return os.path.exists(os.path.join(boot, os.path.basename(sig[-1])))
-                if sig and sig[0] in ("linux", "}", "menuentry"):
+            for siguiente in lineas[i + 1:]:
+                if siguiente and siguiente[0] == "initrd" and len(siguiente) >= 2:
+                    # «initrd /amd-ucode.img /initrd.img-…»: the system initramfs is the LAST one
+                    return partes[1], siguiente[-1]
+                if siguiente and siguiente[0] in ("linux", "}", "menuentry"):
                     break
-            # Sin línea initrd: el menú se armó antes de crear los initramfs. Antes, si /boot no tenía NINGUNO se daba por
-            # bueno («nada que cargar») y el sistema no arrancaba: un kernel de Debian sin initramfs no abre el disco
-            return False
-    return True
+            # No initrd line: the menu was generated before the initramfs existed
+            return partes[1], None
+    return None
 
 
 def primer_kernel(menu: str = GRUB_MENU) -> str | None:
@@ -185,6 +218,227 @@ def primer_kernel(menu: str = GRUB_MENU) -> str | None:
     except OSError:
         pass
     return None
+
+
+# =====================================================================================================================
+# ===                              INSTALLER FINAL CHECK: «verificar» (check, repair, check again)                ===
+# =====================================================================================================================
+#
+# Last step of the installer (shellprocess@tisma, WITHOUT «-»): if the installed system would not boot, the
+# installer must say so instead of finishing «fine». Before failing it tries ONE repair round, because every
+# problem below has a mechanical fix that is safe to run inside the installer's chroot.
+#
+# History (ThinkPad A275): previews 19-22 ended in «VFS: Unable to mount root fs on /dev/sda3 or
+# unknown-block(0,0)», i.e. the kernel started WITHOUT an initramfs. The old check passed when grub.cfg was
+# missing, so it could not catch it.
+
+# --- Configuration ---
+
+# Smallest initramfs accepted, in bytes. A real Debian initramfs is 30-150 MB; anything under 1 MiB is a truncated
+# or empty file (a write cut short by a full /boot or a crash). Range: 256 KiB - 8 MiB. Default 1 MiB. Too high
+# would reject a valid, very small «MODULES=dep» image; too low would let a broken file through.
+INITRD_MIN_BYTES = 1024 * 1024
+
+# First bytes of a valid initramfs: «070701»/«070702» = cpio (uncompressed, or the early-microcode cpio that
+# precedes the compressed part), then zstd, gzip, xz, lz4 and lzma magic numbers. Anything else is not loadable.
+INITRD_MAGICS = (b"070701", b"070702", b"\x28\xb5\x2f\xfd", b"\x1f\x8b", b"\xfd7zXZ", b"\x02\x21\x4c\x18",
+                 b"\x5d\x00\x00")
+
+# EFI system partition as mounted in the installed system (fstab and Calamares both use this path).
+ESP = "/boot/efi"
+
+# --- Checks ---
+
+
+def problemas_de_arranque(menu: str | None = None, boot: str | None = None, esp: str | None = None,
+                          uuid_de_boot=None, uuid_existe=None) -> list[str]:
+    """List every reason why the installed system would not boot. Empty list = it boots.
+
+    Parameters:
+        menu: grub.cfg path (default GRUB_MENU).
+        boot: /boot directory (default BOOT).
+        esp: EFI system partition mount point (default ESP).
+        uuid_de_boot: callable () -> str|None, filesystem UUID that holds /boot (default: grub-probe).
+        uuid_existe: callable (uuid) -> bool, whether a filesystem with that UUID exists (default: blkid).
+
+    Returns:
+        Spanish messages, one per problem (they end up in the installer's error dialog, which the user reads).
+    """
+    menu, boot, esp = menu or GRUB_MENU, boot or BOOT, esp or ESP
+    entrada = entrada_por_defecto(menu)
+    if entrada is None:
+        if not os.path.exists(menu):
+            return [f"no existe el menú de arranque ({menu})"]
+        return [f"el menú de arranque ({menu}) no tiene ninguna entrada de Linux"]
+    kernel, initrd = entrada
+    problemas = []
+    if not os.path.exists(os.path.join(boot, os.path.basename(kernel))):
+        problemas.append(f"falta el kernel {os.path.basename(kernel)} en {boot}")
+    if initrd is None:
+        problemas.append(f"la entrada {os.path.basename(kernel)} no carga ningún initramfs")
+    else:
+        problema = problema_de_initrd(os.path.join(boot, os.path.basename(initrd)))
+        if problema:
+            problemas.append(problema)
+    problemas += stubs_efi_rotos(esp, uuid_de_boot or uuid_de_boot_real, uuid_existe or uuid_existe_real)[1]
+    return problemas
+
+
+def problema_de_initrd(ruta: str) -> str | None:
+    """Why the initramfs at `ruta` cannot be loaded (Spanish text), or None if it looks loadable.
+
+    Checks existence, minimum size (INITRD_MIN_BYTES) and the format's magic number (INITRD_MAGICS). It does not
+    decompress it: that would take seconds and the size+magic test already catches empty and truncated files.
+    """
+    nombre = os.path.basename(ruta)
+    try:
+        tamano = os.path.getsize(ruta)
+        with open(ruta, "rb") as fh:
+            cabecera = fh.read(8)
+    except OSError:
+        return f"falta el initramfs {nombre}"
+    if tamano < INITRD_MIN_BYTES:
+        return f"el initramfs {nombre} está incompleto ({tamano} bytes)"
+    if not cabecera.startswith(INITRD_MAGICS):
+        return f"el initramfs {nombre} está dañado (formato desconocido)"
+    return None
+
+
+def uuid_de_boot_real() -> str | None:
+    """UUID of the filesystem that holds /boot, as GRUB sees it (the value grub-install writes into the ESP stub)."""
+    rc, out = sh(["grub-probe", "--target=fs_uuid", BOOT])
+    return out.strip() if rc == 0 and out.strip() else None
+
+
+def uuid_existe_real(uuid: str) -> bool:
+    """Does any filesystem with this UUID exist on this machine? (blkid -U exits 0 only when it finds it.)"""
+    rc, _ = sh(["blkid", "-U", uuid])
+    return rc == 0
+
+
+def stubs_efi_rotos(esp: str, uuid_de_boot, uuid_existe) -> tuple[list[str], list[str]]:
+    """Find GRUB stubs on the ESP (EFI/<name>/grub.cfg) that point to a filesystem that no longer exists.
+
+    How GRUB finds its menu with Secure Boot: shim loads Debian's signed grubx64.efi, whose built-in prefix is
+    /EFI/debian. It reads ESP:/EFI/debian/grub.cfg if it exists, otherwise grub.cfg next to itself. That stub only
+    says «search.fs_uuid <UUID of /boot>; configfile …/grub.cfg». A stub left by an EARLIER install (same ESP kept
+    when installing over it) points to a /boot that was reformatted: GRUB then opens a stale menu or none.
+
+    Parameters:
+        esp: ESP mount point.
+        uuid_de_boot: callable () -> str|None (UUID of the current /boot).
+        uuid_existe: callable (uuid) -> bool.
+
+    Returns:
+        (paths_of_broken_stubs, spanish_messages). A stub pointing to ANOTHER existing filesystem is left alone:
+        it may belong to another system on the same disk (dual boot).
+    """
+    actual = uuid_de_boot()
+    rotos, mensajes = [], []
+    if not actual:
+        return rotos, mensajes
+    for stub in sorted(glob.glob(os.path.join(esp, "EFI", "*", "grub.cfg"))):
+        try:
+            texto = open(stub, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for apuntado in re.findall(r"search\.fs_uuid\s+(\S+)", texto):
+            if apuntado != actual and not uuid_existe(apuntado):
+                rotos.append(stub)
+                mensajes.append(f"{os.path.relpath(stub, esp)} apunta a un disco que ya no existe ({apuntado})")
+                break
+    return rotos, mensajes
+
+
+# --- Repairs ---
+
+
+def reparar_stubs_efi(rotos: list[str], uuid_nuevo: str) -> None:
+    """Point each broken ESP stub at the current /boot (replace the stale UUID on its search.fs_uuid lines)."""
+    for stub in rotos:
+        texto = open(stub, encoding="utf-8", errors="replace").read()
+        texto = re.sub(r"(search\.fs_uuid\s+)\S+", lambda m: m.group(1) + uuid_nuevo, texto)
+        with open(stub, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+
+
+def reponer_kernel_en_modules(boot: str | None = None, modules: str | None = None) -> list[str]:
+    """Restore /usr/lib/modules/<version>/{vmlinuz,config,System.map} from /boot when they are missing.
+
+    Why: Debian's 7.x kernel packages ship these as HARD LINKS of /boot/vmlinuz-<version> etc. With a separate
+    /boot partition the installer's copy (rsync -H) cannot create a hard link across filesystems (EXDEV) and the
+    copy under /usr/lib/modules is silently missing. Tools that read the kernel from there (and the next kernel
+    upgrade's cleanup) then fail. A plain copy is what dpkg would have produced on separate filesystems.
+
+    Returns:
+        «<version>/<file>» for every file restored.
+    """
+    boot, modules = boot or BOOT, modules or MODULES
+    repuestos = []
+    for directorio in sorted(glob.glob(f"{modules}/*")):
+        version = os.path.basename(directorio)
+        for nombre in ("vmlinuz", "config", "System.map"):
+            origen, destino = f"{boot}/{nombre}-{version}", f"{directorio}/{nombre}"
+            if os.path.isfile(origen) and not os.path.lexists(destino):
+                shutil.copy2(origen, destino)
+                repuestos.append(f"{version}/{nombre}")
+    return repuestos
+
+
+def regenerar_menu(run=sh) -> None:
+    """Rebuild grub.cfg. Waits for udev first so /dev/disk/by-uuid has the freshly formatted partitions.
+
+    Why the wait: GRUB's 10_linux writes root=UUID=… only if /dev/disk/by-uuid/<UUID> exists; otherwise it falls
+    back to root=/dev/sdX (seen in the A275 panic: «root fs on /dev/sda3»). /dev/sdX changes when a USB stick is
+    plugged in, so the UUID form is the robust one. udevadm failing (no udev in a test chroot) is not an error.
+
+    Raises:
+        RuntimeError if update-grub fails (with the tail of its output).
+    """
+    run(["udevadm", "settle", "--timeout=10"])
+    rc, out = run([UPDATE_GRUB])
+    if rc:
+        raise RuntimeError("update-grub falló: " + out.strip()[-300:])
+
+
+def verificar(run=sh, comprobar=None) -> str:
+    """Installer's final boot check: check, repair once, check again.
+
+    Parameters:
+        run: command runner (tests inject a fake).
+        comprobar: callable () -> list[str] that returns the problems (default problemas_de_arranque).
+
+    Returns:
+        Spanish summary for the installer log.
+
+    Raises:
+        RuntimeError with every remaining problem when the repair did not fix them: the installer shows it and
+        does NOT finish «fine» with a machine that cannot boot.
+    """
+    comprobar = comprobar or problemas_de_arranque
+    reponer_kernel_en_modules()
+    problemas = comprobar()
+    if problemas:
+        print("Arreglando el arranque: " + "; ".join(problemas), file=sys.stderr)
+        asegurar_initrd(run)
+        # An initramfs that exists but is truncated is rebuilt (asegurar_initrd only creates missing ones)
+        for version in sorted(os.listdir(MODULES)) if os.path.isdir(MODULES) else []:
+            ruta = f"{BOOT}/initrd.img-{version}"
+            if os.path.exists(f"{BOOT}/vmlinuz-{version}") and problema_de_initrd(ruta):
+                rc, out = run([UPDATE_INITRAMFS, "-c", "-k", version])
+                if rc:
+                    raise RuntimeError(f"no se pudo rehacer el initramfs de {version}: " + out.strip()[-300:])
+        regenerar_menu(run)
+        actual = uuid_de_boot_real()
+        if actual:
+            reparar_stubs_efi(stubs_efi_rotos(ESP, lambda: actual, uuid_existe_real)[0], actual)
+        problemas = comprobar()
+    # Flush /boot and the ESP to disk now: if the machine is switched off right after «Hecho», nothing is lost
+    run(["sync"])
+    if problemas:
+        raise RuntimeError("el sistema instalado no podría arrancar: " + "; ".join(problemas))
+    kernel, initrd = entrada_por_defecto(GRUB_MENU) or ("?", "?")
+    return f"{os.path.basename(kernel)} con su initramfs {os.path.basename(initrd or '?')}"
 
 
 def quitar_minimal(run=sh) -> str:
@@ -267,12 +521,8 @@ def main(argv: list[str]) -> int:
             print(quitar_minimal())
             return 0
         if cmd == "verificar":
-            # Última comprobación del instalador: mejor un error a la vista que un equipo que no arranca
-            if not primer_con_initrd(GRUB_MENU):
-                print("El menú de arranque no carga el initramfs del kernel: el sistema no podría abrir el disco. "
-                      "Vuelve a instalar o informa del fallo.", file=sys.stderr)
-                return 1
-            print("Arranque comprobado: " + (primer_kernel(GRUB_MENU) or "?") + " con su initramfs")
+            # Last installer step: a visible error is better than a machine that does not boot
+            print("Arranque comprobado: " + verificar())
             return 0
     except RuntimeError as e:
         print(f"tisma-secureboot {cmd}: {e}", file=sys.stderr)
