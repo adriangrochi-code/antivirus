@@ -1,7 +1,8 @@
 """Ventana «Actualizar TISMA» de la sesión del USB: si el equipo ya tiene TISMA, se ofrece actualizarlo
 (conservando todo) antes que instalar de cero. Botones y una barra de progreso; nada de terminal.
 
-La página solo puede pedir tres cosas fijas: actualizar, volver a la versión anterior o abrir el instalador. La
+La página solo puede pedir cuatro cosas fijas: actualizar, volver a la versión anterior, reparar el arranque o abrir el
+instalador. La
 contraseña del disco va por la entrada estándar del proceso (nunca en la línea de órdenes ni en registros).
 Servidor solo en 127.0.0.1, con token y Host verificado, como el resto de apps de TISMA.
 """
@@ -28,7 +29,7 @@ POPEN = subprocess.Popen
 MOTOR = "/usr/lib/tisma/actualizar-instalado"
 INSTALADOR = "/usr/lib/tisma/instalar-tisma"
 LOCK = threading.Lock()
-ESTADO: dict = {"corriendo": False, "pct": 0, "texto": "", "error": None, "listo": None}
+ESTADO: dict = {"corriendo": False, "pct": 0, "texto": "", "error": None, "listo": None, "informe": ""}
 
 
 def leer_progreso(proc) -> None:
@@ -38,7 +39,9 @@ def leer_progreso(proc) -> None:
         except ValueError:
             continue
         with LOCK:
-            if "error" in d:
+            if "informe" in d:
+                ESTADO["informe"] = str(d["informe"])[-12000:]
+            elif "error" in d:
                 ESTADO["error"] = d["error"]
             elif d.get("paso") == "listo":
                 ESTADO.update(listo=d.get("texto"), pct=100)
@@ -53,7 +56,7 @@ def leer_progreso(proc) -> None:
 
 
 def lanzar(orden: str, raiz: str, clave: str) -> dict:
-    if orden not in ("actualizar", "volver"):
+    if orden not in ("actualizar", "volver", "reparar"):
         return {"ok": False, "error": "acción desconocida"}
     if raiz not in {d["raiz"] for d in motor.buscar()}:
         return {"ok": False, "error": "No encontré TISMA instalado en ese disco."}
@@ -62,7 +65,7 @@ def lanzar(orden: str, raiz: str, clave: str) -> dict:
     with LOCK:
         if ESTADO["corriendo"]:
             return {"ok": False, "error": "Ya hay una actualización en curso."}
-        ESTADO.update(corriendo=True, pct=1, texto="Empezando…", error=None, listo=None)
+        ESTADO.update(corriendo=True, pct=1, texto="Empezando…", error=None, listo=None, informe="")
     proc = POPEN(["pkexec", MOTOR, orden, raiz], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                  stderr=subprocess.DEVNULL, text=True, bufsize=1)
     proc.stdin.write(clave + "\n")

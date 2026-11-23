@@ -19,6 +19,7 @@ Progreso: una línea JSON por paso en la salida estándar ({"paso", "texto", "pc
 from __future__ import annotations
 
 import fnmatch
+import glob
 import json
 import os
 import re
@@ -228,6 +229,59 @@ def nombre_crypttab(crypttab: str, uuid: str, dispositivo: str) -> str | None:
                 if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", campos[0]):
                     return campos[0]
     return None
+
+
+def entrada_principal(grub_cfg: str) -> tuple[str | None, str | None]:
+    """(kernel, initrd) de la primera entrada del menú de GRUB; initrd None si la entrada no carga ninguno."""
+    try:
+        lineas = [l.split() for l in open(grub_cfg, encoding="utf-8", errors="replace")]
+    except OSError:
+        return None, None
+    for i, partes in enumerate(lineas):
+        if len(partes) >= 2 and partes[0] == "linux":
+            for sig in lineas[i + 1:]:
+                if sig and sig[0] == "initrd":
+                    return os.path.basename(partes[1]), os.path.basename(sig[-1])
+                if sig and sig[0] in ("linux", "}", "menuentry"):
+                    break
+            return os.path.basename(partes[1]), None
+    return None, None
+
+
+def diagnostico(raiz: str) -> list[str]:
+    """Lo que hace falta para saber por qué un TISMA instalado no arranca, en un texto que se pueda fotografiar."""
+    boot = os.path.join(raiz, "boot")
+    out = ["== /boot"]
+    try:
+        for n in sorted(os.listdir(boot)):
+            if n.startswith(("vmlinuz-", "initrd.img-")):
+                out.append(f"  {n}  {os.path.getsize(os.path.join(boot, n)) // (1 << 20)} MB")
+    except OSError as e:
+        out.append(f"  no se pudo leer: {e}")
+    try:
+        out.append("== módulos: " + ", ".join(sorted(os.listdir(os.path.join(raiz, "lib/modules")))))
+    except OSError:
+        out.append("== módulos: (ninguno)")
+    kernel, initrd = entrada_principal(os.path.join(boot, "grub/grub.cfg"))
+    out.append(f"== menú: arranca {kernel or '?'} con initramfs {initrd or 'NINGUNO'}"
+               + ("" if not initrd or os.path.exists(os.path.join(boot, initrd)) else " (NO EXISTE)"))
+    try:
+        for linea in open(os.path.join(boot, "grub/grub.cfg"), errors="replace"):
+            if re.match(r"\s*(menuentry|linux|initrd)\b", linea):
+                out.append("  " + linea.strip()[:150])
+                if len(out) > 40:
+                    break
+    except OSError:
+        out.append("  sin grub.cfg")
+    try:
+        log = open(os.path.join(raiz, "var/log/installation.log"), errors="replace").read().splitlines()
+        claves = [l for l in log if re.search(r"(?i)initramfs|update-grub|grub-mkconfig|tisma-secureboot|"
+                                              r"error|fall|failed", l)]
+        out.append("== instalación (registro, lo importante):")
+        out += ["  " + l[-160:] for l in claves[-25:]]
+    except OSError:
+        out.append("== instalación: sin registro")
+    return out
 
 
 # ---------------------------------------------------------------- el trabajo
@@ -548,6 +602,76 @@ class Actualizacion:
             if self.limpiar_trabajo() and self.d["cifrado"]:
                 subprocess.run(["cryptsetup", "close", self.mapeo], capture_output=True)
 
+    def reparar(self, clave: bytes | None):
+        """«Reparar el arranque»: sin tocar tus archivos ni el sistema, rehace lo que el kernel necesita para abrir el
+        disco (initramfs) y el menú de GRUB, y deja un informe. Para un TISMA que termina en «Unable to mount root
+        fs … unknown-block(0,0)» (el menú arrancaba el kernel sin initramfs, A275)."""
+        informe: list[str] = []
+        try:
+            self.avisar("abrir", "Abriendo el disco…", 5)
+            self.dev = self.abrir(clave)
+            raiz = self.raiz
+            self.montar(self.dev, raiz, "-o", f"subvol=/{ACTUAL}")
+            boot = os.path.join(raiz, "boot")
+            self.montar(self.d["arranque"], boot)
+            if self.d.get("esp") and os.path.isdir(os.path.join(boot, "efi")):
+                self.montar(self.d["esp"], os.path.join(boot, "efi"))
+            for fs, punto, opc in (("/dev", "dev", ["--rbind"]), ("/proc", "proc", ["--bind"]),
+                                   ("/sys", "sys", ["--rbind"]), ("/run", "run", ["--bind"])):
+                self.montar(fs, os.path.join(raiz, punto), *opc)
+                subprocess.run(["mount", "--make-rslave", os.path.join(raiz, punto)], capture_output=True)
+            self.avisar("revisar", "Revisando el arranque…", 20)
+            informe += ["ANTES"] + diagnostico(raiz)
+            entorno = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "DEBIAN_FRONTEND": "noninteractive", "LANG": "C.UTF-8"}
+            self.avisar("reparar", "Rehaciendo lo que el sistema necesita para abrir el disco…", 40)
+            for v in sorted(os.listdir(os.path.join(raiz, "lib/modules"))):
+                if not os.path.exists(os.path.join(boot, f"vmlinuz-{v}")):
+                    continue
+                accion = "-u" if os.path.exists(os.path.join(boot, f"initrd.img-{v}")) else "-c"
+                r = subprocess.run(["chroot", raiz, "update-initramfs", accion, "-k", v], capture_output=True,
+                                   text=True, env=entorno)
+                informe.append(f"update-initramfs {accion} {v}: código {r.returncode}")
+                informe += ["  " + l[-160:] for l in (r.stdout + r.stderr).strip().splitlines()[-8:]]
+            self.avisar("reparar", "Rehaciendo el menú de arranque…", 75)
+            r = subprocess.run(["chroot", raiz, "update-grub"], capture_output=True, text=True, env=entorno)
+            informe.append(f"update-grub: código {r.returncode}")
+            informe += ["  " + l[-160:] for l in (r.stdout + r.stderr).strip().splitlines()[-12:]]
+            informe += ["DESPUÉS"] + diagnostico(raiz)
+            kernel, initrd = entrada_principal(os.path.join(boot, "grub/grub.cfg"))
+            ok = bool(kernel and initrd and os.path.exists(os.path.join(boot, initrd)))
+            ruta = self.guardar_informe(informe)
+            print(json.dumps({"informe": "\n".join(informe)}, ensure_ascii=False), file=self.salida, flush=True)
+            if not ok:
+                raise Fallo("No se pudo reparar el arranque: el menú sigue sin el initramfs. "
+                            f"Manda una foto del informe ({ruta}).")
+            self.avisar("listo", f"Arranque reparado: {kernel} con {initrd}. Quita el USB y reinicia. "
+                                 f"(Informe en {ruta})", 100)
+        finally:
+            self.desmontar_todo()
+            if self.limpiar_trabajo() and self.d["cifrado"]:
+                subprocess.run(["cryptsetup", "close", self.mapeo], capture_output=True)
+
+    def guardar_informe(self, lineas: list[str]) -> str:
+        """En el escritorio de la sesión del USB (para fotografiarlo o copiarlo) y en /run."""
+        texto = "TISMA - informe del arranque\n" + "\n".join(lineas) + "\n"
+        ruta = "/run/tisma-informe-arranque.txt"
+        try:
+            with open(ruta, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+        except OSError:
+            pass
+        for esc in sorted(glob.glob("/home/*/Escritorio")) + sorted(glob.glob("/home/*/Desktop")):
+            destino = os.path.join(esc, "informe-arranque-tisma.txt")
+            try:
+                with open(destino, "w", encoding="utf-8") as fh:
+                    fh.write(texto)
+                st = os.stat(esc)
+                os.chown(destino, st.st_uid, st.st_gid)
+                return destino
+            except OSError:
+                continue
+        return ruta
+
     def volver(self, clave: bytes | None):
         """Botón «Volver a la versión anterior»: cambia @ por la última @tisma-anterior-* y su arranque."""
         try:
@@ -577,7 +701,7 @@ def main(argv=None) -> int:
         return 0
     orden, raiz = argv[0], (argv[1] if len(argv) > 1 else "")
     destino = next((c for c in buscar() if c["raiz"] == raiz), None)
-    if orden not in ("actualizar", "volver") or not destino:
+    if orden not in ("actualizar", "volver", "reparar") or not destino:
         print(json.dumps({"error": "No encontré TISMA instalado en ese disco."}, ensure_ascii=False))
         return 2
     clave = sys.stdin.buffer.readline().rstrip(b"\n") if destino["cifrado"] else None
@@ -586,7 +710,7 @@ def main(argv=None) -> int:
         return 2
     a = Actualizacion(destino)
     try:
-        (a.hacer if orden == "actualizar" else a.volver)(clave)
+        {"actualizar": a.hacer, "volver": a.volver, "reparar": a.reparar}[orden](clave)
     except Fallo as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False), flush=True)
         return 1

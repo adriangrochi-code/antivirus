@@ -200,3 +200,30 @@ def test_actualizar_agrega_discard_a_crypttab_viejos():
     assert "TISMA_SIN_INITRAMFS" in src[i:i + 200] and i < src.index('"update-initramfs", accion')
     script = (Path(__file__).resolve().parents[3] / "rootfs/usr/lib/tisma/crypttab-discard").read_text()
     assert '"${TISMA_SIN_INITRAMFS:-}" = 1 ] || ' in script
+
+
+def test_reparar_el_arranque_detecta_la_entrada_sin_initramfs(tmp_path):
+    """A275: «Unable to mount root fs … unknown-block(0,0)»: el menú arrancaba el kernel sin initramfs. «Reparar el
+    arranque» lo detecta y lo deja en el informe."""
+    from tisma_actualizar import motor
+    raiz = tmp_path / "raiz"
+    (raiz / "boot/grub").mkdir(parents=True)
+    (raiz / "lib/modules/7.2.12+deb13-amd64").mkdir(parents=True)
+    (raiz / "boot/vmlinuz-7.2.12+deb13-amd64").write_bytes(b"k" * 100)
+    cfg = raiz / "boot/grub/grub.cfg"
+    cfg.write_text("menuentry 'TISMA' {\n\techo 'Cargando'\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64 root=/dev/sda3 ro\n}\n")
+    assert motor.entrada_principal(str(cfg)) == ("vmlinuz-7.2.12+deb13-amd64", None)
+    inf = "\n".join(motor.diagnostico(str(raiz)))
+    assert "initramfs NINGUNO" in inf and "vmlinuz-7.2.12+deb13-amd64" in inf and "root=/dev/sda3" in inf
+    (raiz / "boot/initrd.img-7.2.12+deb13-amd64").write_bytes(b"i" * 100)
+    cfg.write_text("menuentry 'TISMA' {\n\tlinux\t/vmlinuz-7.2.12+deb13-amd64 root=UUID=x ro\n"
+                   "\tinitrd\t/initrd.img-7.2.12+deb13-amd64\n}\n")
+    assert motor.entrada_principal(str(cfg)) == ("vmlinuz-7.2.12+deb13-amd64", "initrd.img-7.2.12+deb13-amd64")
+    assert "NO EXISTE" not in "\n".join(motor.diagnostico(str(raiz)))
+
+
+def test_reparar_es_una_orden_de_la_ventana():
+    from tisma_actualizar import ventana
+    assert ventana.lanzar("borrar-todo", "/dev/x", "")["error"] == "acción desconocida"
+    html = (Path(__file__).resolve().parents[1] / "tisma_actualizar/static/index.html").read_text()
+    assert 'id="reparar"' in html and 'hacer("reparar")' in html

@@ -3,6 +3,13 @@
 Versión de prueba para probar el sistema completo y reunir fallos antes de la 1.0. **No es para uso diario
 ni para equipos con datos importantes sin copia.**
 
+## Novedades de la preview 22
+
+- **«TISMA no inicia: reparar el arranque»** (en la ventana «Actualizar TISMA» del USB): sin tocar tus archivos,
+  rehace lo que el sistema necesita para abrir el disco y el menú de arranque, comprueba el resultado y deja un
+  informe en el escritorio del USB (para fotografiarlo y enviarlo). Para el «Unable to mount root fs …
+  unknown-block(0,0)» de la A275.
+
 ## Novedades de la preview 21
 
 - **El sistema instalado arranca** (A275: «VFS: Unable to mount root fs … unknown-block(0,0)»): el menú de

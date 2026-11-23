@@ -23,6 +23,8 @@ button.link { background:none; border:0; color:var(--suave); font:inherit; font-
 .barra div { height:100%; width:0; background:var(--acento); transition:width .4s; }
 .error { color:var(--error); font-weight:600; min-height:1.5em; }
 .oculto { display:none; }
+.informe { text-align:left; font-size:12px; line-height:1.35; max-height:45vh; overflow:auto; white-space:pre-wrap;
+           background:rgba(127,127,127,.12); padding:10px; border-radius:8px; margin-top:12px; }
 </style>
 </head>
 <body>
@@ -37,6 +39,8 @@ button.link { background:none; border:0; color:var(--suave); font:inherit; font-
     <button class="btn sec" id="instalar">Formatear e instalar de cero</button>
     <p style="font-size:15px;margin-top:8px">Borra todo lo del equipo y deja TISMA como nuevo.</p>
     <button class="link oculto" id="volver">Volver a la versión anterior</button>
+    <button class="link oculto" id="reparar">TISMA no inicia: reparar el arranque</button>
+    <pre id="informe-error" class="informe oculto"></pre>
   </section>
   <section id="progreso" class="oculto">
     <h1 id="titulo">Actualizando…</h1>
@@ -48,6 +52,7 @@ button.link { background:none; border:0; color:var(--suave); font:inherit; font-
     <h1 id="fin-titulo">¡Listo!</h1>
     <p id="fin-texto">Quita el USB y reinicia el equipo.</p>
     <button class="btn" id="reiniciar">Reiniciar ahora</button>
+    <pre id="informe" class="informe oculto"></pre>
   </section>
 </main>
 <script>
@@ -67,7 +72,8 @@ async function hacer(o) {
   try { await api("/api/hacer", {orden: o, raiz: disco.raiz, clave: $("#clave").value}); }
   catch (e) { $("#error").textContent = e.message; return; }
   $("#clave").value = "";
-  $("#titulo").textContent = o === "volver" ? "Volviendo a la versión anterior…" : "Actualizando…";
+  $("#titulo").textContent = o === "volver" ? "Volviendo a la versión anterior…" :
+                             o === "reparar" ? "Reparando el arranque…" : "Actualizando…";
   ver("progreso"); seguir();
 }
 
@@ -75,12 +81,14 @@ function seguir() {
   const t = setInterval(async () => {
     const d = await api("/api/estado");
     $("#pct").style.width = (d.pct || 0) + "%"; $("#texto").textContent = d.texto || "";
-    if (d.listo) { clearInterval(t); $("#fin-texto").textContent = d.listo; ver("fin"); }
-    else if (!d.corriendo && d.error) { clearInterval(t); ver("inicio"); $("#error").textContent = d.error; }
+    const inf = (el) => { if (d.informe) { el.textContent = d.informe; el.classList.remove("oculto"); } };
+    if (d.listo) { clearInterval(t); $("#fin-texto").textContent = d.listo; inf($("#informe")); ver("fin"); }
+    else if (!d.corriendo && d.error) { clearInterval(t); ver("inicio"); $("#error").textContent = d.error; inf($("#informe-error")); }
   }, 1000);
 }
 
 $("#actualizar").onclick = () => hacer("actualizar");
+$("#reparar").onclick = () => hacer("reparar");
 $("#volver").onclick = () => { if (confirm("¿Volver a la versión que tenías antes de actualizar?")) hacer("volver"); };
 $("#instalar").onclick = async () => {
   if (!confirm("Formatear BORRA todo lo que hay en el equipo (archivos, programas y ajustes). ¿Seguir?")) return;
@@ -95,6 +103,7 @@ $("#reiniciar").onclick = () => api("/api/reiniciar", {});
   disco = d.discos[0];
   if (!disco.cifrado) $("#clave").classList.add("oculto");
   $("#volver").classList.remove("oculto");
+  $("#reparar").classList.remove("oculto");
 })();
 </script>
 </body>
