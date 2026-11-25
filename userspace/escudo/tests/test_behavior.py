@@ -39,6 +39,8 @@ def test_persistencia_sin_falsas_alarmas():
                                 plantilla.format(n=602, ok="no", exe="/home/ana/.local/x") +
                                 plantilla.format(n=603, ok="yes", exe="/home/ana/.local/x")).splitlines())
     assert behavior.evaluate(ev["601"]) is None
+    flatpak = behavior.group_events(plantilla.format(n=604, ok="yes", exe="/usr/bin/flatpak").splitlines())
+    assert behavior.evaluate(flatpak["604"]) is None                  # preview 23: installing apps is not malware
     assert behavior.evaluate(ev["602"]) is None
     assert behavior.evaluate(ev["603"]).kind == "persistencia"          # a real write still alerts
 

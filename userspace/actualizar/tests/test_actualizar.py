@@ -227,3 +227,21 @@ def test_reparar_es_una_orden_de_la_ventana():
     assert ventana.lanzar("borrar-todo", "/dev/x", "")["error"] == "acción desconocida"
     html = (Path(__file__).resolve().parents[1] / "tisma_actualizar/static/index.html").read_text()
     assert 'id="reparar"' in html and 'hacer("reparar")' in html
+
+
+def test_diagnostico_efi_muestra_stubs_y_firmware(tmp_path):
+    """A275 (preview 23): el menú y el initramfs estaban bien y aun así arrancaba sin él; el informe debe mostrar
+    qué GRUB y qué menú usa el firmware (stubs de la partición EFI y orden de arranque)."""
+    (tmp_path / "EFI" / "TISMA").mkdir(parents=True)
+    (tmp_path / "EFI" / "TISMA" / "grub.cfg").write_text("search.fs_uuid 9bfe root\nset prefix=($root)'/grub'\n")
+    (tmp_path / "EFI" / "BOOT").mkdir()
+    (tmp_path / "EFI" / "BOOT" / "BOOTX64.EFI").write_text("x")
+
+    def run(argv):
+        if argv[0] == "efibootmgr":
+            return 0, "BootCurrent: 0001\nBootOrder: 0001,0000\nBoot0001* TISMA\tHD(1,GPT)/\\EFI\\TISMA\\shimx64.efi\n"
+        return 0, "NAME FSTYPE UUID\nsda1 vfat AAAA\n"
+    texto = "\n".join(motor.diagnostico_efi(str(tmp_path), run))
+    assert "TISMA/: grub.cfg" in texto and "search.fs_uuid 9bfe" in texto and "BOOT/: BOOTX64.EFI" in texto
+    assert "BootOrder: 0001,0000" in texto and "shimx64" in texto and "sda1 vfat AAAA" in texto
+    assert "no se pudo leer" in "\n".join(motor.diagnostico_efi(str(tmp_path / "nada"), run))

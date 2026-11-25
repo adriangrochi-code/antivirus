@@ -47,7 +47,10 @@ PERSISTENCE_WRITERS = {"/usr/bin/crontab", "/usr/bin/systemctl", "/usr/bin/dpkg"
                        # KDE's session daemon: its modules (time zone, keyboard, autostart) touch these places as
                        # part of normal desktop use. Seen as a false alarm during the live install (preview 22):
                        # «kded6 intentó quedar configurado para abrirse solo al encender el equipo».
-                       "/usr/bin/kded6"}
+                       "/usr/bin/kded6",
+                       # Flatpak installs apps like apt does (the installer and the Welcome add apps with it). Seen as
+                       # a false alarm while installing (preview 23): «flatpak intentó quedar configurado…».
+                       "/usr/bin/flatpak", "/usr/libexec/flatpak-system-helper"}
 
 SEVERITY = {"exec_tmp": "medium", "secretos": "high", "persistencia": "medium", "ldpreload": "high",
             "ptrace": "medium", "modulos": "high", "navegador_secretos": "high", "ransomware": "critical",

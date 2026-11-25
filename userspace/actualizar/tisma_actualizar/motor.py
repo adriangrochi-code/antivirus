@@ -248,8 +248,10 @@ def entrada_principal(grub_cfg: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def diagnostico(raiz: str) -> list[str]:
-    """Lo que hace falta para saber por qué un TISMA instalado no arranca, en un texto que se pueda fotografiar."""
+def diagnostico(raiz: str, con_efi: bool = True) -> list[str]:
+    """Lo que hace falta para saber por qué un TISMA instalado no arranca, en un texto que se pueda fotografiar.
+
+    con_efi: include the EFI partition and firmware section (only once per report: it does not change on repair)."""
     boot = os.path.join(raiz, "boot")
     out = ["== /boot"]
     try:
@@ -273,6 +275,8 @@ def diagnostico(raiz: str) -> list[str]:
                     break
     except OSError:
         out.append("  sin grub.cfg")
+    if con_efi:
+        out += diagnostico_efi(os.path.join(boot, "efi"))
     try:
         log = open(os.path.join(raiz, "var/log/installation.log"), errors="replace").read().splitlines()
         claves = [l for l in log if re.search(r"(?i)initramfs|update-grub|grub-mkconfig|tisma-secureboot|"
@@ -281,6 +285,60 @@ def diagnostico(raiz: str) -> list[str]:
         out += ["  " + l[-160:] for l in claves[-25:]]
     except OSError:
         out.append("== instalación: sin registro")
+    return out
+
+
+def diagnostico_efi(esp: str, run=None) -> list[str]:
+    """Report lines about the EFI system partition and the firmware boot entries.
+
+    Why: on the ThinkPad A275 (previews 19-23) the installed menu named its initramfs and the file was valid, yet
+    the kernel started without it («Unable to mount root fs on /dev/sda3»). The live USB, with the same kernel and
+    the same initramfs, boots. What is left is WHICH GRUB and WHICH menu the firmware really uses: the GRUB stubs on
+    the ESP (EFI/<name>/grub.cfg, each one says which partition holds the real menu) and the firmware's boot order.
+
+    Parameters:
+        esp: mount point of the installed system's EFI partition (e.g. <root>/boot/efi).
+        run: command runner returning (rc, text); default runs the command (efibootmgr) on the live system.
+
+    Returns:
+        Lines for the photographable report. Never raises: a missing ESP or tool is reported as text.
+    """
+    def ejecutar_texto(argv):
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+            return r.returncode, r.stdout + r.stderr
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 1, str(e)
+    run = run or ejecutar_texto
+    out = ["== partición EFI"]
+    efi = os.path.join(esp, "EFI")
+    try:
+        carpetas = sorted(os.listdir(efi))
+    except OSError as e:
+        return out + [f"  no se pudo leer {efi}: {e}"]
+    for carpeta in carpetas:
+        ruta = os.path.join(efi, carpeta)
+        try:
+            archivos = sorted(os.listdir(ruta))
+        except OSError:
+            continue
+        out.append(f"  {carpeta}/: " + " ".join(archivos)[:150])
+        stub = os.path.join(ruta, "grub.cfg")
+        if os.path.isfile(stub):
+            try:
+                for linea in open(stub, errors="replace"):
+                    if linea.strip():
+                        out.append(f"    {linea.strip()[:140]}")
+            except OSError:
+                pass
+    # The firmware's boot order and entries: shows whether it starts EFI/TISMA, EFI/BOOT (fallback) or another one
+    rc, texto = run(["efibootmgr", "-v"])
+    out.append("== firmware (efibootmgr)")
+    out += ["  " + l[:150] for l in texto.splitlines() if l.startswith(("BootCurrent", "BootOrder", "Boot0"))][:12]
+    # UUIDs to compare with the stubs above (search.fs_uuid must name the /boot partition)
+    rc, texto = run(["lsblk", "-o", "NAME,FSTYPE,UUID,PARTLABEL,MOUNTPOINT", "-e7"])
+    out.append("== discos")
+    out += ["  " + l[:150] for l in texto.splitlines()[:14]]
     return out
 
 
@@ -636,7 +694,7 @@ class Actualizacion:
             r = subprocess.run(["chroot", raiz, "update-grub"], capture_output=True, text=True, env=entorno)
             informe.append(f"update-grub: código {r.returncode}")
             informe += ["  " + l[-160:] for l in (r.stdout + r.stderr).strip().splitlines()[-12:]]
-            informe += ["DESPUÉS"] + diagnostico(raiz)
+            informe += ["DESPUÉS"] + diagnostico(raiz, con_efi=False)
             kernel, initrd = entrada_principal(os.path.join(boot, "grub/grub.cfg"))
             ok = bool(kernel and initrd and os.path.exists(os.path.join(boot, initrd)))
             ruta = self.guardar_informe(informe)
